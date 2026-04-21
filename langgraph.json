@@ -1,0 +1,13 @@
+{
+  "dependencies": [
+    "langgraph",
+    "langchain-openai",
+    "langgraph-checkpoint-sqlite",
+    "python-dotenv",
+    "./"
+  ],
+  "graphs": {
+    "nextmate": "./nextmate_agent/agent.py:graph"
+  },
+  "env": "./.env"
+}
