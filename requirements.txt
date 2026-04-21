@@ -1,2 +1,6 @@
-dotenv
-openai
+python-dotenv
+langgraph
+langchain-openai
+langgraph-checkpoint-sqlite
+fastapi
+uvicorn[standard]

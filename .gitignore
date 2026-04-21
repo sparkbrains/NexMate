@@ -205,3 +205,13 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# NextMate runtime artifacts
+data/memory/*.jsonl
+data/memory/*.sqlite
+data/memory/*.sqlite-journal
+data/memory/*.db
+apps/data/memory/*.jsonl
+apps/data/memory/*.sqlite
+apps/data/memory/*.sqlite-journal
+apps/data/memory/*.db
