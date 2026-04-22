@@ -30,8 +30,8 @@ Persistence is enabled with a LangGraph SQLite checkpointer, keyed by `thread_id
 1. Install dependencies:
    `pip install -r requirements.txt`
 2. Set `.env` values:
-   - `OPENROUTER_API_KEY`
-   - `GENERATION_MODEL` (optional)
+   - `GROQ_API_KEY` (or `LLM_API_KEY`)
+   - `GENERATION_MODEL` (optional, default: `llama-3.1-70b-versatile`)
    - `CHECKPOINT_DB_PATH` (optional)
 3. Start:
    `python3 apps/cli_chat.py`
@@ -44,7 +44,7 @@ You can switch at runtime with `/thread <id>`.
 1. Install dependencies:
    `pip install -r requirements.txt`
 2. Configure `.env`:
-   - `OPENROUTER_API_KEY`
+   - `GROQ_API_KEY` (or `LLM_API_KEY`)
    - `THREAD_MESSAGE_LOG_PATH` (optional)
 3. Start server:
    `python3 apps/web_app.py`

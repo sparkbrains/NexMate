@@ -31,3 +31,10 @@ def append_jsonl(path: str, item: dict[str, Any]) -> None:
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(item, ensure_ascii=False) + "\n")
 
+
+def write_jsonl(path: str, items: list[dict[str, Any]]) -> None:
+    ensure_parent_dir(path)
+    with open(path, "w", encoding="utf-8") as f:
+        for item in items:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+

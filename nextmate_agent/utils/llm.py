@@ -1,23 +1,32 @@
 import json
 
+from langchain_groq import ChatGroq
+from nextmate_agent.utils.config import get_settings
 from langchain_openai import ChatOpenAI
 
-from nextmate_agent.utils.config import get_settings
-
-
-def get_chat_model() -> ChatOpenAI:
+# def get_chat_model() -> ChatOpenAI:
+#     settings = get_settings()
+#     if not settings.llm_api_key:
+#         raise ValueError("OPENROUTER_API_KEY or LLM_API_KEY is missing in .env")
+#
+#     return ChatOpenAI(
+#         model=settings.generation_model,
+#         api_key=settings.llm_api_key,
+#         base_url="https://openrouter.ai/api/v1",
+#         temperature=0.3,
+#         default_headers={
+#             "HTTP-Referer": settings.app_referer,
+#             "X-Title": settings.app_title,
+#         },
+#     )
+def get_chat_model() -> ChatGroq:
     settings = get_settings()
-    if not settings.openrouter_api_key:
-        raise ValueError("OPENROUTER_API_KEY is missing in .env")
+    if not settings.llm_api_key:
+        raise ValueError("GROQ_API_KEY or LLM_API_KEY is missing in .env")
 
-    return ChatOpenAI(
+    return ChatGroq(
         model=settings.generation_model,
-        api_key=settings.openrouter_api_key,
-        base_url=settings.openrouter_base_url,
-        default_headers={
-            "HTTP-Referer": settings.app_referer,
-            "X-Title": settings.app_title,
-        },
+        api_key=settings.llm_api_key,
         temperature=0.3,
     )
 
@@ -44,9 +53,11 @@ def parse_json_object(text: str) -> dict:
             except json.JSONDecodeError:
                 pass
     return {
-        "summary": raw[:280] if raw else "",
         "mood": "unknown",
-        "signals": [],
-        "next_focus": "",
+        "core_theme": raw[:280] if raw else "",
+        "core_beliefs": [],
+        "triggers": [],
+        "key_facts": [],
+        "risk_flag": False,
     }
 
