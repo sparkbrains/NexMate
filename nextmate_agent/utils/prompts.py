@@ -125,18 +125,15 @@ def _load_response_routing() -> str:
 RESPONSE_ROUTING = _load_response_routing()
 
 _RESPONSE_MODES = [
-    "probe_phase1",
     "validate",
     "probe",
     "deepen",
     "loop_alert",
     "safety_mode",
-    "synthesise",
 ]
 
 
 def _get_mode_guidance(mode_name: str) -> str:
-    """Extract a single mode section from the full response-routing markdown."""
     if not mode_name or not RESPONSE_ROUTING:
         return RESPONSE_ROUTING
     pattern = rf"### {re.escape(mode_name)}\n(.*?)(?=\n### |\n## |$)"
@@ -187,6 +184,11 @@ What you know about them:
 Response mode: {response_mode or "unknown"}
 Mode guidance:
 {mode_guidance}
+
+Language Policy:
+- Analyze the user's input. If the user is speaking in Hindi or Hinglish (e.g., "sad hu", "kya karu"), you MUST respond in Hinglish (a natural mix of Hindi and English using Latin script).
+- Use a warm, "desi" friend vibe: use words like 'yaar', 'tension mat lo', or 'bilkul'.
+- If the user is speaking strictly in English, respond strictly in English.
 
 Hard rules for THIS reply:
 - Read the conversation history above. Your next reply must say something NEW — not a variation, not a rephrasing of what you already said.
