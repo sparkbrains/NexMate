@@ -11,21 +11,23 @@ Build a flow-based AI journaling companion where behavior comes from graph orche
 5. `persist_summary`
 
 ## Persistence
-- Graph compiled with SQLite checkpointer (`SqliteSaver`).
-- Every invoke passes `configurable.thread_id`.
-- Thread state checkpoints are saved per thread and resumed on next invoke.
-- Turn summaries are also written to `data/memory/summaries.jsonl` with `thread_id`.
+- Graph compiled with a Postgres checkpointer (`PostgresSaver`).
+- Every invoke passes an internal checkpoint key plus `configurable.user_id`.
+- Thread state checkpoints are saved per user-thread and resumed on next invoke.
+- Turn summaries, thread messages, users, and sessions are stored in Postgres tables.
+- App-owned Postgres tables are versioned with Alembic migrations in `backend/alembic/`.
 
 ## Code Layout
-- `nextmate_agent/agent.py`: graph wiring.
-- `nextmate_agent/utils/state.py`: `NextMateState`.
-- `nextmate_agent/utils/nodes.py`: node handlers.
-- `nextmate_agent/utils/prompts.py`: assistant + summary prompts.
-- `nextmate_agent/utils/memory_store.py`: JSONL storage.
-- `langgraph.json`: LangGraph deployment/local config.
+- `backend/nextmate_agent/agent.py`: graph wiring.
+- `backend/nextmate_agent/utils/state.py`: `NextMateState`.
+- `backend/nextmate_agent/utils/nodes.py`: node handlers.
+- `backend/nextmate_agent/utils/prompts.py`: assistant + summary prompts.
+- `backend/apps/db.py`: Postgres connection bootstrap and schema setup.
+- `backend/apps/api/`: auth/dashboard/thread/ws API.
+- `backend/langgraph.json`: LangGraph deployment/local config.
 
 ## Memory Strategy
-- Persist one structured summary per turn in `data/memory/summaries.jsonl`.
+- Persist one structured summary per turn in `journal_entries`.
 - Feed recent summaries back into context for better continuity.
 - Keep summaries compact so model context stays stable and cheap.
 

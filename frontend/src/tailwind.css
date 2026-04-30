@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--sans);
+  --font-serif: var(--serif);
+
+  --color-paper: var(--paper);
+  --color-paper-deep: var(--paper-deep);
+  --color-ink-warm: var(--ink-warm);
+  --color-ink-dim: var(--ink-dim);
+  --color-dusk: var(--dusk);
+  --color-sky-soft: var(--sky-soft);
+  --color-brass: var(--brass);
+  --color-bg-canvas: var(--bg-canvas);
+  --color-bg-wash: var(--bg-wash);
+  --color-bg-accent: var(--bg-accent);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
+  --color-surface-soft: var(--surface-soft);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-warm: var(--warm);
+  --color-danger: var(--danger);
+
+  --radius-xs: 0.375rem;
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
+  --shadow-panel: var(--shadow-lg);
+  --shadow-float: var(--shadow-md);
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  body {
+    font-family: var(--sans);
+    color: var(--ink);
+  }
+}

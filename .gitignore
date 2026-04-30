@@ -206,12 +206,14 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+# Frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+
 # NextMate runtime artifacts
-data/memory/*.jsonl
-data/memory/*.sqlite
-data/memory/*.sqlite-journal
-data/memory/*.db
-apps/data/memory/*.jsonl
-apps/data/memory/*.sqlite
-apps/data/memory/*.sqlite-journal
-apps/data/memory/*.db
+backend/data/memory/*.jsonl
+backend/data/memory/*.sqlite
+backend/data/memory/*.sqlite-journal
+backend/data/memory/*.sqlite-wal
+backend/data/memory/*.sqlite-shm
+backend/data/memory/*.db
