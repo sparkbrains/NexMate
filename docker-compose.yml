@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: nextmate-postgres
+    environment:
+      POSTGRES_DB: nextmate
+      POSTGRES_USER: nextmate_user
+      POSTGRES_PASSWORD: nextmate_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - nextmate_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextmate_user -d nextmate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../Dockerfile.backend
+    container_name: nextmate-backend
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["uvicorn", "apps.web_app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../Dockerfile.frontend
+    container_name: nextmate-frontend
+    environment:
+      - VITE_API_BASE_URL=http://127.0.0.1:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    command: ["sh", "-c", "npm install --no-fund --no-audit && npm run dev -- --host 0.0.0.0 --port 5173"]
+    depends_on:
+      - backend
+
+volumes:
+  frontend_node_modules:
+  nextmate_postgres_data:

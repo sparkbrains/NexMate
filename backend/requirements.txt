@@ -1,0 +1,8 @@
+python-dotenv
+alembic
+langgraph
+langchain-openai
+langgraph-checkpoint-postgres
+psycopg[binary,pool]
+fastapi
+uvicorn[standard]

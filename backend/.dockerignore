@@ -1,0 +1,11 @@
+.env
+.env.*
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+data/memory/*.sqlite
+data/memory/*.sqlite-journal
+data/memory/*.sqlite-shm
+data/memory/*.sqlite-wal
+data/memory/*.jsonl

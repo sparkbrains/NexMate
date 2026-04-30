@@ -1,0 +1,28 @@
+@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Inter", sans-serif;
+  color: #1a1512;
+  background:
+    radial-gradient(circle at top left, rgba(214, 107, 74, 0.12), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(217, 180, 135, 0.18), transparent 28%),
+    #efe4d2;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
