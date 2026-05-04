@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: nextmate_user
       POSTGRES_PASSWORD: nextmate_password
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - nextmate_postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -24,7 +24,7 @@ services:
     env_file:
       - ./backend/.env
     ports:
-      - "8000:8000"
+      - "8010:8000"
     volumes:
       - ./backend:/app
     depends_on:
@@ -38,7 +38,7 @@ services:
       dockerfile: ../Dockerfile.frontend
     container_name: nextmate-frontend
     environment:
-      - VITE_API_BASE_URL=http://127.0.0.1:8000
+      - VITE_API_BASE_URL=http://127.0.0.1:8010
     ports:
       - "5173:5173"
     volumes:
