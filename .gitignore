@@ -210,6 +210,10 @@ __marimo__/
 frontend/node_modules/
 frontend/dist/
 
+# The Python packaging `lib/` rule above must not exclude frontend source.
+!frontend/src/lib/
+!frontend/src/lib/**
+
 # NextMate runtime artifacts
 backend/data/memory/*.jsonl
 backend/data/memory/*.sqlite
