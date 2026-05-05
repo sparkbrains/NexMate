@@ -16,10 +16,19 @@ from apps.api.routers.ws import router as ws_router
 from apps.api.services.auth_service import init_auth_db, seed_dummy_users_from_env
 
 app = FastAPI(title="NextMate Web")
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+    if origin.strip()
+]
+allowed_origin_regex = os.getenv(
+    "ALLOWED_ORIGIN_REGEX",
+    r"^http://(localhost|127\.0\.0\.1)(:\d+)?$",
+)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in allowed_origins if origin.strip()],
+    allow_origins=allowed_origins,
+    allow_origin_regex=allowed_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
