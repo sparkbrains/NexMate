@@ -76,6 +76,52 @@ def init_postgres() -> None:
                 )
                 """
             )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS journal_entries_v2 (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    thread_id TEXT NOT NULL,
+                    user_input TEXT NOT NULL,
+                    assistant_reply TEXT NOT NULL,
+                    core_theme TEXT NOT NULL,
+                    mood TEXT NOT NULL,
+                    core_beliefs JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    triggers JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    key_facts JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    next_focus TEXT NOT NULL,
+                    intensity INT NOT NULL DEFAULT 5,
+                    raw_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                """
+                ALTER TABLE journal_entries_v2
+                ADD COLUMN IF NOT EXISTS intensity INT NOT NULL DEFAULT 5
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS loops (
+                    loop_id UUID PRIMARY KEY,
+                    thread_id TEXT NOT NULL,
+                    user_id BIGINT NOT NULL,
+                    loop_name TEXT NOT NULL,
+                    core_belief TEXT NOT NULL,
+                    trigger TEXT NOT NULL,
+                    valence TEXT NOT NULL,
+                    first_detected_at TIMESTAMPTZ NOT NULL,
+                    last_detected_at TIMESTAMPTZ NOT NULL,
+                    detection_count INT NOT NULL DEFAULT 1,
+                    detection_dates JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    matched_entries JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    description TEXT NOT NULL,
+                    suggestion TEXT NOT NULL
+                )
+                """
+            )
             cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)")
             cur.execute(
@@ -125,5 +171,23 @@ def init_postgres() -> None:
                 CREATE INDEX IF NOT EXISTS idx_journal_entries_signals_gin
                 ON journal_entries
                 USING GIN (signals)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_journal_entries_v2_user_thread_created
+                ON journal_entries_v2(user_id, thread_id, created_at)
+                """
+            )
+            cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_entries_v2_import_dedupe
+                ON journal_entries_v2(user_id, thread_id, created_at, core_theme)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_loops_user_thread
+                ON loops(user_id, thread_id)
                 """
             )
