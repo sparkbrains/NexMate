@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: nextmate_user
       POSTGRES_PASSWORD: nextmate_password
     ports:
-      - "5434:5432"
+      - "5433:5432"
     volumes:
       - nextmate_postgres_data:/var/lib/postgresql/data
     healthcheck:
