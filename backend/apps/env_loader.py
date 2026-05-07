@@ -10,9 +10,10 @@ def load_runtime_env() -> str:
     load_dotenv(default_env, override=False)
 
     app_env = os.getenv("APP_ENV", "local").strip().lower() or "local"
-    profile_env = base_dir / f".env.{app_env}"
-    if profile_env.exists():
-        load_dotenv(profile_env, override=True)
+    if not os.path.exists("/.dockerenv"):
+        profile_env = base_dir / f".env.{app_env}"
+        if profile_env.exists():
+            load_dotenv(profile_env, override=True)
 
     return app_env
 
