@@ -1,8 +1,9 @@
 from apps.env_loader import load_runtime_env
 from apps.logging_config import configure_logging
-
+import sys
 
 def main() -> None:
+    sys.stdout.reconfigure(encoding='utf-8')
     load_runtime_env()
     configure_logging()
     from nextmate_agent.agent import checkpoint_thread_id, get_graph
