@@ -6,3 +6,4 @@ langgraph-checkpoint-postgres
 psycopg[binary,pool]
 fastapi
 uvicorn[standard]
+langchain-groq
