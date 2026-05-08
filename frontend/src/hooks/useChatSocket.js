@@ -6,11 +6,18 @@ export function useChatSocket(threadId, { onDone } = {}) {
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
+
   const wsRef = useRef(null);
   const streamingIdxRef = useRef(null);
+  const onDoneRef = useRef(onDone);
+
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
 
   useEffect(() => {
     if (!threadId) return;
+
     setMessages([]);
     streamingIdxRef.current = null;
     setError(null);
@@ -19,12 +26,27 @@ export function useChatSocket(threadId, { onDone } = {}) {
     const ws = new WebSocket(chatSocketUrl(threadId));
     wsRef.current = ws;
 
-    ws.onopen = () => setStatus('open');
-    ws.onclose = () => setStatus('closed');
-    ws.onerror = () => setError('Connection error');
+    ws.onopen = () => {
+      setStatus('open');
+    };
+
+    ws.onclose = () => {
+      setStatus('closed');
+      setStreaming(false);
+    };
+
+    ws.onerror = () => {
+      setError('Connection error');
+    };
+
     ws.onmessage = (ev) => {
       let data;
-      try { data = JSON.parse(ev.data); } catch { return; }
+      try {
+        data = JSON.parse(ev.data);
+      } catch {
+        return;
+      }
+
       if (data.event === 'start') {
         setStreaming(true);
         setMessages((m) => {
@@ -45,11 +67,15 @@ export function useChatSocket(threadId, { onDone } = {}) {
           const i = streamingIdxRef.current;
           if (i == null) return m;
           const next = m.slice();
-          next[i] = { ...next[i], text: data.content ?? next[i].text, meta: data.summary?.note };
+          next[i] = {
+            ...next[i],
+            text: data.content ?? next[i].text,
+            meta: data.summary?.note,
+          };
           return next;
         });
         streamingIdxRef.current = null;
-        if (onDone) onDone(data);
+        if (onDoneRef.current) onDoneRef.current(data);
       } else if (data.event === 'error') {
         setStreaming(false);
         setError(data.detail || 'Chat error');
@@ -57,14 +83,20 @@ export function useChatSocket(threadId, { onDone } = {}) {
     };
 
     return () => {
-      ws.close();
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
+        ws.close();
+      }
       wsRef.current = null;
     };
-  }, [threadId, onDone]);
+  }, [threadId]);
 
   const send = useCallback((text) => {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+
     setMessages((m) => [...m, { from: 'me', text }]);
     ws.send(JSON.stringify({ message: text }));
     return true;
@@ -77,6 +109,7 @@ export function useChatSocket(threadId, { onDone } = {}) {
         text: row.content,
       }))
       .filter((m) => m.text);
+
     setMessages(mapped);
   }, []);
 
