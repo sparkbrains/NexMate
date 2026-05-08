@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
 import { useChatSocket } from '../../hooks/useChatSocket';
-import { getThreadMessages } from '../../lib/api';
+import { getThreadMessages, listLoops } from '../../lib/api';
 
 const Msg = ({ from, text, meta, quoted, choices }) => {
   if (from === 'me') return (
@@ -46,6 +46,7 @@ const StatLine = ({ label, value, teal }) => (
 
 export const ChatScreen = ({ onNav, threadId, threadTitle, onMessageDone }) => {
   const [draft, setDraft] = useState('');
+  const [loops, setLoops] = useState([]);
   const { messages, streaming, status, error, send, loadHistory } = useChatSocket(threadId, { onDone: onMessageDone });
   const scrollRef = useRef(null);
 
@@ -57,6 +58,20 @@ export const ChatScreen = ({ onNav, threadId, threadTitle, onMessageDone }) => {
       .catch(() => {});
     return () => { off = true; };
   }, [threadId, loadHistory]);
+
+  const refreshLoops = () => {
+    listLoops()
+      .then((data) => setLoops(data.items || []))
+      .catch(() => {});
+  };
+
+  useEffect(() => { refreshLoops(); }, []);
+  useEffect(() => {
+    if (!streaming) refreshLoops();
+  }, [streaming]);
+
+  const activeLoops = loops.filter((l) => l.state === 'active');
+  const topLoop = activeLoops[0];
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -106,22 +121,43 @@ export const ChatScreen = ({ onNav, threadId, threadTitle, onMessageDone }) => {
         </div>
 
         <aside style={{ width: 300, flexShrink: 0, borderLeft: '1px solid var(--rule)', background: 'var(--paper)', padding: '24px 20px', overflowY: 'auto' }}>
-          <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Thread context</div>
+          <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Active patterns</div>
 
-          <div className="nm-card" style={{ padding: 12, marginBottom: 16 }}>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <LoopRing strength={0.78} size={36} showLabel={false} />
-              <div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontStyle: 'italic' }}>"If I slow down…"</div>
-                <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 2 }}>active · 0.78</div>
+          {topLoop ? (
+            <div className="nm-card" style={{ padding: 12, marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }} title={topLoop.core_belief || topLoop.name}>
+                <LoopRing strength={topLoop.strength} size={36} showLabel={false} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{
+                    fontFamily: 'var(--font-display)', fontSize: 13, fontStyle: 'italic',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    "{topLoop.core_belief || topLoop.name}"
+                  </div>
+                  <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 2 }}>
+                    active · {topLoop.strength.toFixed(2)} · {topLoop.occurrences}×
+                  </div>
+                </div>
+              </div>
+              {activeLoops.length > 1 && (
+                <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 8 }}>
+                  +{activeLoops.length - 1} more active
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="nm-card" style={{ padding: 12, marginBottom: 16 }}>
+              <div className="nm-meta" style={{ lineHeight: 1.5 }}>
+                No active loops yet. Patterns name themselves once they recur.
               </div>
             </div>
-          </div>
+          )}
 
           <div className="nm-hr dotted" />
           <div className="nm-eyebrow" style={{ marginBottom: 10 }}>This thread</div>
           <StatLine label="Messages" value={messages.length} />
           <StatLine label="Connection" value={status} teal={status === 'open'} />
+          <StatLine label="Active loops" value={activeLoops.length} />
 
           <div className="nm-hr dotted" />
           <div className="nm-meta" style={{ lineHeight: 1.5, color: 'var(--ink-4)' }}>
