@@ -113,6 +113,61 @@ export function deleteThread(threadId) {
   return request(`/api/threads/${encodeURIComponent(threadId)}`, { method: 'DELETE' });
 }
 
+export function getDashboardKpis() {
+  return request('/api/dashboard/kpis');
+}
+
+export function getDashboardInsights(days = 30) {
+  return request(`/api/dashboard/insights?days=${encodeURIComponent(days)}`);
+}
+
+export function listLoops() {
+  return request('/api/loops');
+}
+
+export function getLoop(loopId) {
+  return request(`/api/loops/${encodeURIComponent(loopId)}`);
+}
+
+export function resolveLoop(loopId) {
+  return request(`/api/loops/${encodeURIComponent(loopId)}/resolve`, { method: 'POST' });
+}
+
+export function listJournalBooks() {
+  return request('/api/journal/books');
+}
+
+export function getJournalStreak() {
+  return request('/api/journal/streak');
+}
+
+export function createJournalBook({ name, color = '' }) {
+  return request('/api/journal/books', {
+    method: 'POST',
+    body: { name, color },
+  });
+}
+
+export function deleteJournalBook(id) {
+  return request(`/api/journal/books/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function listJournalEntries(bookId = null) {
+  const qs = bookId != null ? `?book_id=${encodeURIComponent(bookId)}` : '';
+  return request(`/api/journal${qs}`);
+}
+
+export function createJournalEntry({ body, mood_emoji = '', mood_label = '', entry_date = null, translated = '', auto_translate = false, book_id = null }) {
+  return request('/api/journal', {
+    method: 'POST',
+    body: { body, mood_emoji, mood_label, entry_date, translated, auto_translate, book_id },
+  });
+}
+
+export function deleteJournalEntry(id) {
+  return request(`/api/journal/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 export function chatSocketUrl(threadId) {
   const httpBase = API_BASE_URL;
   const wsBase = httpBase.replace(/^http/i, (m) => (m.toLowerCase() === 'https' ? 'wss' : 'ws'));

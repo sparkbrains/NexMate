@@ -104,6 +104,46 @@ def init_postgres() -> None:
             )
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS journal_books (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    name TEXT NOT NULL,
+                    color TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMPTZ NOT NULL,
+                    UNIQUE (user_id, name)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_journal_books_user ON journal_books(user_id)"
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS journal_logs (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    book_id BIGINT,
+                    entry_date DATE NOT NULL,
+                    mood_emoji TEXT NOT NULL DEFAULT '',
+                    mood_label TEXT NOT NULL DEFAULT '',
+                    body TEXT NOT NULL DEFAULT '',
+                    translated TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMPTZ NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                "ALTER TABLE journal_logs ADD COLUMN IF NOT EXISTS book_id BIGINT"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_journal_logs_user_date ON journal_logs(user_id, entry_date DESC)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_journal_logs_book ON journal_logs(user_id, book_id)"
+            )
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS loops (
                     loop_id UUID PRIMARY KEY,
                     thread_id TEXT NOT NULL,

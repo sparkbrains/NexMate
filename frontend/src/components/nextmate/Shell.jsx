@@ -5,6 +5,8 @@ export const Icon = ({ name, size = 14, style }) => {
     loops: <><path d="M8 2a6 6 0 106 6" /><path d="M14 4v4h-4" /></>,
     insights: <><path d="M2 13h12M4 10V7M7 10V4M10 10V6M13 10V3" /></>,
     weekly: <><rect x="2" y="3" width="12" height="11" rx="1" /><path d="M2 6h12M5 2v3M11 2v3" /></>,
+    book: <><path d="M3 2h7a2 2 0 012 2v10H5a2 2 0 01-2-2V2z" /><path d="M3 2v10M6 5h4M6 8h4" /></>,
+    trash: <><path d="M3 4h10M6 4V2h4v2M5 4l1 10h4l1-10" /></>,
     patterns: <><circle cx="5" cy="5" r="2" /><circle cx="11" cy="5" r="2" /><circle cx="5" cy="11" r="2" /><circle cx="11" cy="11" r="2" /></>,
     plus: <><path d="M8 3v10M3 8h10" /></>,
     search: <><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></>,
@@ -64,7 +66,8 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
 
       <div className="nm-nav-section">Workspace</div>
       <NavItem icon="home" label="Today" k="today" active={active} onNav={onNav} />
-      <NavItem icon="loops" label="Loops" k="loops" active={active} onNav={onNav} count="3 active" />
+      <NavItem icon="book" label="Journal" k="journal" active={active} onNav={onNav} />
+      <NavItem icon="loops" label="Loops" k="loops" active={active} onNav={onNav} />
       <NavItem icon="insights" label="Insights" k="insights" active={active} onNav={onNav} />
       <NavItem icon="weekly" label="Weekly" k="weekly" active={active} onNav={onNav} />
 
