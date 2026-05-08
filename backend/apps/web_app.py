@@ -12,6 +12,8 @@ logger = get_logger(__name__)
 from apps.api.routers.auth import router as auth_router
 from apps.api.routers.dashboard import router as dashboard_router
 from apps.api.routers.http import router as http_router
+from apps.api.routers.journal import router as journal_router
+from apps.api.routers.loops import router as loops_router
 from apps.api.routers.ws import router as ws_router
 from apps.api.services.auth_service import init_auth_db, seed_dummy_users_from_env
 
@@ -28,6 +30,8 @@ app.add_middleware(
 app.include_router(http_router)
 app.include_router(auth_router)
 app.include_router(dashboard_router)
+app.include_router(loops_router)
+app.include_router(journal_router)
 app.include_router(ws_router)
 
 

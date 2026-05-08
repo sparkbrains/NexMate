@@ -5,6 +5,7 @@ import { TodayScreen } from './components/nextmate/TodayScreen';
 import { ChatScreen } from './components/nextmate/ChatScreen';
 import { LoopsScreen } from './components/nextmate/LoopsScreen';
 import { InsightsScreen, WeeklyScreen } from './components/nextmate/DataScreens';
+import { JournalScreen } from './components/nextmate/JournalScreen';
 import { AuthGate } from './components/nextmate/AuthGate';
 import { clearSession, getToken, getUser, listThreads } from './lib/api';
 
@@ -54,14 +55,16 @@ export default function App() {
   let screen;
   if (route === 'chat') {
     screen = <ChatScreen onNav={setRoute} threadId={threadId} threadTitle={activeThread?.title} onMessageDone={refreshThreads} />;
+  } else if (route === 'journal') {
+    screen = <JournalScreen />;
   } else if (route === 'loops') {
-    screen = <LoopsScreen />;
+    screen = <LoopsScreen onNav={(r) => (r === 'chat' ? beginReflection() : setRoute(r))} />;
   } else if (route === 'insights') {
     screen = <InsightsScreen />;
   } else if (route === 'weekly') {
     screen = <WeeklyScreen />;
   } else {
-    screen = <TodayScreen onNav={(r) => (r === 'chat' ? beginReflection() : setRoute(r))} />;
+    screen = <TodayScreen onNav={(r) => (r === 'chat' ? beginReflection() : setRoute(r))} threads={threads} user={user} />;
   }
 
   return (

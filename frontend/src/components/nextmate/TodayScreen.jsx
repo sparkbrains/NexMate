@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
+import { getDashboardInsights } from '../../lib/api';
 
 const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last }) => (
   <div style={{ padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--rule-soft)', cursor: 'pointer' }}>
@@ -15,7 +17,9 @@ const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last
       <div style={{ textAlign: 'right', flexShrink: 0 }}>
         <div className="nm-meta" style={{ color: 'var(--ink-3)' }}>{date}</div>
         <div className="nm-meta" style={{ fontSize: 9.5 }}>
-          {msgs} msgs · <span style={{ color: positive ? 'var(--teal)' : intensity >= 7 ? 'var(--accent)' : 'var(--ink-4)' }}>i{intensity}</span>
+          {msgs} msgs{intensity != null && (
+            <> · <span style={{ color: positive ? 'var(--teal)' : intensity >= 7 ? 'var(--accent)' : 'var(--ink-4)' }}>i{intensity}</span></>
+          )}
         </div>
       </div>
     </div>
@@ -23,25 +27,30 @@ const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last
 );
 
 const WeekDots = ({ days }) => {
-  const names = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   const colorFor = (e) => ({
-    overwhelm: 'var(--accent)', anxious: 'var(--clay)', tired: 'var(--ink-4)',
-    calm: 'var(--teal)', hopeful: 'var(--teal)',
+    overwhelm: 'var(--accent)', anxious: 'var(--clay)', stressed: 'var(--clay)',
+    negative: 'var(--accent)', very_negative: 'var(--accent)', mixed: 'var(--clay)',
+    tired: 'var(--ink-4)', neutral: 'var(--ink-4)',
+    calm: 'var(--teal)', hopeful: 'var(--teal)', positive: 'var(--teal)', very_positive: 'var(--teal)',
   }[e] || 'var(--ink-4)');
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
-      {days.map((d, i) => (
-        <div key={i} style={{ flex: 1, textAlign: 'center' }}>
-          <div style={{
-            height: d.v ? 34 + d.v * 4 : 14,
-            background: d.v ? colorFor(d.e) : 'transparent',
-            border: d.v ? 'none' : '1px dashed rgba(255,255,255,0.15)',
-            opacity: d.v ? 0.4 + (d.v / 10) * 0.6 : 1,
-            borderRadius: 2,
-          }} />
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-4)', marginTop: 5 }}>{names[i]}</div>
-        </div>
-      ))}
+      {days.map((d, i) => {
+        const v = d.avg_intensity;
+        const e = d.dominant_mood;
+        return (
+          <div key={i} style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{
+              height: v ? 34 + v * 4 : 14,
+              background: v ? colorFor(e) : 'transparent',
+              border: v ? 'none' : '1px dashed rgba(255,255,255,0.15)',
+              opacity: v ? 0.4 + (v / 10) * 0.6 : 1,
+              borderRadius: 2,
+            }} />
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-4)', marginTop: 5 }}>{d.weekday?.[0] || '·'}</div>
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -58,119 +67,241 @@ const TriggerBar = ({ label, pct, color, last }) => (
   </div>
 );
 
-export const TodayScreen = ({ onNav }) => (
-  <div className="nm-main">
-    <TopBar crumb={<><b>Today</b> <span className="sep">/</span> Thu Apr 23</>}>
-      <button className="nm-btn ghost"><Icon name="search" size={12} /> Search</button>
-      <button className="nm-btn"><Icon name="mic" size={12} /> Voice note</button>
-      <button className="nm-btn primary" onClick={() => onNav && onNav('chat')}><Icon name="plus" size={12} /> Begin reflection</button>
-    </TopBar>
+const TRIGGER_COLORS = ['var(--accent)', 'var(--clay)', 'var(--teal)', 'var(--gold)', 'var(--ink-3)'];
 
-    <div className="nm-content">
-      <div style={{ maxWidth: 960, margin: '0 auto' }}>
-        <div style={{ marginBottom: 32 }}>
-          <div className="nm-eyebrow" style={{ marginBottom: 14 }}>Morning, Maya · 07:42 · 9° drizzle</div>
-          <h1 className="nm-h1">
-            You've been circling<br />
-            <em>the same question</em> about work<br />
-            for nine days.
-          </h1>
-          <p className="nm-lede" style={{ marginTop: 18, maxWidth: 620 }}>
-            Nextmate noticed something across your last fourteen entries. Want to sit with it before the day starts?
-          </p>
-        </div>
+const greeting = () => {
+  const h = new Date().getHours();
+  if (h < 5) return 'Late night';
+  if (h < 12) return 'Morning';
+  if (h < 17) return 'Afternoon';
+  if (h < 21) return 'Evening';
+  return 'Tonight';
+};
 
-        <div className="nm-card loop-alert nm-fade-up" style={{ marginBottom: 24, padding: '26px 30px' }}>
-          <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-            <LoopRing strength={0.78} size={96} />
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                <span className="nm-chip accent"><span className="nm-dot" />Active loop</span>
-                <span className="nm-tag">strength 0.78 · 9 / 14 entries · trending up</span>
-              </div>
-              <h2 className="nm-h2" style={{ marginBottom: 10, fontStyle: 'italic', fontWeight: 400 }}>
-                "If I slow down, I'll fall behind."
-              </h2>
-              <p className="nm-body" style={{ margin: 0, maxWidth: 560 }}>
-                This belief keeps surfacing around <b>work</b> and <b>sleep</b>, usually late at night. It pairs with an intensity spike (avg 7.2) and negative valence. It's been louder this week than last.
+const formatDateShort = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+const fmtDelta = (cur, prev) => {
+  if (cur == null || prev == null) return null;
+  const diff = +(cur - prev).toFixed(1);
+  if (diff === 0) return '±0';
+  return diff > 0 ? `+${diff}` : `${diff}`;
+};
+
+export const TodayScreen = ({ onNav, threads = [], user }) => {
+  const [insights, setInsights] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    getDashboardInsights(7)
+      .then((data) => { if (!cancelled) { setInsights(data.insights); setError(null); } })
+      .catch((e) => { if (!cancelled) setError(e.message || 'Failed to load'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const now = new Date();
+  const dateLabel = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  const userName = user?.email ? user.email.split('@')[0] : 'there';
+
+  const week = insights?.week;
+  const weekDays = week?.days || Array.from({ length: 7 }).map(() => ({ avg_intensity: null, dominant_mood: null, weekday: '' }));
+  const daysWithEntries = week?.days_with_entries ?? 0;
+  const avgIntensity = week?.stats?.avg_intensity;
+  const prevAvgIntensity = week?.previous_stats?.avg_intensity;
+  const intensityDelta = fmtDelta(avgIntensity, prevAvgIntensity);
+
+  const topLoop = insights?.loops?.items?.find((l) => l.state === 'active');
+  const newLoopsCount = insights?.loops?.new_in_window ?? 0;
+  const topTriggers = (insights?.top_triggers || []).slice(0, 4);
+  const echo = insights?.echo;
+  const openQuestion = insights?.open_question;
+  const threadSummaries = insights?.thread_summaries || {};
+
+  const recentThreads = threads.slice(0, 5);
+
+  // Hero copy
+  const totalEntries = insights?.total_entries ?? 0;
+  let heroLead, heroSub;
+  if (loading) {
+    heroLead = <>Loading your reflections…</>;
+    heroSub = '';
+  } else if (totalEntries === 0) {
+    heroLead = <>Your first reflection<br /><em>is waiting.</em></>;
+    heroSub = 'Nextmate looks for patterns across your entries. Start with one moment from today.';
+  } else if (topLoop) {
+    heroLead = <>You've been circling<br /><em>the same question</em><br />for {topLoop.occurrences} entries.</>;
+    heroSub = 'Nextmate noticed something across your recent entries. Want to sit with it before the day starts?';
+  } else {
+    heroLead = <>{totalEntries} reflection{totalEntries === 1 ? '' : 's'}<br /><em>and counting.</em></>;
+    heroSub = `Avg intensity ${avgIntensity ?? '—'} this week. Keep showing up.`;
+  }
+
+  return (
+    <div className="nm-main">
+      <TopBar crumb={<><b>Today</b> <span className="sep">/</span> {dateLabel}</>}>
+        <button className="nm-btn ghost"><Icon name="search" size={12} /> Search</button>
+        <button className="nm-btn primary" onClick={() => onNav && onNav('chat')}><Icon name="plus" size={12} /> Begin reflection</button>
+      </TopBar>
+
+      <div className="nm-content">
+        <div style={{ maxWidth: 960, margin: '0 auto' }} className="nm-fade-up">
+          <div style={{ marginBottom: 32 }}>
+            <div className="nm-eyebrow" style={{ marginBottom: 14 }}>
+              {greeting()}, {userName} · {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+            <h1 className="nm-h1">{heroLead}</h1>
+            {heroSub && (
+              <p className="nm-lede" style={{ marginTop: 18, maxWidth: 620 }}>{heroSub}</p>
+            )}
+            {error && (
+              <p className="nm-meta" style={{ color: 'var(--accent)', marginTop: 12 }}>
+                Couldn't load insights: {error}
               </p>
-              <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
-                <button className="nm-btn accent" onClick={() => onNav && onNav('chat')}>Reflect on this <Icon name="arrow" size={12} /></button>
-                <button className="nm-btn" onClick={() => onNav && onNav('loops')}>See all 9 occurrences</button>
-                <button className="nm-btn ghost">Not today</button>
+            )}
+          </div>
+
+          {topLoop && (
+            <div className="nm-card loop-alert nm-fade-up" style={{ marginBottom: 24, padding: '26px 30px' }}>
+              <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+                <LoopRing strength={topLoop.strength} size={96} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
+                    <span className="nm-chip accent"><span className="nm-dot" />Active loop</span>
+                    <span className="nm-tag">strength {topLoop.strength.toFixed(2)} · {topLoop.occurrences} occurrences</span>
+                  </div>
+                  <h2 className="nm-h2" style={{ marginBottom: 10, fontStyle: 'italic', fontWeight: 400 }}>
+                    "{topLoop.core_belief || topLoop.name}"
+                  </h2>
+                  {topLoop.trigger && (
+                    <p className="nm-body" style={{ margin: 0, maxWidth: 560 }}>
+                      Surfaces around <b>{topLoop.trigger}</b>{topLoop.valence ? <> with <b>{topLoop.valence}</b> valence</> : null}.
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
+                    <button className="nm-btn accent" onClick={() => onNav && onNav('chat')}>Reflect on this <Icon name="arrow" size={12} /></button>
+                    <button className="nm-btn" onClick={() => onNav && onNav('loops')}>See all {topLoop.occurrences} occurrences</button>
+                    <button className="nm-btn ghost">Not today</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 16, marginBottom: 16 }}>
+            <div className="nm-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+                <div className="nm-h3">Recent threads</div>
+                <div className="nm-meta">{recentThreads.length ? `last ${recentThreads.length} · open one to continue` : 'no threads yet'}</div>
+              </div>
+              {recentThreads.length === 0 && (
+                <div className="nm-meta" style={{ padding: '20px 0' }}>
+                  Start your first reflection to see it here.
+                </div>
+              )}
+              {recentThreads.map((t, i) => {
+                const summary = threadSummaries[t.thread_id] || {};
+                return (
+                  <ThreadRow
+                    key={t.thread_id}
+                    title={t.title || 'New thread'}
+                    preview={t.preview || ''}
+                    date={formatDateShort(t.updated_at)}
+                    msgs={t.message_count ?? 0}
+                    intensity={summary.avg_intensity ?? null}
+                    positive={!!summary.positive}
+                    last={i === recentThreads.length - 1}
+                  />
+                );
+              })}
+            </div>
+
+            <div className="nm-card ink">
+              <div className="nm-eyebrow" style={{ marginBottom: 16 }}>This week · so far</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 54, lineHeight: 1, letterSpacing: '-0.03em' }}>{daysWithEntries}</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--ink-4)' }}>of 7</div>
+              </div>
+              <div className="nm-body" style={{ color: 'var(--ink-4)', marginBottom: 20 }}>days with reflections</div>
+
+              <WeekDots days={weekDays} />
+
+              <div className="nm-hr" style={{ background: 'rgba(255,255,255,0.08)', margin: '20px 0 14px' }} />
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <div className="nm-tag" style={{ color: 'var(--ink-4)' }}>Avg intensity</div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 24 }}>
+                    {avgIntensity ?? '—'}
+                    {intensityDelta && (
+                      <span className="nm-meta" style={{ color: 'var(--ink-4)', marginLeft: 6 }}>{intensityDelta}</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="nm-tag" style={{ color: 'var(--ink-4)' }}>Streak</div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, color: 'var(--accent)' }}>
+                    {insights?.checkin_streak_days ?? 0}<span className="nm-meta" style={{ color: 'var(--ink-4)', marginLeft: 6 }}>days</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 16, marginBottom: 16 }}>
-          <div className="nm-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
-              <div className="nm-h3">Recent threads</div>
-              <div className="nm-meta">last 5 · open one to continue</div>
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            <div className="nm-card soft">
+              <div className="nm-eyebrow" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
+              {topTriggers.length === 0 && (
+                <div className="nm-meta">No triggers detected yet.</div>
+              )}
+              {topTriggers.map((t, i) => (
+                <TriggerBar
+                  key={t.trigger}
+                  label={t.trigger}
+                  pct={t.pct}
+                  color={TRIGGER_COLORS[i % TRIGGER_COLORS.length]}
+                  last={i === topTriggers.length - 1}
+                />
+              ))}
             </div>
-            <ThreadRow title="The 9pm promise, again" preview="Kept running the meeting with Priya in my head. Told myself one more hour…" date="Apr 22" msgs={12} loop intensity={7} />
-            <ThreadRow title="Coffee with Jun" preview="He asked why I always pick the hardest version of the thing." date="Apr 22" msgs={6} intensity={5} positive />
-            <ThreadRow title="Why I said yes to Priya" preview="A part of me knew before I said it that I was already full." date="Apr 20" msgs={9} loop intensity={8} />
-            <ThreadRow title="A run after standup" preview="Felt like myself again for an hour. Wondering what that means." date="Apr 20" msgs={4} intensity={3} positive />
-            <ThreadRow title="Mom called" preview="Didn't know what to say about the new job thing." date="Apr 18" msgs={11} intensity={6} last />
-          </div>
-
-          <div className="nm-card ink">
-            <div className="nm-eyebrow" style={{ marginBottom: 16 }}>This week · so far</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 54, lineHeight: 1, letterSpacing: '-0.03em' }}>6</div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--ink-4)' }}>of 7</div>
+            <div className="nm-card soft">
+              <div className="nm-eyebrow" style={{ marginBottom: 10 }}><Icon name="sparkle" size={10} /> {echo ? `Echo from ${echo.age_days} days ago` : 'Echo'}</div>
+              {echo ? (
+                <>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, lineHeight: 1.45, fontStyle: 'italic', color: 'var(--ink)', letterSpacing: '-0.005em' }}>
+                    "{echo.text}"
+                  </div>
+                  <div className="nm-meta" style={{ marginTop: 12 }}>— you, {formatDateShort(echo.date)}</div>
+                </>
+              ) : (
+                <div className="nm-meta">Echoes appear after ~60 days of reflections.</div>
+              )}
             </div>
-            <div className="nm-body" style={{ color: 'var(--ink-4)', marginBottom: 20 }}>days with reflections</div>
-
-            <WeekDots days={[
-              { v: 7, e: 'overwhelm' }, { v: 7, e: 'anxious' }, { v: 9, e: 'overwhelm' },
-              { v: 6, e: 'tired' }, { v: 3, e: 'calm' }, { v: 5, e: 'hopeful' }, { v: null, e: null }
-            ]} />
-
-            <div className="nm-hr" style={{ background: 'rgba(255,255,255,0.08)', margin: '20px 0 14px' }} />
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-              <div>
-                <div className="nm-tag" style={{ color: 'var(--ink-4)' }}>Avg intensity</div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 24 }}>6.2 <span className="nm-meta" style={{ color: 'var(--ink-4)' }}>−0.3</span></div>
-              </div>
-              <div>
-                <div className="nm-tag" style={{ color: 'var(--ink-4)' }}>New loops</div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, color: 'var(--accent)' }}>1 <span className="nm-meta" style={{ color: 'var(--ink-4)' }}>candidate</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-          <div className="nm-card soft">
-            <div className="nm-eyebrow" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
-            <TriggerBar label="work" pct={68} color="var(--accent)" />
-            <TriggerBar label="sleep" pct={42} color="var(--clay)" />
-            <TriggerBar label="friendship" pct={28} color="var(--teal)" />
-            <TriggerBar label="health" pct={18} color="var(--gold)" last />
-          </div>
-          <div className="nm-card soft">
-            <div className="nm-eyebrow" style={{ marginBottom: 10 }}><Icon name="sparkle" size={10} /> Echo from 68 days ago</div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, lineHeight: 1.45, fontStyle: 'italic', color: 'var(--ink)', letterSpacing: '-0.005em' }}>
-              "The days I slept less were never the days I did more — only the days I felt worse."
-            </div>
-            <div className="nm-meta" style={{ marginTop: 12 }}>— you, Feb 14</div>
-          </div>
-          <div className="nm-card soft">
-            <div className="nm-eyebrow" style={{ marginBottom: 10 }}>Today's open question</div>
-            <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, lineHeight: 1.4, color: 'var(--ink)', letterSpacing: '-0.005em' }}>
-              What does <em style={{ color: 'var(--accent)' }}>"falling behind"</em> actually look like? Has it ever happened?
-            </div>
-            <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-              <button className="nm-btn" onClick={() => onNav && onNav('chat')}>Answer <Icon name="arrow" size={11} /></button>
-              <button className="nm-btn ghost">Skip</button>
+            <div className="nm-card soft">
+              <div className="nm-eyebrow" style={{ marginBottom: 10 }}>Today's open question</div>
+              {openQuestion ? (
+                <>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, lineHeight: 1.4, color: 'var(--ink)', letterSpacing: '-0.005em' }}>
+                    {openQuestion}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
+                    <button className="nm-btn" onClick={() => onNav && onNav('chat')}>Answer <Icon name="arrow" size={11} /></button>
+                    <button className="nm-btn ghost">Skip</button>
+                  </div>
+                </>
+              ) : (
+                <div className="nm-meta">Your next question will appear after your first reflection.</div>
+              )}
             </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};

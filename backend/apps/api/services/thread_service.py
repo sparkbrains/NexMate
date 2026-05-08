@@ -57,7 +57,7 @@ def list_threads(user_id: int) -> list[dict[str, str]]:
             continue
         grouped.setdefault(thread_id, []).append(row)
 
-    threads: list[dict[str, str]] = []
+    threads: list[dict[str, Any]] = []
     for thread_id, items in grouped.items():
         user_messages = [str(x["content"]).strip() for x in items if str(x["role"]) == "user"]
         user_messages = [message for message in user_messages if message]
@@ -78,6 +78,7 @@ def list_threads(user_id: int) -> list[dict[str, str]]:
                 "updated_at": last["created_at"].isoformat(),
                 "title": title,
                 "preview": preview,
+                "message_count": len(items),
             }
         )
 
