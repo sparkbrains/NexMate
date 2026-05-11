@@ -119,7 +119,7 @@ def delete_thread_everywhere(user_id: int, thread_id: str) -> dict[str, Any]:
             )
             removed_messages = cur.rowcount if cur.rowcount > 0 else 0
             cur.execute(
-                "DELETE FROM journal_entries WHERE user_id = %s AND thread_id = %s",
+                "DELETE FROM journal_entries_v2 WHERE user_id = %s AND thread_id = %s",
                 (user_id, thread_id),
             )
             removed_summaries = cur.rowcount if cur.rowcount > 0 else 0

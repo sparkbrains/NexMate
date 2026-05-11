@@ -38,7 +38,7 @@ def log_token_usage(node_name: str, usage_metadata: dict, thread_id: str = "unkn
 # def get_chat_model() -> ChatOpenAI:
 #     settings = get_settings()
 #     if not settings.llm_api_key:
-#         raise ValueError("OPENROUTER_API_KEY or LLM_API_KEY is missing in .env")
+#         raise ValueError("OPENROUTER_API_KEY or LLM_API_KEY is missing in ..env")
 #
 #     return ChatOpenAI(
 #         model=settings.generation_model,
@@ -53,7 +53,7 @@ def log_token_usage(node_name: str, usage_metadata: dict, thread_id: str = "unkn
 # def get_chat_model() -> ChatOpenAI:
 #     settings = get_settings()
 #     if not settings.llm_api_key:
-#         raise ValueError("OPENROUTER_API_KEY or LLM_API_KEY is missing in .env")
+#         raise ValueError("OPENROUTER_API_KEY or LLM_API_KEY is missing in ..env")
 #
 #     return ChatOpenAI(
 #         model=settings.generation_model,
@@ -69,7 +69,7 @@ def log_token_usage(node_name: str, usage_metadata: dict, thread_id: str = "unkn
 def get_chat_model() -> ChatGroq:
     settings = get_settings()
     if not settings.llm_api_key:
-        raise ValueError("GROQ_API_KEY or LLM_API_KEY is missing in .env")
+        raise ValueError("GROQ_API_KEY or LLM_API_KEY is missing in ..env")
 
     return ChatGroq(
         model=settings.generation_model,

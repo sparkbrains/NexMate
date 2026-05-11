@@ -40,7 +40,7 @@ def startup() -> None:
     init_auth_db()
     seed_result = seed_dummy_users_from_env()
     logger.info(
-        "Application startup complete env=%s allowed_origins=%s seeded_dummy_users=%s skipped_dummy_users=%s",
+        "Application startup complete .env=%s allowed_origins=%s seeded_dummy_users=%s skipped_dummy_users=%s",
         APP_ENV,
         [origin.strip() for origin in allowed_origins if origin.strip()],
         seed_result["seeded"],

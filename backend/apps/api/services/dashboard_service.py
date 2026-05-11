@@ -48,8 +48,8 @@ def get_dashboard_kpis(user_id: int) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT mood, signals, raw_summary, created_at
-                FROM journal_entries
+                SELECT mood, key_facts, raw_summary, created_at
+                FROM journal_entries_v2
                 WHERE user_id = %s
                 ORDER BY created_at ASC
                 """,
@@ -78,8 +78,8 @@ def get_dashboard_kpis(user_id: int) -> dict[str, Any]:
             by_day_scores[day_key].append(score)
             by_day_moods[day_key][mood] += 1
 
-        for signal in row.get("signals", []) or []:
-            cleaned = str(signal).strip().lower()
+        for fact in row.get("key_facts", []) or []:
+            cleaned = str(fact).strip().lower()
             if cleaned:
                 signal_counter[cleaned] += 1
 
@@ -351,7 +351,7 @@ def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]:
             "last_detected_at": last.isoformat() if last else None,
         })
 
-    # Streak (uses all v2 entries plus journal_entries fallback)
+    # Streak (uses all v2 entries)
     streak = _checkin_streak(all_entries)
 
     # Echo: oldest entry in 60-180 day range

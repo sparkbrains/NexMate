@@ -165,19 +165,22 @@ def _import_summaries(default_user_id: int | None, user_id_map: dict[int, int]) 
                 summary_text = str(row.get("summary", "")).strip()
                 cur.execute(
                     """
-                    INSERT INTO journal_entries (
+                    INSERT INTO journal_entries_v2 (
                         user_id,
                         thread_id,
                         user_input,
                         assistant_reply,
-                        summary,
+                        core_theme,
                         mood,
-                        signals,
+                        core_beliefs,
+                        triggers,
+                        key_facts,
                         next_focus,
+                        intensity,
                         raw_summary,
                         created_at
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT DO NOTHING
                     """,
                     (
@@ -187,8 +190,11 @@ def _import_summaries(default_user_id: int | None, user_id_map: dict[int, int]) 
                         "",
                         summary_text,
                         str(row.get("mood", "unknown")).strip() or "unknown",
+                        Jsonb([]),
+                        Jsonb([]),
                         Jsonb(signals),
                         str(row.get("next_focus", "")).strip(),
+                        5,
                         Jsonb(row),
                         _parse_ts(row.get("created_at")),
                     ),

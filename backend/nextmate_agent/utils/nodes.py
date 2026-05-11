@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
 import json
+import re
 from typing import Any
 from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 from psycopg.types.json import Jsonb
-
 from apps.db import get_connection
 from nextmate_agent.utils.config import get_settings
 from nextmate_agent.utils.llm import get_chat_model, parse_json_object, invoke_with_logging
@@ -240,41 +240,6 @@ def _get_cross_thread_memory_entries(user_id: int, current_thread_id: str) -> li
                     "thread_id": row["thread_id"]
                 })
             
-            # Also check legacy journal_entries for backwards compatibility
-            cur.execute(
-                """
-                SELECT 
-                    user_input,
-                    assistant_reply,
-                    summary,
-                    mood,
-                    signals,
-                    next_focus,
-                    created_at,
-                    thread_id
-                FROM journal_entries 
-                WHERE user_id = %s AND thread_id != %s
-                ORDER BY created_at DESC
-                LIMIT 50
-                """,
-                (user_id, current_thread_id)
-            )
-            for row in cur.fetchall():
-                # Convert legacy format to match v2 structure
-                cross_thread_entries.append({
-                    "user_input": row["user_input"],
-                    "assistant_reply": row["assistant_reply"],
-                    "core_theme": row["summary"],  # Map summary to core_theme
-                    "mood": row["mood"],
-                    "core_beliefs": [],  # Not available in legacy
-                    "triggers": [],  # Not available in legacy
-                    "key_facts": row["signals"] or [],  # Map signals to key_facts
-                    "next_focus": row["next_focus"],
-                    "intensity": 5,  # Default intensity
-                    "created_at": row["created_at"].isoformat(),
-                    "thread_id": row["thread_id"]
-                })
-    
     return cross_thread_entries
 
 
@@ -605,9 +570,9 @@ def _save_merged_loop_info(
                        detection_dates, matched_entries, description, suggestion,
                        confidence_score, validation_metadata
                 FROM loops
-                WHERE user_id = %s AND thread_id = %s
+                WHERE user_id = %s
                 """,
-                (user_id, thread_id)
+                (user_id,)
             )
             rows = cur.fetchall()
 
@@ -736,6 +701,7 @@ def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateS
     content = build_loop_detection_prompt(
         user_input=user_input,
         memory_entries=entries,
+        cross_thread_entries=cross_thread_entries,
     )
     raw, usage = invoke_with_logging(
         llm,
@@ -963,12 +929,19 @@ def choose_response_mode_node(state: NextMateState) -> NextMateState:
 
     raw_text = (raw if isinstance(raw, str) else "").strip().lower()
     chosen_mode = ""
+    # Exact match first
     for mode in _RESPONSE_MODES:
-        if mode in raw_text:
+        if mode == raw_text:
             chosen_mode = mode
             break
+    # Word-boundary match next
     if not chosen_mode:
-        chosen_mode = raw_text.split()[0] if raw_text else "validate"
+        for mode in _RESPONSE_MODES:
+            if re.search(rf"\b{re.escape(mode)}\b", raw_text):
+                chosen_mode = mode
+                break
+    if not chosen_mode:
+        chosen_mode = "validate"
 
     log_node(
         thread_id=thread_id,
@@ -986,10 +959,14 @@ def generate_reply_node(state: NextMateState) -> NextMateState:
     user_input = state.get("user_input", "")
     memory_context = state.get("memory_context", "No prior memory available yet.")
     recent_history = state.get("chat_history", [])[-16:]
-    history_context = "\n".join(
-        [f"- {message.get('role', 'unknown')}: {message.get('content', '')}" for message in recent_history]
-    )
-    if not history_context:
+    if recent_history:
+        history_lines: list[str] = []
+        for msg in recent_history:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            history_lines.append(f"{role}: {content}")
+        history_context = "\n".join(history_lines)
+    else:
         history_context = "No previous messages in this thread yet."
 
     detected_loops = state.get("detected_loops", "")
@@ -1004,12 +981,15 @@ def generate_reply_node(state: NextMateState) -> NextMateState:
         stored_loops=stored_loops,
         response_mode=response_mode,
     )
+
+    messages: list[dict[str, str]] = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+    for msg in recent_history:
+        messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+    messages.append({"role": "user", "content": content})
+
     reply, usage = invoke_with_logging(
         llm,
-        [
-            {"role": "system", "content": CHAT_SYSTEM_PROMPT},
-            {"role": "user", "content": content},
-        ],
+        messages,
         "generate_reply",
         thread_id,
     )

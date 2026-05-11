@@ -61,23 +61,6 @@ def init_postgres() -> None:
             )
             cur.execute(
                 """
-                CREATE TABLE IF NOT EXISTS journal_entries (
-                    id BIGSERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL,
-                    thread_id TEXT NOT NULL,
-                    user_input TEXT NOT NULL,
-                    assistant_reply TEXT NOT NULL,
-                    summary TEXT NOT NULL,
-                    mood TEXT NOT NULL,
-                    signals JSONB NOT NULL DEFAULT '[]'::jsonb,
-                    next_focus TEXT NOT NULL,
-                    raw_summary JSONB NOT NULL DEFAULT '{}'::jsonb,
-                    created_at TIMESTAMPTZ NOT NULL
-                )
-                """
-            )
-            cur.execute(
-                """
                 CREATE TABLE IF NOT EXISTS journal_entries_v2 (
                     id BIGSERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,
@@ -158,7 +141,9 @@ def init_postgres() -> None:
                     detection_dates JSONB NOT NULL DEFAULT '[]'::jsonb,
                     matched_entries JSONB NOT NULL DEFAULT '[]'::jsonb,
                     description TEXT NOT NULL,
-                    suggestion TEXT NOT NULL
+                    suggestion TEXT NOT NULL,
+                    confidence_score FLOAT NOT NULL DEFAULT 0.0,
+                    validation_metadata JSONB NOT NULL DEFAULT '{}'::jsonb
                 )
                 """
             )
@@ -180,37 +165,6 @@ def init_postgres() -> None:
                 """
                 CREATE INDEX IF NOT EXISTS idx_thread_messages_user_updated
                 ON thread_messages(user_id, created_at DESC)
-                """
-            )
-            cur.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_journal_entries_user_thread_created
-                ON journal_entries(user_id, thread_id, created_at)
-                """
-            )
-            cur.execute(
-                """
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_entries_import_dedupe
-                ON journal_entries(user_id, thread_id, created_at, summary)
-                """
-            )
-            cur.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_journal_entries_user_created
-                ON journal_entries(user_id, created_at DESC)
-                """
-            )
-            cur.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_journal_entries_user_mood
-                ON journal_entries(user_id, mood)
-                """
-            )
-            cur.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_journal_entries_signals_gin
-                ON journal_entries
-                USING GIN (signals)
                 """
             )
             cur.execute(
