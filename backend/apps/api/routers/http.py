@@ -20,7 +20,7 @@ def root() -> dict[str, str]:
 
 
 @router.get("/api/threads")
-def get_threads(current_user: User = Depends(get_current_user)) -> dict[str, list[dict[str, str]]]:
+def get_threads(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     return {"threads": list_threads(current_user.id)}
 
 
