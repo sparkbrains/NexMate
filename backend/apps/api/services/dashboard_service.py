@@ -398,9 +398,12 @@ def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]:
             )
             row = cur.fetchone()
             if row:
-                question = (row.get("next_focus") or "").strip() or (row.get("core_theme") or "").strip()
-                if question:
-                    open_question = question
+                next_focus = (row.get("next_focus") or "").strip()
+                core_theme = (row.get("core_theme") or "").strip()
+                if next_focus:
+                    open_question = next_focus
+                elif core_theme:
+                    open_question = f"What's still alive in: {core_theme}?"
 
     # Window meta
     thread_count = _thread_count_in_window(user_id, window_start)

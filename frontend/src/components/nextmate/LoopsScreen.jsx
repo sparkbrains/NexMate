@@ -113,6 +113,7 @@ export const LoopsScreen = ({ onNav }) => {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState(null);
   const [resolving, setResolving] = useState(false);
+  const [filterQuery, setFilterQuery] = useState('');
 
   const fetchList = async (preserveId = null) => {
     setLoadingList(true);
@@ -146,8 +147,31 @@ export const LoopsScreen = ({ onNav }) => {
     return () => { cancelled = true; };
   }, [selectedId]);
 
-  const activeLoops = useMemo(() => loops.filter((l) => l.state === 'active'), [loops]);
-  const resolvedLoops = useMemo(() => loops.filter((l) => l.state === 'resolved'), [loops]);
+  const filteredLoops = useMemo(() => {
+    const q = filterQuery.trim().toLowerCase();
+    if (!q) return loops;
+    return loops.filter((l) =>
+      (l.core_belief || '').toLowerCase().includes(q) ||
+      (l.name || '').toLowerCase().includes(q) ||
+      (l.trigger || '').toLowerCase().includes(q)
+    );
+  }, [loops, filterQuery]);
+  const activeLoops = useMemo(() => filteredLoops.filter((l) => l.state === 'active'), [filteredLoops]);
+  const resolvedLoops = useMemo(() => filteredLoops.filter((l) => l.state === 'resolved'), [filteredLoops]);
+
+  const exportLoops = () => {
+    try {
+      const blob = new Blob([JSON.stringify({ counts, items: loops }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'nextmate-loops.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch { /* ignore */ }
+  };
 
   const handleResolve = async () => {
     if (!detail) return;
@@ -202,8 +226,14 @@ export const LoopsScreen = ({ onNav }) => {
   return (
     <div className="nm-main">
       <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Loops</b></>}>
-        <button className="nm-btn"><Icon name="search" size={12} /> Filter</button>
-        <button className="nm-btn"><Icon name="download" size={12} /> Export</button>
+        <input
+          className="nm-input"
+          placeholder="Filter loops…"
+          value={filterQuery}
+          onChange={(e) => setFilterQuery(e.target.value)}
+          style={{ padding: '4px 10px', fontSize: 12, minWidth: 160 }}
+        />
+        <button className="nm-btn" disabled={!loops.length} onClick={exportLoops}><Icon name="download" size={12} /> Export</button>
       </TopBar>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>

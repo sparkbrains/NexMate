@@ -16,6 +16,22 @@ const formatShort = (iso) => {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
+const downloadJson = (filename, data) => {
+  try {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch {
+    /* ignore */
+  }
+};
+
 const EmotionChart = ({ trend }) => {
   const days = trend?.length || 0;
   if (!days) return <div className="nm-meta" style={{ padding: 30 }}>No data in this window yet.</div>;
@@ -223,7 +239,7 @@ export const InsightsScreen = () => {
             </button>
           ))}
         </div>
-        <button className="nm-btn"><Icon name="download" size={12} /> Export</button>
+        <button className="nm-btn" disabled={!insights} onClick={() => downloadJson(`nextmate-insights-${days}d.json`, insights)}><Icon name="download" size={12} /> Export</button>
       </TopBar>
 
       <div className="nm-content">
@@ -358,7 +374,7 @@ export const WeeklyScreen = () => {
   return (
     <div className="nm-main">
       <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Weekly report</b></>}>
-        <button className="nm-btn primary"><Icon name="download" size={12} /> PDF</button>
+        <button className="nm-btn primary" onClick={() => window.print()}><Icon name="download" size={12} /> PDF</button>
       </TopBar>
       <div className="nm-content">
         <div style={{ maxWidth: 760, margin: '0 auto' }} className="nm-fade-up">

@@ -91,10 +91,15 @@ const fmtDelta = (cur, prev) => {
   return diff > 0 ? `+${diff}` : `${diff}`;
 };
 
-export const TodayScreen = ({ onNav, threads = [], user }) => {
+const SKIPPED_KEY = 'nextmate.openQuestion.skipped';
+
+export const TodayScreen = ({ onNav, onAnswerQuestion, threads = [], user }) => {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [skippedQuestion, setSkippedQuestion] = useState(() => {
+    try { return localStorage.getItem(SKIPPED_KEY) || ''; } catch { return ''; }
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -121,7 +126,20 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   const newLoopsCount = insights?.loops?.new_in_window ?? 0;
   const topTriggers = (insights?.top_triggers || []).slice(0, 4);
   const echo = insights?.echo;
-  const openQuestion = insights?.open_question;
+  const rawOpenQuestion = insights?.open_question;
+  const openQuestion = rawOpenQuestion && rawOpenQuestion !== skippedQuestion ? rawOpenQuestion : null;
+
+  const skipOpenQuestion = () => {
+    if (!rawOpenQuestion) return;
+    try { localStorage.setItem(SKIPPED_KEY, rawOpenQuestion); } catch { /* ignore */ }
+    setSkippedQuestion(rawOpenQuestion);
+  };
+
+  const answerOpenQuestion = () => {
+    if (!rawOpenQuestion) return;
+    if (onAnswerQuestion) onAnswerQuestion(rawOpenQuestion);
+    else if (onNav) onNav('chat');
+  };
   const threadSummaries = insights?.thread_summaries || {};
 
   const recentThreads = threads.slice(0, 5);
@@ -146,7 +164,15 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   return (
     <div className="nm-main">
       <TopBar crumb={<><b>Today</b> <span className="sep">/</span> {dateLabel}</>}>
-        <button className="nm-btn ghost"><Icon name="search" size={12} /> Search</button>
+        <button className="nm-btn ghost" onClick={() => {
+          const q = (window.prompt('Search your threads:') || '').trim().toLowerCase();
+          if (!q) return;
+          const hits = threads.filter((t) =>
+            (t.title || '').toLowerCase().includes(q) || (t.preview || '').toLowerCase().includes(q)
+          );
+          if (!hits.length) { window.alert(`No threads match "${q}".`); return; }
+          window.alert(`${hits.length} match${hits.length === 1 ? '' : 'es'}:\n\n` + hits.map((t) => `• ${t.title || 'Untitled'}`).join('\n'));
+        }}><Icon name="search" size={12} /> Search</button>
         <button className="nm-btn primary" onClick={() => onNav && onNav('chat')}><Icon name="plus" size={12} /> Begin reflection</button>
       </TopBar>
 
@@ -291,8 +317,8 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
                     {openQuestion}
                   </div>
                   <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-                    <button className="nm-btn" onClick={() => onNav && onNav('chat')}>Answer <Icon name="arrow" size={11} /></button>
-                    <button className="nm-btn ghost">Skip</button>
+                    <button className="nm-btn" onClick={answerOpenQuestion}>Answer <Icon name="arrow" size={11} /></button>
+                    <button className="nm-btn ghost" onClick={skipOpenQuestion}>Skip</button>
                   </div>
                 </>
               ) : (

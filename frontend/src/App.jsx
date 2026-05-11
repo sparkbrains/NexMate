@@ -17,6 +17,7 @@ export default function App() {
   const [route, setRoute] = useState('today');
   const [threads, setThreads] = useState([]);
   const [threadId, setThreadId] = useState(null);
+  const [chatDraft, setChatDraft] = useState('');
 
   const refreshThreads = useCallback(async () => {
     try {
@@ -36,7 +37,8 @@ export default function App() {
     setRoute('chat');
   };
 
-  const beginReflection = () => {
+  const beginReflection = (initialDraft = '') => {
+    setChatDraft(initialDraft || '');
     openThread(newThreadId());
   };
 
@@ -54,17 +56,18 @@ export default function App() {
 
   let screen;
   if (route === 'chat') {
-    screen = <ChatScreen onNav={setRoute} threadId={threadId} threadTitle={activeThread?.title} onMessageDone={refreshThreads} />;
+    screen = <ChatScreen onNav={setRoute} threadId={threadId} threadTitle={activeThread?.title} onMessageDone={refreshThreads} initialDraft={chatDraft} onDraftConsumed={() => setChatDraft('')} />;
   } else if (route === 'journal') {
     screen = <JournalScreen />;
   } else if (route === 'loops') {
     screen = <LoopsScreen onNav={(r) => (r === 'chat' ? beginReflection() : setRoute(r))} />;
+
   } else if (route === 'insights') {
     screen = <InsightsScreen />;
   } else if (route === 'weekly') {
     screen = <WeeklyScreen />;
   } else {
-    screen = <TodayScreen onNav={(r) => (r === 'chat' ? beginReflection() : setRoute(r))} threads={threads} user={user} />;
+    screen = <TodayScreen onNav={(r) => (r === 'chat' ? beginReflection() : setRoute(r))} onAnswerQuestion={(q) => beginReflection(q)} threads={threads} user={user} />;
   }
 
   return (
