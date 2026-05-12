@@ -206,4 +206,4 @@ def mark_question_answered(question_id: int) -> bool:
 def get_thread_context_for_question(user_id: int, thread_id: str) -> List[Dict[str, Any]]:
     """Get all messages from a thread to provide context for answering."""
     from apps.api.services.thread_service import get_thread_messages
-    return get_thread_messages(user_id, thread_id)
+    return get_thread_messages(user_id, thread_id )
