@@ -40,6 +40,7 @@ def append_thread_message(user_id: int, thread_id: str, role: str, content: str)
 def list_threads(user_id: int) -> list[dict[str, str]]:
     with get_connection() as conn:
         with conn.cursor() as cur:
+            # Get all thread messages
             cur.execute(
                 """
                 SELECT thread_id, role, content, created_at
@@ -49,26 +50,58 @@ def list_threads(user_id: int) -> list[dict[str, str]]:
                 """,
                 (user_id,),
             )
-            rows = cur.fetchall()
+            message_rows = cur.fetchall()
+            
+            # Get first core_theme for each thread
+            cur.execute(
+                """
+                SELECT DISTINCT ON (thread_id) thread_id, core_theme
+                FROM journal_entries_v2
+                WHERE user_id = %s AND core_theme IS NOT NULL AND core_theme != ''
+                ORDER BY thread_id, created_at ASC
+                """,
+                (user_id,),
+            )
+            core_theme_rows = cur.fetchall()
 
+    # Group messages by thread
     grouped: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
+    for row in message_rows:
         thread_id = str(row["thread_id"]).strip()
         if not thread_id:
             continue
         grouped.setdefault(thread_id, []).append(row)
 
+    # Create core_theme lookup
+    core_theme_lookup: dict[str, str] = {}
+    for row in core_theme_rows:
+        full_thread_id = str(row["thread_id"]).strip()
+        core_theme = str(row["core_theme"]).strip()
+        
+        # Extract UUID from full thread_id format "user:{user_id}:thread:{uuid}"
+        if full_thread_id and core_theme and ":" in full_thread_id:
+            parts = full_thread_id.split(":")
+            if len(parts) >= 4 and parts[0] == "user" and parts[2] == "thread":
+                uuid_part = parts[3]
+                core_theme_lookup[uuid_part] = core_theme
+
     threads: list[dict[str, Any]] = []
     for thread_id, items in grouped.items():
-        user_messages = [str(x["content"]).strip() for x in items if str(x["role"]) == "user"]
-        user_messages = [message for message in user_messages if message]
-
-        if not user_messages:
-            title = "New thread"
-        else:
-            title = " | ".join(user_messages[:2])
+        # Use core_theme if available, otherwise fall back to user messages
+        if thread_id in core_theme_lookup:
+            title = core_theme_lookup[thread_id]
             if len(title) > 56:
                 title = title[:56] + "…"
+        else:
+            user_messages = [str(x["content"]).strip() for x in items if str(x["role"]) == "user"]
+            user_messages = [message for message in user_messages if message]
+
+            if user_messages:
+                title = " | ".join(user_messages[:2])
+                if len(title) > 56:
+                    title = title[:56] + "…"
+            else:
+                title = "New thread"
 
         last = items[-1]
         last_content = str(last["content"]).strip()

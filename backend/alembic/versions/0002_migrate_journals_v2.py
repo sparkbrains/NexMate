@@ -1,6 +1,6 @@
 """migrate journal_entries to journal_entries_v2
 
-Revision ID: 0002_migrate_journal_entries_to_v2
+Revision ID: 0002_migrate_journals_v2
 Revises: 0001_create_app_tables
 Create Date: 2026-05-08 00:00:00
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = "0002_migrate_journal_entries_to_v2"
+revision = "0002_migrate_journals_v2"
 down_revision = "0001_create_app_tables"
 branch_labels = None
 depends_on = None
