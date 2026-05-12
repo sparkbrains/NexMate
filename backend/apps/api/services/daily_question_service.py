@@ -43,7 +43,7 @@ async def generate_question_from_themes_llm(themes: List[str], user_id: int = 0)
 
     selected_themes = random.sample(themes, min(3, len(themes)))
 
-    prompt = f"""You are a thoughtful journaling companion helping someone reflect deeply on their experiences. Based on these core themes from yesterday's journal entries, craft an insightful follow-up question that encourages deeper self-exploration.
+    prompt = f"""You are a thoughtful journaling companion helping someone reflect deeply on their experiences. Based on these core themes from yesterday's journal entries, craft ONE insightful follow-up question that encourages deeper self-exploration.
 
 Core Themes from Yesterday: {', '.join(selected_themes)}
 
@@ -52,6 +52,8 @@ Instructions:
 2. Extract the key concepts, emotions, or situations from the themes
 3. Create a natural, conversational question that builds on those concepts
 4. The question should sound like a genuine continuation of your conversation
+
+IMPORTANT: Generate exactly ONE question only. Do not provide alternatives or multiple versions.
 
 Question Crafting Guidelines:
 - Transform technical/awkward theme language into natural, relatable terms
@@ -102,6 +104,9 @@ async def get_or_create_daily_question(user_id: int) -> List[Dict[str, Any]]:
     """Get existing daily questions or create new ones. Always returns a list."""
     today = datetime.now(timezone.utc).date()
 
+    # First, expire old pending questions from previous days
+    expire_old_pending_questions(user_id)
+
     # Check if questions already exist for today — fetch ALL of them
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -116,7 +121,11 @@ async def get_or_create_daily_question(user_id: int) -> List[Dict[str, Any]]:
             )
             existing = cur.fetchall()
 
-            if existing:
+            # If there are pending questions for today, replace them with new ones
+            if existing and any(row["status"] == "pending" for row in existing):
+                replace_today_pending_question(user_id)
+                existing = []  # Reset to create new questions
+            elif existing:
                 return [
                     {
                         "id": row["id"],
@@ -142,17 +151,16 @@ async def get_or_create_daily_question(user_id: int) -> List[Dict[str, Any]]:
     if not themes:
         return []
 
-    # Generate 3 questions with different theme subsets for variety
+    # Generate 1 question
     questions_data = []
-    for _ in range(3):
-        themes_subset = random.sample(themes, min(2, len(themes)))
-        question_text = await generate_question_from_themes_llm(themes_subset, user_id)
-        source_entry = random.choice(entries)
-        questions_data.append({
-            "question_text": question_text,
-            "source_thread_id": source_entry["thread_id"],
-            "source_core_themes": themes_subset,
-        })
+    themes_subset = random.sample(themes, min(2, len(themes)))
+    question_text = await generate_question_from_themes_llm(themes_subset, user_id)
+    source_entry = random.choice(entries)
+    questions_data.append({
+        "question_text": question_text,
+        "source_thread_id": source_entry["thread_id"],
+        "source_core_themes": themes_subset,
+    })
 
     # Insert each question and collect its ID individually
     inserted = []
@@ -201,6 +209,65 @@ def mark_question_answered(question_id: int) -> bool:
             updated = cur.rowcount > 0
         conn.commit()
     return updated
+
+
+def expire_old_pending_questions(user_id: int) -> None:
+    """Mark pending questions from previous days as expired."""
+    today = datetime.now(timezone.utc).date()
+    
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE daily_questions 
+                SET status = 'expired', expired_at = %s, updated_at = %s
+                WHERE user_id = %s 
+                AND status = 'pending' 
+                AND question_date < %s
+                """,
+                (utc_now(), utc_now(), user_id, today),
+            )
+        conn.commit()
+
+
+def replace_today_pending_question(user_id: int) -> None:
+    """Mark today's pending question as expired and replace it with a new one."""
+    today = datetime.now(timezone.utc).date()
+    
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            # Mark today's pending question as expired
+            cur.execute(
+                """
+                UPDATE daily_questions 
+                SET status = 'expired', expired_at = %s, updated_at = %s
+                WHERE user_id = %s 
+                AND status = 'pending' 
+                AND question_date = %s
+                """,
+                (utc_now(), utc_now(), user_id, today),
+            )
+        conn.commit()
+
+
+def cleanup_expired_questions(days_to_keep: int = 30) -> int:
+    """Clean up expired questions older than specified days. Returns count of cleaned questions."""
+    cutoff_date = datetime.now(timezone.utc).date() - timedelta(days=days_to_keep)
+    
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM daily_questions 
+                WHERE status = 'expired' 
+                AND question_date < %s
+                """,
+                (cutoff_date,),
+            )
+            deleted_count = cur.rowcount
+        conn.commit()
+    
+    return deleted_count
 
 
 def get_thread_context_for_question(user_id: int, thread_id: str) -> List[Dict[str, Any]]:
