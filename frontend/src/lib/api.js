@@ -174,3 +174,13 @@ export function chatSocketUrl(threadId) {
   const token = encodeURIComponent(getToken() || '');
   return `${wsBase}/ws/chat/${encodeURIComponent(threadId)}?token=${token}`;
 }
+
+export function answerDailyQuestion(questionId) {
+  return request(`/api/dashboard/daily-question/${encodeURIComponent(questionId)}/answer`, {
+    method: 'POST',
+  });
+}
+
+export function getDailyQuestionContext(questionId) {
+  return request(`/api/dashboard/daily-question/${encodeURIComponent(questionId)}/context`);
+}

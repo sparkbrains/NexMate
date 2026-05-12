@@ -321,8 +321,8 @@ Return JSON in this exact shape:
   "core_beliefs": ["self-beliefs or worldviews driving this, e.g. feeling incompetent, unlovable, narcissist", "..."],
   "triggers": ["domains or situations that sparked this, e.g. work, family, partner, individual", "..."],
   "key_facts": ["specific detail worth remembering", "..."],
-  "intensity": 5,
-  "risk_flag": false
+  "intensity": 1-10 [based on emotional intensity (1=calm, 10=extreme)],
+  "risk_flag": false- true [based on if it shows signs of violence or self-harm]
 }}
 
 Remember:

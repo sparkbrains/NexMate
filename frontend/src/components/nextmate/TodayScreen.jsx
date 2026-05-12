@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
-import { getDashboardInsights } from '../../lib/api';
+import { getDashboardInsights, answerDailyQuestion, getDailyQuestionContext } from '../../lib/api';
 
 const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last }) => (
   <div style={{ padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--rule-soft)', cursor: 'pointer' }}>
@@ -95,6 +95,9 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [answeringQuestion, setAnsweringQuestion] = useState(false);
+  const [questionContext, setQuestionContext] = useState(null);
+  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +108,38 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, []);
+
+  const handleAnswerQuestion = async (question) => {
+    try {
+      setAnsweringQuestion(true);
+      // Answer the question and get new thread ID
+      const response = await answerDailyQuestion(question.id);
+      
+      if (response.success && response.thread_id) {
+        // Refresh the dashboard data to update question statuses
+        const refreshedData = await getDashboardInsights(7);
+        setInsights(refreshedData.insights);
+        
+        // Navigate to the new thread for answering
+        if (onNav) {
+          onNav('chat', { threadId: response.thread_id });
+        }
+      } else {
+        setError(response.message || 'Failed to answer question');
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to answer question');
+    } finally {
+      setAnsweringQuestion(false);
+    }
+  };
+
+  const handleSkipQuestion = () => {
+    setCurrentQuestionIdx((i) => {
+      if (pendingQuestions.length === 0) return 0;
+      return (i + 1) % pendingQuestions.length;
+    });
+  };
 
   const now = new Date();
   const dateLabel = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -121,7 +156,10 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   const newLoopsCount = insights?.loops?.new_in_window ?? 0;
   const topTriggers = (insights?.top_triggers || []).slice(0, 4);
   const echo = insights?.echo;
-  const openQuestion = insights?.open_question;
+  const dailyQuestions = Array.isArray(insights?.daily_question) ? insights.daily_question : [];
+  const pendingQuestions = dailyQuestions.filter(q => q.status === 'pending');
+  const currentQuestion = pendingQuestions[currentQuestionIdx] || null;
+  const isLastQuestion = currentQuestionIdx >= pendingQuestions.length - 1;
   const threadSummaries = insights?.thread_summaries || {};
 
   const recentThreads = threads.slice(0, 5);
@@ -284,20 +322,38 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
               )}
             </div>
             <div className="nm-card soft">
-              <div className="nm-eyebrow" style={{ marginBottom: 10 }}>Today's open question</div>
-              {openQuestion ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                <div className="nm-eyebrow">Today's question</div>
+                {pendingQuestions.length > 1 && (
+                  <div className="nm-meta">{currentQuestionIdx + 1} / {pendingQuestions.length}</div>
+                )}
+              </div>
+              {dailyQuestions.length === 0 ? (
+                <div className="nm-meta">Your daily questions will appear after your first reflection.</div>
+              ) : pendingQuestions.length === 0 ? (
+                <div className="nm-meta" style={{ color: 'var(--teal)' }}>You've answered all of today's questions. See you tomorrow.</div>
+              ) : currentQuestion ? (
                 <>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, lineHeight: 1.4, color: 'var(--ink)', letterSpacing: '-0.005em' }}>
-                    {openQuestion}
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, lineHeight: 1.45, color: 'var(--ink)', letterSpacing: '-0.005em', marginBottom: 14 }}>
+                    {currentQuestion.question_text}
                   </div>
-                  <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-                    <button className="nm-btn" onClick={() => onNav && onNav('chat')}>Answer <Icon name="arrow" size={11} /></button>
-                    <button className="nm-btn ghost">Skip</button>
-                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        className="nm-btn"
+                        onClick={() => handleAnswerQuestion(currentQuestion)}
+                        disabled={answeringQuestion}
+                      >
+                        {answeringQuestion ? 'Loading…' : 'Answer'} <Icon name="arrow" size={11} />
+                      </button>
+                      <button
+                        className="nm-btn ghost"
+                        onClick={handleSkipQuestion}
+                      >
+                        Skip
+                      </button>
+                    </div>
                 </>
-              ) : (
-                <div className="nm-meta">Your next question will appear after your first reflection.</div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

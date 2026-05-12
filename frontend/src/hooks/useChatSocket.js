@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { chatSocketUrl } from '../lib/api';
 
-export function useChatSocket(threadId, { onDone } = {}) {
+export function useChatSocket(threadId, { onDone, context } = {}) {
   const [messages, setMessages] = useState([]);
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState('idle');
@@ -22,6 +22,17 @@ export function useChatSocket(threadId, { onDone } = {}) {
     streamingIdxRef.current = null;
     setError(null);
     setStatus('connecting');
+
+    // If context is provided, load it immediately instead of starting fresh
+    if (context && context.length > 0) {
+      setMessages(context.map(msg => ({
+        from: msg.role,
+        text: msg.content,
+        meta: msg.created_at ? new Date(msg.created_at).toLocaleDateString() : null,
+      })));
+      setStatus('connected');
+      return () => {};
+    }
 
     const ws = new WebSocket(chatSocketUrl(threadId));
     wsRef.current = ws;

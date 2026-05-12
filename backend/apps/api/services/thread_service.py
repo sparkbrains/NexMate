@@ -1,4 +1,5 @@
 import re
+import uuid
 from typing import Any
 
 from apps.db import get_connection, utc_now
@@ -108,6 +109,30 @@ def get_thread_messages(user_id: int, thread_id: str) -> list[dict[str, str]]:
         }
         for row in rows
     ]
+
+
+def create_thread(user_id: int, title: str, context: dict[str, Any] = None) -> dict[str, Any]:
+    """Create a new thread with optional context."""
+    thread_id = str(uuid.uuid4())
+    
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            # Add the question as a bot message to start the conversation
+            if context and "question_text" in context:
+                cur.execute(
+                    """
+                    INSERT INTO thread_messages (user_id, thread_id, role, content, created_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (user_id, thread_id, "assistant", context["question_text"], utc_now()),
+                )
+        conn.commit()
+    
+    return {
+        "thread_id": thread_id,
+        "title": title,
+        "message_count": 1 if context and "question_text" in context else 0,
+    }
 
 
 def delete_thread_everywhere(user_id: int, thread_id: str) -> dict[str, Any]:

@@ -64,7 +64,17 @@ export default function App() {
   } else if (route === 'weekly') {
     screen = <WeeklyScreen />;
   } else {
-    screen = <TodayScreen onNav={(r) => (r === 'chat' ? beginReflection() : setRoute(r))} threads={threads} user={user} />;
+    screen = <TodayScreen
+      onNav={(r, params) => {
+        if (r === 'chat') {
+          params?.threadId ? openThread(params.threadId) : beginReflection();
+        } else {
+          setRoute(r);
+        }
+      }}
+      threads={threads}
+      user={user}
+    />;
   }
 
   return (

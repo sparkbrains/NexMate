@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from apps.db import get_connection
+from apps.api.services.daily_question_service import get_or_create_daily_question
 
 
 MOOD_SCORES = {
@@ -188,7 +189,7 @@ def _avg(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 2) if values else None
 
 
-def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]:
+async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]:
     """Rich dashboard payload sourced from journal_entries_v2 + loops."""
     now = datetime.now(timezone.utc)
     today = now.date()
@@ -382,25 +383,8 @@ def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]:
                     "age_days": age_days,
                 }
 
-    # Today's open question — from latest entry's next_focus or core_theme
-    open_question = None
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT next_focus, core_theme
-                FROM journal_entries_v2
-                WHERE user_id = %s
-                ORDER BY created_at DESC
-                LIMIT 1
-                """,
-                (user_id,),
-            )
-            row = cur.fetchone()
-            if row:
-                question = (row.get("next_focus") or "").strip() or (row.get("core_theme") or "").strip()
-                if question:
-                    open_question = question
+    # Today's daily question — from previous day's core themes
+    daily_question = await get_or_create_daily_question(user_id)
 
     # Window meta
     thread_count = _thread_count_in_window(user_id, window_start)
@@ -508,6 +492,6 @@ def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]:
             "new_in_window": new_in_window,
         },
         "echo": echo,
-        "open_question": open_question,
+        "daily_question": daily_question,
         "thread_summaries": thread_summaries,
     }

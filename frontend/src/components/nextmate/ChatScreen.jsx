@@ -44,10 +44,10 @@ const StatLine = ({ label, value, teal }) => (
   </div>
 );
 
-export const ChatScreen = ({ onNav, threadId, threadTitle, onMessageDone }) => {
+export const ChatScreen = ({ onNav, threadId, threadTitle, onMessageDone, context }) => {
   const [draft, setDraft] = useState('');
   const [loops, setLoops] = useState([]);
-  const { messages, streaming, status, error, send, loadHistory } = useChatSocket(threadId, { onDone: onMessageDone });
+  const { messages, streaming, status, error, send, loadHistory } = useChatSocket(threadId, { onDone: onMessageDone, context });
   const scrollRef = useRef(null);
 
   useEffect(() => {
