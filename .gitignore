@@ -222,3 +222,6 @@ backend/data/memory/*.sqlite-journal
 backend/data/memory/*.sqlite-wal
 backend/data/memory/*.sqlite-shm
 backend/data/memory/*.db
+
+# Log files
+data/logs/
