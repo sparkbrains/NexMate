@@ -9,7 +9,9 @@ def main() -> None:
     from nextmate_agent.agent import checkpoint_thread_id, get_graph
 
     thread_id = input("Thread ID (default: demo-thread): ").strip() or "demo-thread"
-    print("NextMate CLI (type 'exit' to quit)")
+    user_id_input = input("User ID (default: 1): ").strip()
+    user_id = int(user_id_input) if user_id_input else 1
+    print(f"NextMate CLI (type 'exit' to quit) | User ID: {user_id}")
     print("Use '/thread <id>' to switch thread memory.")
 
     while True:
@@ -25,7 +27,7 @@ def main() -> None:
                 print(f"[system] switched to thread: {thread_id}")
             continue
 
-        config = {"configurable": {"thread_id": checkpoint_thread_id(-1, thread_id), "user_id": -1}}
+        config = {"configurable": {"thread_id": checkpoint_thread_id(user_id, thread_id), "user_id": user_id}}
         payload = get_graph().invoke({"user_input": user_input, "thread_id": thread_id}, config=config)
         reply = payload.get("assistant_reply", "").strip()
         summary = payload.get("turn_summary", {})

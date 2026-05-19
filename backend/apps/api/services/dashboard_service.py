@@ -4,6 +4,7 @@ from typing import Any
 
 from apps.db import get_connection
 from apps.api.services.daily_question_service import get_or_create_daily_question
+from apps.api.services.loop_service import _summarize_loop
 
 
 MOOD_SCORES = {
@@ -145,7 +146,7 @@ def _fetch_loops(user_id: int) -> list[dict[str, Any]]:
             cur.execute(
                 """
                 SELECT loop_id, loop_name, core_belief, trigger, valence,
-                       first_detected_at, last_detected_at, detection_count, description
+                       first_detected_at, last_detected_at, detection_count, description, matched_entries
                 FROM loops
                 WHERE user_id = %s
                 ORDER BY last_detected_at DESC
@@ -327,30 +328,15 @@ async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]
     resolved_loops = 0
     new_in_window = 0
     for loop in loops_rows:
-        first = loop.get("first_detected_at")
-        last = loop.get("last_detected_at")
-        is_resolved = bool(last and (now - last).days > 30)
-        if is_resolved:
+        summarized = _summarize_loop(loop)
+        if summarized["state"] == "resolved":
             resolved_loops += 1
         else:
             active_loops += 1
+        first = loop.get("first_detected_at")
         if first and first >= window_start:
             new_in_window += 1
-        # crude strength: detection_count normalized
-        det_count = int(loop.get("detection_count") or 1)
-        strength = min(1.0, round(det_count / 12, 2))
-        loops_summary.append({
-            "loop_id": str(loop.get("loop_id")),
-            "name": loop.get("loop_name") or loop.get("core_belief") or "",
-            "core_belief": loop.get("core_belief") or "",
-            "trigger": loop.get("trigger") or "",
-            "valence": loop.get("valence") or "",
-            "occurrences": det_count,
-            "strength": strength,
-            "state": "resolved" if is_resolved else "active",
-            "first_detected_at": first.isoformat() if first else None,
-            "last_detected_at": last.isoformat() if last else None,
-        })
+        loops_summary.append(summarized)
 
     # Streak (uses all v2 entries)
     streak = _checkin_streak(all_entries)

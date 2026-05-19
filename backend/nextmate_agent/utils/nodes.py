@@ -62,19 +62,20 @@ def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateSt
     thread_id = _thread_id_from_config(config)
     user_id = _user_id_from_config(config)
     
+    def inline_normalize(tid: str) -> str:
+        if not tid:
+            return ""
+        if ":" in tid:
+            parts = tid.split(":")
+            if len(parts) >= 4 and parts[0] == "user" and parts[2] == "thread":
+                return parts[3]
+        return tid
+    
+    uuid_part = inline_normalize(thread_id)
+    
     chat_history = state.get("chat_history", [])
     chat_history_update = None
     if not chat_history:
-        def inline_normalize(tid: str) -> str:
-            if not tid:
-                return ""
-            if ":" in tid:
-                parts = tid.split(":")
-                if len(parts) >= 4 and parts[0] == "user" and parts[2] == "thread":
-                    return parts[3]
-            return tid
-        
-        uuid_part = inline_normalize(thread_id)
         if uuid_part:
             with get_connection() as conn:
                 with conn.cursor() as cur:
@@ -136,7 +137,7 @@ def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateSt
                 """
                 SELECT loop_id, loop_name, core_belief, trigger, valence,
                        first_detected_at, last_detected_at, detection_count,
-                       description, suggestion, confidence_score, validation_metadata
+                       description, suggestion, confidence_score, validation_metadata, matched_entries
                 FROM loops
                 WHERE user_id = %s
                 ORDER BY last_detected_at DESC
@@ -159,15 +160,42 @@ def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateSt
             "suggestion": str(row["suggestion"]),
             "confidence_score": float(row["confidence_score"]) if row["confidence_score"] is not None else 0.0,
             "validation_metadata": row["validation_metadata"] or {},
+            "matched_entries": row["matched_entries"] or [],
         })
+
+    # Fetch active loop for current thread if linked
+    active_loop = None
+    if uuid_part:
+        active_loop_id = None
+        try:
+            with get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT loop_id FROM threads
+                        WHERE user_id = %s AND thread_id = %s
+                        """,
+                        (user_id, uuid_part),
+                    )
+                    thread_row = cur.fetchone()
+                    if thread_row:
+                        active_loop_id = thread_row.get("loop_id")
+        except Exception:
+            pass
+
+        if active_loop_id:
+            for loop in stored_loops:
+                if loop.get("loop_id") == str(active_loop_id):
+                    active_loop = loop
+                    break
 
     log_node(
         thread_id=thread_id,
         node_name="load_memory",
         inputs={"user_input": state.get("user_input", "")},
-        outputs={"memory_entries_count": len(thread_entries), "stored_loops_count": len(stored_loops), "thread_id": thread_id},
+        outputs={"memory_entries_count": len(thread_entries), "stored_loops_count": len(stored_loops), "thread_id": thread_id, "active_loop_id": str(active_loop_id) if active_loop_id else None},
     )
-    outputs = {"memory_entries": thread_entries, "thread_id": thread_id, "stored_loops": stored_loops}
+    outputs = {"memory_entries": thread_entries, "thread_id": thread_id, "stored_loops": stored_loops, "active_loop": active_loop}
     if chat_history_update is not None:
         outputs["chat_history"] = chat_history_update
     return outputs
@@ -327,7 +355,7 @@ def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateS
         if matched_existing and matched_loop_name:
             for stored in stored_loops:
                 if stored.get("loop_name") == matched_loop_name:
-                    _update_loop_last_seen(stored, user_id)
+                    _update_loop_last_seen(stored, user_id, validated_matches)
                     loops_text.append(
                         f"- [MATCHED EXISTING] {stored.get('loop_name', matched_loop_name)}: recurring pattern detected again (confidence: {confidence:.2f})"
                     )
@@ -418,18 +446,32 @@ def choose_response_mode_node(state: NextMateState) -> NextMateState:
     detected_loops = state.get("detected_loops", "")
     existing_mode = state.get("response_mode", "")
     stored_loops = state.get("stored_loops", [])
+    active_loop = state.get("active_loop")
+    response_mode_history = state.get("response_mode_history", [])
 
-    if existing_mode in ("loop_alert", "pattern_reflect") and detected_loops:
+    chat_history = state.get("chat_history", [])
+
+    # If this is a dedicated loop reflection thread and it is the first turn, lock it to pattern_reflect
+    if active_loop and len(chat_history) <= 1:
+        log_node(
+            thread_id=thread_id,
+            node_name="choose_response_mode",
+            inputs={"user_input": user_input, "memory_context": memory_context, "active_loop_id": active_loop.get("loop_id")},
+            outputs={"response_mode": "pattern_reflect", "response_mode_history": ["pattern_reflect"]},
+            extra={"reason": "active reflection thread initialized — mode locked to pattern_reflect"},
+        )
+        return {"response_mode": "pattern_reflect", "response_mode_history": ["pattern_reflect"]}
+
+    if existing_mode in ("loop_alert", "pattern_reflect") and detected_loops and len(chat_history) <= 1:
         log_node(
             thread_id=thread_id,
             node_name="choose_response_mode",
             inputs={"user_input": user_input, "memory_context": memory_context, "detected_loops": detected_loops},
-            outputs={"response_mode": existing_mode},
-            extra={"reason": f"loop detected — mode locked by detect_loops_node ({existing_mode})"},
+            outputs={"response_mode": existing_mode, "response_mode_history": [existing_mode]},
+            extra={"reason": f"loop detected on first turn — mode locked by detect_loops_node ({existing_mode})"},
         )
-        return {"response_mode": existing_mode}
+        return {"response_mode": existing_mode, "response_mode_history": [existing_mode]}
 
-    chat_history = state.get("chat_history", [])
     if stored_loops and user_input and not chat_history:
         llm = get_chat_model()
         resurface_prompt = build_loop_resurface_check_prompt(user_input, stored_loops)
@@ -453,17 +495,48 @@ def choose_response_mode_node(state: NextMateState) -> NextMateState:
                 thread_id=thread_id,
                 node_name="choose_response_mode",
                 inputs={"user_input": user_input, "memory_context": memory_context, "stored_loops_count": len(stored_loops)},
-                outputs={"response_mode": "pattern_reflect", "detected_loops": matched_loop_text},
+                outputs={"response_mode": "pattern_reflect", "detected_loops": matched_loop_text, "response_mode_history": ["pattern_reflect"]},
                 extra={"reason": f"LLM resurface check matched: {matched_name}", "raw_llm_response": resurface_raw},
             )
-            return {"response_mode": "pattern_reflect", "detected_loops": matched_loop_text}
+            return {"response_mode": "pattern_reflect", "detected_loops": matched_loop_text, "response_mode_history": ["pattern_reflect"]}
+
+    # Filter allowed modes to prevent repetitive pattern callbacks or alerts in the same thread
+    allowed_modes = list(_RESPONSE_MODES)
+
+    if active_loop and len(chat_history) > 1:
+        if "pattern_reflect" in allowed_modes:
+            allowed_modes.remove("pattern_reflect")
+        if "loop_alert" in allowed_modes:
+            allowed_modes.remove("loop_alert")
+
+    if "pattern_reflect" in response_mode_history:
+        if "pattern_reflect" in allowed_modes:
+            allowed_modes.remove("pattern_reflect")
+    if "loop_alert" in response_mode_history:
+        if "loop_alert" in allowed_modes:
+            allowed_modes.remove("loop_alert")
+
+    # Format chat history for the mode selection classifier
+    recent_history = chat_history[-16:]
+    if recent_history:
+        history_lines: list[str] = []
+        for msg in recent_history:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            history_lines.append(f"{role}: {content}")
+        history_context = "\n".join(history_lines)
+    else:
+        history_context = "No previous messages in this thread yet."
 
     llm = get_chat_model()
     content = build_mode_selection_prompt(
         user_input=user_input,
         memory_context=memory_context,
+        history_context=history_context,
         detected_loops=detected_loops,
         stored_loops=stored_loops,
+        active_loop=active_loop,
+        allowed_modes=allowed_modes,
     )
     raw, usage = invoke_with_logging(
         llm,
@@ -478,27 +551,27 @@ def choose_response_mode_node(state: NextMateState) -> NextMateState:
     raw_text = (raw if isinstance(raw, str) else "").strip().lower()
     chosen_mode = ""
     # Exact match first
-    for mode in _RESPONSE_MODES:
+    for mode in allowed_modes:
         if mode == raw_text:
             chosen_mode = mode
             break
     # Word-boundary match next
     if not chosen_mode:
-        for mode in _RESPONSE_MODES:
+        for mode in allowed_modes:
             if re.search(rf"\b{re.escape(mode)}\b", raw_text):
                 chosen_mode = mode
                 break
     if not chosen_mode:
-        chosen_mode = "validate"
+        chosen_mode = "validate" if "validate" in allowed_modes else allowed_modes[0]
 
     log_node(
         thread_id=thread_id,
         node_name="choose_response_mode",
         inputs={"user_input": user_input, "memory_context": memory_context, "detected_loops": detected_loops, "prompt": content},
-        outputs={"response_mode": chosen_mode},
+        outputs={"response_mode": chosen_mode, "response_mode_history": [chosen_mode]},
         extra={"raw_llm_response": raw},
     )
-    return {"response_mode": chosen_mode}
+    return {"response_mode": chosen_mode, "response_mode_history": [chosen_mode]}
 
 
 def generate_reply_node(state: NextMateState) -> NextMateState:
@@ -520,6 +593,7 @@ def generate_reply_node(state: NextMateState) -> NextMateState:
     detected_loops = state.get("detected_loops", "")
     stored_loops = state.get("stored_loops", [])
     response_mode = state.get("response_mode", "")
+    active_loop = state.get("active_loop")
 
     content = build_chat_user_prompt(
         user_input=user_input,
@@ -528,6 +602,7 @@ def generate_reply_node(state: NextMateState) -> NextMateState:
         detected_loops=detected_loops,
         stored_loops=stored_loops,
         response_mode=response_mode,
+        active_loop=active_loop,
     )
 
     messages: list[dict[str, str]] = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]

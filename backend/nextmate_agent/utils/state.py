@@ -11,6 +11,14 @@ def _reduce_chat_history(
     return combined[-24:]
 
 
+def _reduce_response_mode_history(
+    existing: list[str] | None, new: list[str]
+) -> list[str]:
+    if existing is None:
+        existing = []
+    return existing + new
+
+
 class NextMateState(TypedDict, total=False):
     user_input: str
     memory_entries: list[dict[str, Any]]
@@ -19,7 +27,11 @@ class NextMateState(TypedDict, total=False):
     detected_loops: str
     loop_info: list[dict[str, Any]]
     response_mode: str
+    response_mode_history: Annotated[list[str], _reduce_response_mode_history]
     assistant_reply: str
     turn_summary: dict[str, Any]
     thread_id: str
     stored_loops: list[dict[str, Any]]
+    active_loop: dict[str, Any]
+
+

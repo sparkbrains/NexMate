@@ -247,7 +247,7 @@ def extract_features_and_detect_loops(user_id: int, entry_id: int) -> None:
         if matched_existing and matched_loop_name:
             for stored in stored_loops:
                 if stored.get("loop_name") == matched_loop_name:
-                    _update_loop_last_seen(stored, user_id)
+                    _update_loop_last_seen(stored, user_id, validated_matches)
                     break
             continue
 

@@ -19,8 +19,30 @@ def _classify_state(last_detected_at: datetime | None) -> str:
     return "resolved" if age_days > RESOLVED_AFTER_DAYS else "active"
 
 
-def _strength(detection_count: int) -> float:
-    return round(min(1.0, max(0.0, (detection_count or 0) / 12)), 2)
+def _strength(detection_count: int, matched_entries: list[dict[str, Any]]) -> float:
+    # 1. Frequency factor: how many occurrences do we have? Normalize to 10 occurrences.
+    count = max(detection_count, len(matched_entries))
+    count_factor = min(1.0, count / 10.0)
+
+    # 2. Intensity factor: average intensity of all matched entries.
+    intensities = []
+    for entry in matched_entries:
+        if isinstance(entry, dict):
+            val = entry.get("intensity")
+            if val is not None:
+                try:
+                    intensities.append(float(val))
+                except (ValueError, TypeError):
+                    pass
+    if not intensities:
+        avg_intensity = 5.0
+    else:
+        avg_intensity = sum(intensities) / len(intensities)
+    
+    # Scale avg_intensity to 0-1 range (intensity is on a 1-10 scale)
+    intensity_factor = avg_intensity / 10.0
+
+    return round(count_factor * intensity_factor, 2)
 
 
 def _summarize_loop(row: dict[str, Any]) -> dict[str, Any]:
@@ -49,7 +71,7 @@ def _summarize_loop(row: dict[str, Any]) -> dict[str, Any]:
         "trigger": row.get("trigger") or "",
         "valence": row.get("valence") or "",
         "state": state,
-        "strength": _strength(detection_count),
+        "strength": _strength(detection_count, matched),
         "occurrences": max(detection_count, len(matched)),
         "first_detected_at": first.isoformat() if first else None,
         "last_detected_at": last.isoformat() if last else None,
@@ -116,6 +138,7 @@ def get_loop(user_id: int, loop_id: str) -> dict[str, Any] | None:
             "summary": entry.get("summary") or "",
             "mood": entry.get("mood") or "",
             "thread_id": entry.get("thread_id") or "",
+            "intensity": entry.get("intensity"),
         })
     occurrences.sort(key=lambda o: o.get("date") or "", reverse=True)
 
@@ -135,6 +158,16 @@ def get_loop(user_id: int, loop_id: str) -> dict[str, Any] | None:
             co_moods[m] = co_moods.get(m, 0) + 1
 
     intensities: list[int] = []
+    for o in occurrences:
+        v = o.get("intensity")
+        if v is not None:
+            try:
+                v_int = int(v)
+                if 1 <= v_int <= 10:
+                    intensities.append(v_int)
+            except (TypeError, ValueError):
+                pass
+
     if occurrences:
         with get_connection() as conn:
             with conn.cursor() as cur:
@@ -147,12 +180,13 @@ def get_loop(user_id: int, loop_id: str) -> dict[str, Any] | None:
                     (user_id, [o["thread_id"] for o in occurrences if o.get("thread_id")] or [""]),
                 )
                 for r in cur.fetchall():
-                    try:
-                        v = int(r.get("intensity") or 0)
-                        if 1 <= v <= 10:
-                            intensities.append(v)
-                    except (TypeError, ValueError):
-                        pass
+                    if not intensities:
+                        try:
+                            v = int(r.get("intensity") or 0)
+                            if 1 <= v <= 10:
+                                intensities.append(v)
+                        except (TypeError, ValueError):
+                            pass
                     for t in r.get("triggers", []) or []:
                         cleaned = str(t).strip().lower()
                         if not cleaned or cleaned == summary["trigger"]:
@@ -299,6 +333,7 @@ def _validate_cross_thread_loop_recurrence(
                 "summary": entry.get("core_theme", "") or entry.get("summary", ""),
                 "mood": entry.get("mood", ""),
                 "thread_id": entry.get("thread_id", ""),
+                "intensity": entry.get("intensity"),
             })
     
     # Check if we have matches across multiple threads
@@ -369,6 +404,7 @@ def _validate_loop_recurrence(
                 "summary": entry.get("core_theme", "") or entry.get("summary", ""),
                 "mood": entry.get("mood", ""),
                 "thread_id": entry.get("thread_id", ""),
+                "intensity": entry.get("intensity"),
             })
     
     if len(matches) < 3:
@@ -430,9 +466,24 @@ def _match_entries_for_loop(
                     "date": entry.get("created_at", ""),
                     "summary": entry.get("core_theme", "") or entry.get("summary", ""),
                     "mood": entry.get("mood", ""),
+                    "intensity": entry.get("intensity"),
                 }
             )
     return matches
+
+
+def _calculate_loop_span_dates(matched_entries: list[dict[str, Any]], default_dt: datetime) -> tuple[datetime, datetime]:
+    all_dates = []
+    for entry in matched_entries:
+        date_str = entry.get("date", "")
+        if date_str:
+            try:
+                all_dates.append(_parse_created_at(date_str))
+            except Exception:
+                pass
+    if not all_dates:
+        return default_dt, default_dt
+    return min(all_dates), max(all_dates)
 
 
 def _merge_loop_records(
@@ -448,6 +499,8 @@ def _merge_loop_records(
         detection_dates.append(now)
 
     detection_count = len(detection_dates)
+    now_dt = _parse_created_at(now)
+    first_dt, last_dt = _calculate_loop_span_dates(merged_entries, now_dt)
 
     return {
         "loop_id": existing.get("loop_id"),
@@ -455,8 +508,8 @@ def _merge_loop_records(
         "core_belief": existing.get("core_belief", new.get("core_belief", "")),
         "trigger": existing.get("trigger", new.get("trigger", "")),
         "valence": existing.get("valence", new.get("valence", "neutral")),
-        "first_detected_at": existing.get("first_detected_at", existing.get("detected_at", new.get("detected_at", ""))),
-        "last_detected_at": new.get("detected_at", ""),
+        "first_detected_at": first_dt.isoformat(),
+        "last_detected_at": last_dt.isoformat(),
         "detection_count": detection_count,
         "detection_dates": detection_dates,
         "matched_entries": merged_entries,
@@ -466,22 +519,61 @@ def _merge_loop_records(
     }
 
 
-def _update_loop_last_seen(loop: dict[str, Any], user_id: int) -> None:
+def _update_loop_last_seen(loop: dict[str, Any], user_id: int, new_matches: list[dict[str, Any]] = None) -> None:
     loop_id = loop.get("loop_id")
     if not loop_id:
         return
     now = datetime.now(timezone.utc)
+    
+    # Fetch existing loop to get current first_detected_at, detection_dates, and matched_entries
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT first_detected_at, detection_dates, matched_entries
+                FROM loops
+                WHERE loop_id = %s AND user_id = %s
+                """,
+                (loop_id, user_id),
+            )
+            row = cur.fetchone()
+
+    if not row:
+        return
+
+    first_dt = row.get("first_detected_at")
+    detection_dates = row.get("detection_dates") or []
+    matched_entries = row.get("matched_entries") or []
+
+    # Merge new matches if not already present
+    existing_dates = {e.get("date", "") for e in matched_entries if e.get("date")}
+    if new_matches:
+        for m in new_matches:
+            m_date = m.get("date", "")
+            if m_date and m_date not in existing_dates:
+                matched_entries.append(m)
+
+    # Append now to detection_dates if not already there
+    now_iso = now.isoformat()
+    if now_iso not in detection_dates:
+        detection_dates.append(now_iso)
+
+    detection_count = len(detection_dates)
+    first_detected_at, last_detected_at = _calculate_loop_span_dates(matched_entries, now)
+
     with get_connection(autocommit=True) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 UPDATE loops
-                SET last_detected_at = %s,
-                    detection_count = detection_count + 1,
-                    detection_dates = detection_dates || %s::jsonb
+                SET first_detected_at = %s,
+                    last_detected_at = %s,
+                    detection_count = %s,
+                    detection_dates = %s::jsonb,
+                    matched_entries = %s::jsonb
                 WHERE loop_id = %s AND user_id = %s
                 """,
-                (now, Jsonb([now.isoformat()]), loop_id, user_id),
+                (first_detected_at, last_detected_at, detection_count, Jsonb(detection_dates), Jsonb(matched_entries), loop_id, user_id),
             )
 
 
@@ -636,25 +728,27 @@ def _save_merged_loop_info(
                 break
 
         if not merged:
+            new_matched = new_loop.get("matched_entries", [])
+            first_dt, last_dt = _calculate_loop_span_dates(new_matched, datetime.now(timezone.utc))
             new_record = {
                 "loop_id": str(uuid4()),
                 "loop_name": new_loop.get("loop_name", ""),
                 "core_belief": new_loop.get("core_belief", ""),
                 "trigger": new_loop.get("trigger", ""),
                 "valence": new_loop.get("valence", "neutral"),
-                "first_detected_at": now,
-                "last_detected_at": now,
+                "first_detected_at": first_dt.isoformat(),
+                "last_detected_at": last_dt.isoformat(),
                 "detection_count": 1,
                 "detection_dates": [now],
-                "matched_entries": new_loop.get("matched_entries", []),
+                "matched_entries": new_matched,
                 "description": new_loop.get("description", ""),
                 "suggestion": new_loop.get("suggestion", ""),
                 "thread_id": thread_id,
                 "confidence_score": new_loop.get("confidence", 0.0),
                 "validation_metadata": {
-                    "temporal_span_days": 0,
+                    "temporal_span_days": (last_dt - first_dt).days,
                     "context_diversity": 0.0,
-                    "total_matches": len(new_loop.get("matched_entries", [])),
+                    "total_matches": len(new_matched),
                     "validation_timestamp": now
                 }
             }

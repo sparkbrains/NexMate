@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 from datetime import datetime
@@ -68,12 +69,31 @@ def log_token_usage(node_name: str, usage_metadata: dict, thread_id: str = "unkn
 
 def get_chat_model() -> ChatGroq:
     settings = get_settings()
-    if not settings.llm_api_key:
-        raise ValueError("GROQ_API_KEY or LLM_API_KEY is missing in ..env")
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key or not api_key.strip():
+        from pathlib import Path
+        try:
+            base_dir = Path(__file__).resolve().parents[2]
+            env_path = base_dir / ".env"
+            if env_path.exists():
+                with open(env_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.strip().startswith("GROQ_API_KEY="):
+                            val = line.split("=", 1)[1].strip()
+                            if val.startswith(('"', "'")) and val.endswith(('"', "'")):
+                                val = val[1:-1]
+                            if val:
+                                api_key = val
+                                break
+        except Exception as e:
+            logger.error(f"Failed to read GROQ_API_KEY from .env: {e}")
+
+    if not api_key or not api_key.strip():
+        raise ValueError("GROQ_API_KEY is missing or empty in environment configuration")
 
     return ChatGroq(
         model=settings.generation_model,
-        api_key=settings.llm_api_key,
+        api_key=api_key,
         temperature=0.3,
     )
 
