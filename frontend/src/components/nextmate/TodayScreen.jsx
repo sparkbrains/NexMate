@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
-import { getDashboardInsights, answerDailyQuestion, getDailyQuestionContext } from '../../lib/api';
+import { getDashboardInsights, answerDailyQuestion, getDailyQuestionContext, reflectOnLoop } from '../../lib/api';
 
-const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last }) => (
-  <div style={{ padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--rule-soft)', cursor: 'pointer' }}>
+const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last, onClick }) => (
+  <div onClick={onClick} style={{ padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--rule-soft)', cursor: 'pointer' }}>
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
@@ -96,6 +96,7 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [answeringQuestion, setAnsweringQuestion] = useState(false);
+  const [reflecting, setReflecting] = useState(false);
   const [questionContext, setQuestionContext] = useState(null);
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
 
@@ -139,6 +140,27 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
       if (pendingQuestions.length === 0) return 0;
       return (i + 1) % pendingQuestions.length;
     });
+  };
+
+  const handleReflect = async () => {
+    if (!topLoop) return;
+    setReflecting(true);
+    try {
+      const result = await reflectOnLoop(topLoop.loop_id);
+      if (result && result.thread_id) {
+        if (onNav) {
+          onNav('chat', {
+            threadId: result.thread_id,
+            threadTitle: result.title,
+            initialMessage: result.opening_message,
+          });
+        }
+      }
+    } catch (e) {
+      setError(e.message || 'Failed to create reflection thread');
+    } finally {
+      setReflecting(false);
+    }
   };
 
   const now = new Date();
@@ -223,7 +245,13 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
                     </p>
                   )}
                   <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
-                    <button className="nm-btn accent" onClick={() => onNav && onNav('chat')}>Reflect on this <Icon name="arrow" size={12} /></button>
+                    <button 
+                      className="nm-btn accent" 
+                      onClick={handleReflect} 
+                      disabled={reflecting}
+                    >
+                      {reflecting ? 'Reflecting…' : 'Reflect on this'} <Icon name="arrow" size={12} />
+                    </button>
                     <button className="nm-btn" onClick={() => onNav && onNav('loops')}>See all {topLoop.occurrences} occurrences</button>
                     <button className="nm-btn ghost">Not today</button>
                   </div>
@@ -255,6 +283,7 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
                     intensity={summary.avg_intensity ?? null}
                     positive={!!summary.positive}
                     last={i === recentThreads.length - 1}
+                    onClick={() => onNav && onNav('chat', { threadId: t.thread_id })}
                   />
                 );
               })}

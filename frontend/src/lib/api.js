@@ -133,6 +133,10 @@ export function resolveLoop(loopId) {
   return request(`/api/loops/${encodeURIComponent(loopId)}/resolve`, { method: 'POST' });
 }
 
+export function reflectOnLoop(loopId) {
+  return request(`/api/loops/${encodeURIComponent(loopId)}/reflect`, { method: 'POST' });
+}
+
 export function listJournalBooks() {
   return request('/api/journal/books');
 }
@@ -157,10 +161,10 @@ export function listJournalEntries(bookId = null) {
   return request(`/api/journal${qs}`);
 }
 
-export function createJournalEntry({ body, mood_emoji = '', mood_label = '', entry_date = null, translated = '', auto_translate = false, book_id = null }) {
+export function createJournalEntry({ body, mood_emoji = '', mood_label = '', entry_date = null, translated = '', auto_translate = false, book_id = null, allow_loop_detection = true }) {
   return request('/api/journal', {
     method: 'POST',
-    body: { body, mood_emoji, mood_label, entry_date, translated, auto_translate, book_id },
+    body: { body, mood_emoji, mood_label, entry_date, translated, auto_translate, book_id, allow_loop_detection },
   });
 }
 

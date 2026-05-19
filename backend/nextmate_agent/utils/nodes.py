@@ -25,6 +25,20 @@ from nextmate_agent.utils.prompts import (
 )
 from nextmate_agent.utils.state import NextMateState
 
+from apps.api.services.loop_service import (
+    _parse_created_at,
+    _loop_signature,
+    _loops_match,
+    _get_cross_thread_memory_entries,
+    _validate_cross_thread_loop_recurrence,
+    _validate_loop_recurrence,
+    _match_entries_for_loop,
+    _merge_loop_records,
+    _update_loop_last_seen,
+    _analyze_loop_persistence,
+    _save_merged_loop_info
+)
+
 def _thread_id_from_config(config: RunnableConfig | None) -> str:
     if not config:
         return "default"
@@ -41,15 +55,6 @@ def _user_id_from_config(config: RunnableConfig | None) -> int:
     except (TypeError, ValueError):
         return -1
 
-def _parse_created_at(value: Any) -> datetime:
-    if isinstance(value, datetime):
-        return value.astimezone(timezone.utc)
-    if isinstance(value, str):
-        try:
-            return datetime.fromisoformat(value).astimezone(timezone.utc)
-        except ValueError:
-            pass
-    return datetime.now(timezone.utc)
 
 
 def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
@@ -57,6 +62,42 @@ def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateSt
     thread_id = _thread_id_from_config(config)
     user_id = _user_id_from_config(config)
     
+    chat_history = state.get("chat_history", [])
+    chat_history_update = None
+    if not chat_history:
+        def inline_normalize(tid: str) -> str:
+            if not tid:
+                return ""
+            if ":" in tid:
+                parts = tid.split(":")
+                if len(parts) >= 4 and parts[0] == "user" and parts[2] == "thread":
+                    return parts[3]
+            return tid
+        
+        uuid_part = inline_normalize(thread_id)
+        if uuid_part:
+            with get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT role, content
+                        FROM thread_messages
+                        WHERE user_id = %s AND thread_id = %s
+                        ORDER BY created_at ASC
+                        """,
+                        (user_id, uuid_part),
+                    )
+                    msg_rows = cur.fetchall()
+            
+            db_history = []
+            for r in msg_rows:
+                db_history.append({"role": str(r["role"]), "content": str(r["content"])})
+            
+            if db_history:
+                if db_history[-1]["role"] == "user":
+                    db_history = db_history[:-1]
+                chat_history_update = db_history
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -126,7 +167,10 @@ def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateSt
         inputs={"user_input": state.get("user_input", "")},
         outputs={"memory_entries_count": len(thread_entries), "stored_loops_count": len(stored_loops), "thread_id": thread_id},
     )
-    return {"memory_entries": thread_entries, "thread_id": thread_id, "stored_loops": stored_loops}
+    outputs = {"memory_entries": thread_entries, "thread_id": thread_id, "stored_loops": stored_loops}
+    if chat_history_update is not None:
+        outputs["chat_history"] = chat_history_update
+    return outputs
 
 
 def build_memory_context_node(state: NextMateState) -> NextMateState:
@@ -180,502 +224,6 @@ def build_memory_context_node(state: NextMateState) -> NextMateState:
     return {"memory_context": memory_context}
 
 
-def _loop_signature(loop: dict[str, Any]) -> tuple[str, str]:
-    belief = (loop.get("core_belief") or "").lower().strip()
-    trigger = (loop.get("trigger") or "").lower().strip()
-    return (belief, trigger)
-
-
-def _loops_match(loops_a: dict[str, Any], loops_b: dict[str, Any]) -> bool:
-    sig_a = _loop_signature(loops_a)
-    sig_b = _loop_signature(loops_b)
-    if not sig_a[0] or not sig_a[1] or not sig_b[0] or not sig_b[1]:
-        return False
-    belief_match = sig_a[0] in sig_b[0] or sig_b[0] in sig_a[0]
-    trigger_match = sig_a[1] in sig_b[1] or sig_b[1] in sig_a[1]
-    return belief_match and trigger_match
-
-
-def _get_cross_thread_memory_entries(user_id: int, current_thread_id: str) -> list[dict[str, Any]]:
-    """
-    Retrieve all memory entries for a user across all threads except the current one.
-    """
-    with get_connection(autocommit=True) as conn:
-        with conn.cursor() as cur:
-            # Get entries from journal_entries_v2 across all threads for this user
-            cur.execute(
-                """
-                SELECT 
-                    user_input,
-                    assistant_reply,
-                    core_theme,
-                    mood,
-                    core_beliefs,
-                    triggers,
-                    key_facts,
-                    next_focus,
-                    intensity,
-                    created_at,
-                    thread_id
-                FROM journal_entries_v2 
-                WHERE user_id = %s AND thread_id != %s
-                ORDER BY created_at DESC
-                LIMIT 100
-                """,
-                (user_id, current_thread_id)
-            )
-            cross_thread_entries = []
-            for row in cur.fetchall():
-                cross_thread_entries.append({
-                    "user_input": row["user_input"],
-                    "assistant_reply": row["assistant_reply"],
-                    "core_theme": row["core_theme"],
-                    "mood": row["mood"],
-                    "core_beliefs": row["core_beliefs"] or [],
-                    "triggers": row["triggers"] or [],
-                    "key_facts": row["key_facts"] or [],
-                    "next_focus": row["next_focus"],
-                    "intensity": row["intensity"],
-                    "created_at": row["created_at"].isoformat(),
-                    "thread_id": row["thread_id"]
-                })
-            
-    return cross_thread_entries
-
-
-def _validate_cross_thread_loop_recurrence(
-    loop_belief: str, loop_trigger: str, current_entries: list[dict[str, Any]], 
-    cross_thread_entries: list[dict[str, Any]]
-) -> tuple[bool, list[dict[str, Any]], float]:
-    """
-    Validate if a pattern recurs across different threads.
-    Only returns True if the same core_belief + trigger combination appears in multiple threads.
-    Returns: (is_valid_cross_thread_loop, matched_entries, confidence_score)
-    """
-    if not loop_belief or not loop_trigger:
-        return False, [], 0.0
-    
-    loop_belief = loop_belief.lower().strip()
-    loop_trigger = loop_trigger.lower().strip()
-    
-    # Combine all entries for analysis
-    all_entries = current_entries + cross_thread_entries
-    
-    matches: list[dict[str, Any]] = []
-    for entry in all_entries:
-        beliefs = [b.lower() for b in entry.get("core_beliefs", [])]
-        triggers = [t.lower() for t in entry.get("triggers", [])]
-        belief_hit = any(loop_belief in b or b in loop_belief for b in beliefs) if loop_belief else False
-        trigger_hit = any(loop_trigger in t or t in loop_trigger for t in triggers) if loop_trigger else False
-        if belief_hit and trigger_hit:
-            matches.append({
-                "date": entry.get("created_at", ""),
-                "summary": entry.get("core_theme", "") or entry.get("summary", ""),
-                "mood": entry.get("mood", ""),
-                "thread_id": entry.get("thread_id", ""),
-            })
-    
-    # Check if we have matches across multiple threads
-    thread_ids = set(m.get("thread_id", "") for m in matches if m.get("thread_id"))
-    
-    # Require at least 2 different threads and 3 total matches
-    if len(thread_ids) < 2 or len(matches) < 3:
-        return False, matches, 0.0
-    
-    # Check temporal diversity - patterns must span different time periods
-    dates = [m.get("date", "") for m in matches if m.get("date")]
-    if len(dates) < 3:
-        return False, matches, 0.0
-    
-    try:
-        from datetime import datetime, timezone
-        parsed_dates = []
-        for date_str in dates:
-            try:
-                parsed_dates.append(datetime.fromisoformat(date_str.replace('Z', '+00:00')))
-            except:
-                continue
-        
-        if len(parsed_dates) < 3:
-            return False, matches, 0.0
-        
-        # Check if spans at least 1 different day
-        parsed_dates.sort()
-        time_span_days = (parsed_dates[-1] - parsed_dates[0]).days
-        if time_span_days < 1:
-            return False, matches, 0.0
-        
-        # Calculate confidence score with emphasis on thread diversity
-        base_confidence = min(len(matches) / 8.0, 1.0)  # More matches = higher confidence
-        temporal_confidence = min(time_span_days / 5.0, 1.0)  # Longer span = higher confidence
-        thread_diversity = min(len(thread_ids) / 3.0, 1.0)  # More threads = higher confidence
-        confidence = (base_confidence * 0.3 + temporal_confidence * 0.3 + thread_diversity * 0.4)
-        
-        return True, matches, confidence
-        
-    except Exception:
-        # If date parsing fails, be conservative but still require multiple threads
-        return len(thread_ids) >= 2 and len(matches) >= 3, matches, 0.6
-
-
-def _validate_loop_recurrence(
-    loop_belief: str, loop_trigger: str, entries: list[dict[str, Any]]
-) -> tuple[bool, list[dict[str, Any]], float]:
-    """
-    Validate if a pattern truly recurs with stricter criteria.
-    Returns: (is_valid_loop, matched_entries, confidence_score)
-    """
-    if not loop_belief or not loop_trigger or len(entries) < 3:
-        return False, [], 0.0
-    
-    loop_belief = loop_belief.lower().strip()
-    loop_trigger = loop_trigger.lower().strip()
-    
-    matches: list[dict[str, Any]] = []
-    for entry in entries:
-        beliefs = [b.lower() for b in entry.get("core_beliefs", [])]
-        triggers = [t.lower() for t in entry.get("triggers", [])]
-        belief_hit = any(loop_belief in b or b in loop_belief for b in beliefs) if loop_belief else False
-        trigger_hit = any(loop_trigger in t or t in loop_trigger for t in triggers) if loop_trigger else False
-        if belief_hit and trigger_hit:
-            matches.append({
-                "date": entry.get("created_at", ""),
-                "summary": entry.get("core_theme", "") or entry.get("summary", ""),
-                "mood": entry.get("mood", ""),
-                "thread_id": entry.get("thread_id", ""),
-            })
-    
-    if len(matches) < 3:
-        return False, matches, 0.0
-    
-    # Check temporal diversity - patterns must span different time periods
-    dates = [m.get("date", "") for m in matches if m.get("date")]
-    if len(dates) < 3:
-        return False, matches, 0.0
-    
-    try:
-        from datetime import datetime, timezone
-        parsed_dates = []
-        for date_str in dates:
-            try:
-                parsed_dates.append(datetime.fromisoformat(date_str.replace('Z', '+00:00')))
-            except:
-                continue
-        
-        if len(parsed_dates) < 3:
-            return False, matches, 0.0
-        
-        # Check if spans at least 2 different days
-        parsed_dates.sort()
-        time_span_days = (parsed_dates[-1] - parsed_dates[0]).days
-        if time_span_days < 1:
-            return False, matches, 0.0
-        
-        # Check context diversity - different threads or conversations
-        thread_ids = set(m.get("thread_id", "") for m in matches if m.get("thread_id"))
-        context_diversity = min(len(thread_ids) / 3.0, 1.0)  # Normalize to 0-1
-        
-        # Calculate confidence score based on multiple factors
-        base_confidence = min(len(matches) / 10.0, 1.0)  # More matches = higher confidence
-        temporal_confidence = min(time_span_days / 7.0, 1.0)  # Longer span = higher confidence
-        confidence = (base_confidence * 0.4 + temporal_confidence * 0.4 + context_diversity * 0.2)
-        
-        return True, matches, confidence
-        
-    except Exception:
-        # If date parsing fails, be conservative
-        return len(matches) >= 3, matches, 0.5
-
-
-def _match_entries_for_loop(
-    loop: dict[str, Any], entries: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    loop_belief = (loop.get("core_belief") or "").lower().strip()
-    loop_trigger = (loop.get("trigger") or "").lower().strip()
-    matches: list[dict[str, Any]] = []
-    for entry in entries:
-        beliefs = [b.lower() for b in entry.get("core_beliefs", [])]
-        triggers = [t.lower() for t in entry.get("triggers", [])]
-        belief_hit = any(loop_belief in b or b in loop_belief for b in beliefs) if loop_belief else False
-        trigger_hit = any(loop_trigger in t or t in loop_trigger for t in triggers) if loop_trigger else False
-        if belief_hit and trigger_hit:
-            matches.append(
-                {
-                    "date": entry.get("created_at", ""),
-                    "summary": entry.get("core_theme", "") or entry.get("summary", ""),
-                    "mood": entry.get("mood", ""),
-                }
-            )
-    return matches
-
-
-def _merge_loop_records(
-    existing: dict[str, Any], new: dict[str, Any], new_matched: list[dict[str, Any]]
-) -> dict[str, Any]:
-    existing_dates = {e.get("date", "") for e in existing.get("matched_entries", [])}
-    new_entries = [e for e in new_matched if e.get("date", "") and e.get("date") not in existing_dates]
-    merged_entries = existing.get("matched_entries", []) + new_entries
-
-    detection_dates = existing.get("detection_dates", [existing.get("first_detected_at", existing.get("detected_at", ""))])
-    now = new.get("last_detected_at", new.get("detected_at", ""))
-    if now and now not in detection_dates:
-        detection_dates.append(now)
-
-    detection_count = len(detection_dates)
-
-    return {
-        "loop_id": existing.get("loop_id"),
-        "loop_name": existing.get("loop_name") or new.get("loop_name", ""),
-        "core_belief": existing.get("core_belief", new.get("core_belief", "")),
-        "trigger": existing.get("trigger", new.get("trigger", "")),
-        "valence": existing.get("valence", new.get("valence", "neutral")),
-        "first_detected_at": existing.get("first_detected_at", existing.get("detected_at", new.get("detected_at", ""))),
-        "last_detected_at": new.get("detected_at", ""),
-        "detection_count": detection_count,
-        "detection_dates": detection_dates,
-        "matched_entries": merged_entries,
-        "description": new.get("description") or existing.get("description", ""),
-        "suggestion": new.get("suggestion") or existing.get("suggestion", ""),
-        "thread_id": existing.get("thread_id", new.get("thread_id", "default")),
-    }
-
-
-def _update_loop_last_seen(loop: dict[str, Any], user_id: int) -> None:
-    loop_id = loop.get("loop_id")
-    if not loop_id:
-        return
-    now = datetime.now(timezone.utc)
-    with get_connection(autocommit=True) as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                UPDATE loops
-                SET last_detected_at = %s,
-                    detection_count = detection_count + 1,
-                    detection_dates = detection_dates || %s::jsonb
-                WHERE loop_id = %s AND user_id = %s
-                """,
-                (now, Jsonb([now.isoformat()]), loop_id, user_id),
-            )
-
-
-def _analyze_loop_persistence(loop: dict[str, Any]) -> dict[str, Any]:
-    """
-    Analyze loop persistence to distinguish real loops from temporary states.
-    Returns persistence analysis with recommendations.
-    """
-    detection_dates = loop.get("detection_dates", [])
-    detection_count = loop.get("detection_count", 1)
-    confidence_score = loop.get("confidence_score", 0.0)
-    
-    if not detection_dates or len(detection_dates) < 2:
-        return {
-            "is_persistent": False,
-            "persistence_score": 0.0,
-            "analysis": "insufficient_data",
-            "recommendation": "collect_more_data"
-        }
-    
-    try:
-        # Parse dates and analyze temporal patterns
-        parsed_dates = []
-        for date_str in detection_dates:
-            if isinstance(date_str, str):
-                try:
-                    parsed_dates.append(datetime.fromisoformat(date_str.replace('Z', '+00:00')))
-                except:
-                    continue
-        
-        if len(parsed_dates) < 2:
-            return {
-                "is_persistent": False,
-                "persistence_score": 0.0,
-                "analysis": "invalid_dates",
-                "recommendation": "data_quality_issue"
-            }
-        
-        parsed_dates.sort()
-        
-        # Calculate time spans
-        total_span_days = (parsed_dates[-1] - parsed_dates[0]).days
-        avg_gap_days = total_span_days / (len(parsed_dates) - 1) if len(parsed_dates) > 1 else 0
-        
-        # Analyze detection frequency
-        recent_detections = sum(1 for date in parsed_dates if (datetime.now(timezone.utc) - date).days <= 30)
-        detection_frequency = recent_detections / 30.0  # detections per month
-        
-        # Calculate persistence score
-        temporal_score = min(total_span_days / 90.0, 1.0)  # 3+ months = max score
-        frequency_score = min(detection_frequency / 4.0, 1.0)  # 4+ per month = max score
-        consistency_score = 1.0 - (avg_gap_days / 30.0) if avg_gap_days < 30 else 0.0  # Consistent detection
-        
-        persistence_score = (temporal_score * 0.4 + frequency_score * 0.3 + consistency_score * 0.3)
-        
-        # Determine if persistent
-        is_persistent = (
-            persistence_score >= 0.6 and 
-            total_span_days >= 14 and  # At least 2 weeks
-            detection_count >= 3 and
-            confidence_score >= 0.5
-        )
-        
-        # Generate analysis
-        if is_persistent:
-            if persistence_score >= 0.8:
-                analysis = "strongly_persistent"
-                recommendation = "address_as_core_pattern"
-            else:
-                analysis = "moderately_persistent"
-                recommendation = "monitor_closely"
-        else:
-            if total_span_days < 7:
-                analysis = "temporary_state"
-                recommendation = "observe_longer"
-            elif detection_frequency < 0.5:
-                analysis = "infrequent_pattern"
-                recommendation = "collect_more_data"
-            else:
-                analysis = "emerging_pattern"
-                recommendation = "monitor_for_confirmation"
-        
-        return {
-            "is_persistent": is_persistent,
-            "persistence_score": persistence_score,
-            "total_span_days": total_span_days,
-            "avg_gap_days": avg_gap_days,
-            "detection_frequency": detection_frequency,
-            "analysis": analysis,
-            "recommendation": recommendation
-        }
-        
-    except Exception as e:
-        return {
-            "is_persistent": False,
-            "persistence_score": 0.0,
-            "analysis": "error",
-            "recommendation": "retry_analysis",
-            "error": str(e)
-        }
-
-
-def _save_merged_loop_info(
-    loop_info: list[dict[str, Any]], thread_id: str, user_id: int
-) -> list[dict[str, Any]]:
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT loop_id, loop_name, core_belief, trigger, valence,
-                       first_detected_at, last_detected_at, detection_count,
-                       detection_dates, matched_entries, description, suggestion,
-                       confidence_score, validation_metadata
-                FROM loops
-                WHERE user_id = %s
-                """,
-                (user_id,)
-            )
-            rows = cur.fetchall()
-
-    thread_loops = []
-    for row in rows:
-        thread_loops.append({
-            "loop_id": str(row["loop_id"]),
-            "loop_name": row["loop_name"],
-            "core_belief": row["core_belief"],
-            "trigger": row["trigger"],
-            "valence": row["valence"],
-            "first_detected_at": row["first_detected_at"].isoformat() if row["first_detected_at"] else "",
-            "last_detected_at": row["last_detected_at"].isoformat() if row["last_detected_at"] else "",
-            "detection_count": row["detection_count"],
-            "detection_dates": row["detection_dates"] or [],
-            "matched_entries": row["matched_entries"] or [],
-            "description": row["description"],
-            "suggestion": row["suggestion"],
-            "thread_id": thread_id,
-            "confidence_score": float(row["confidence_score"]) if row["confidence_score"] is not None else 0.0,
-            "validation_metadata": row["validation_metadata"] or {},
-        })
-
-    now = datetime.now(timezone.utc).isoformat()
-    for new_loop in loop_info:
-        new_loop["detected_at"] = now
-        new_loop["thread_id"] = thread_id
-
-        merged = False
-        for i, existing in enumerate(thread_loops):
-            if _loops_match(existing, new_loop):
-                matched = new_loop.get("matched_entries", [])
-                thread_loops[i] = _merge_loop_records(existing, new_loop, matched)
-                merged = True
-                break
-
-        if not merged:
-            new_record = {
-                "loop_id": str(uuid4()),
-                "loop_name": new_loop.get("loop_name", ""),
-                "core_belief": new_loop.get("core_belief", ""),
-                "trigger": new_loop.get("trigger", ""),
-                "valence": new_loop.get("valence", "neutral"),
-                "first_detected_at": now,
-                "last_detected_at": now,
-                "detection_count": 1,
-                "detection_dates": [now],
-                "matched_entries": new_loop.get("matched_entries", []),
-                "description": new_loop.get("description", ""),
-                "suggestion": new_loop.get("suggestion", ""),
-                "thread_id": thread_id,
-                "confidence_score": new_loop.get("confidence", 0.0),
-                "validation_metadata": {
-                    "temporal_span_days": 0,
-                    "context_diversity": 0.0,
-                    "total_matches": len(new_loop.get("matched_entries", [])),
-                    "validation_timestamp": now
-                }
-            }
-            thread_loops.append(new_record)
-
-    with get_connection(autocommit=True) as conn:
-        with conn.cursor() as cur:
-            for loop in thread_loops:
-                cur.execute(
-                    """
-                    INSERT INTO loops (
-                        loop_id, thread_id, user_id, loop_name, core_belief, trigger,
-                        valence, first_detected_at, last_detected_at, detection_count,
-                        detection_dates, matched_entries, description, suggestion,
-                        confidence_score, validation_metadata
-                    ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                    )
-                    ON CONFLICT (loop_id) DO UPDATE SET
-                        loop_name = EXCLUDED.loop_name,
-                        core_belief = EXCLUDED.core_belief,
-                        trigger = EXCLUDED.trigger,
-                        valence = EXCLUDED.valence,
-                        first_detected_at = EXCLUDED.first_detected_at,
-                        last_detected_at = EXCLUDED.last_detected_at,
-                        detection_count = EXCLUDED.detection_count,
-                        detection_dates = EXCLUDED.detection_dates,
-                        matched_entries = EXCLUDED.matched_entries,
-                        description = EXCLUDED.description,
-                        suggestion = EXCLUDED.suggestion,
-                        confidence_score = EXCLUDED.confidence_score,
-                        validation_metadata = EXCLUDED.validation_metadata
-                    """,
-                    (
-                        loop["loop_id"], thread_id, user_id, loop["loop_name"],
-                        loop["core_belief"], loop["trigger"], loop["valence"],
-                        _parse_created_at(loop["first_detected_at"]),
-                        _parse_created_at(loop["last_detected_at"]),
-                        loop["detection_count"], Jsonb(loop["detection_dates"]),
-                        Jsonb(loop["matched_entries"]), loop["description"],
-                        loop["suggestion"],
-                        loop.get("confidence_score", 0.0),
-                        Jsonb(loop.get("validation_metadata", {}))
-                    )
-                )
-
-    return thread_loops
 
 
 def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateState:

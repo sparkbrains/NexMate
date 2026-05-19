@@ -2,7 +2,7 @@ from datetime import datetime
 from datetime import date as date_type
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 
 from apps.api.deps.auth import get_current_user
@@ -20,6 +20,7 @@ from apps.api.services.journal_log_service import (
     translate_entry,
     update_journal_entry,
 )
+from apps.api.services.journal_loop_service import extract_features_and_detect_loops
 
 
 router = APIRouter(prefix="/api/journal", tags=["journal"])
@@ -76,6 +77,7 @@ class CreateEntryRequest(BaseModel):
     translated: str = ""
     auto_translate: bool = False
     book_id: int | None = None
+    allow_loop_detection: bool = True
 
 
 class UpdateEntryRequest(BaseModel):
@@ -84,6 +86,7 @@ class UpdateEntryRequest(BaseModel):
     mood_label: str | None = Field(None, max_length=40)
     translated: str | None = Field(None, max_length=5000)
     book_id: int | None = None
+    allow_loop_detection: bool | None = None
 
 
 def _parse_entry_date(value: str | None) -> date_type:
@@ -110,7 +113,7 @@ def translate(req: TranslateRequest, current_user: User = Depends(get_current_us
 
 
 @router.post("")
-def create_entry(req: CreateEntryRequest, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+def create_entry(req: CreateEntryRequest, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     body = req.body.strip()
     if not body:
         raise HTTPException(status_code=400, detail="body is required")
@@ -133,11 +136,13 @@ def create_entry(req: CreateEntryRequest, current_user: User = Depends(get_curre
         translated=translated,
         book_id=book_id,
     )
+    if req.allow_loop_detection:
+        background_tasks.add_task(extract_features_and_detect_loops, current_user.id, entry["id"])
     return {"entry": entry}
 
 
 @router.patch("/{entry_id}")
-def update_entry(entry_id: int, req: UpdateEntryRequest, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+def update_entry(entry_id: int, req: UpdateEntryRequest, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
     if req.mood_emoji is not None:
         kwargs["mood_emoji"] = req.mood_emoji
@@ -153,6 +158,8 @@ def update_entry(entry_id: int, req: UpdateEntryRequest, current_user: User = De
     updated = update_journal_entry(current_user.id, entry_id, **kwargs)
     if not updated:
         raise HTTPException(status_code=404, detail="Entry not found")
+    if req.allow_loop_detection is not False:  # default or explicit True
+        background_tasks.add_task(extract_features_and_detect_loops, current_user.id, entry_id)
     return {"entry": updated}
 
 

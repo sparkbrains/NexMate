@@ -319,7 +319,7 @@ def get_thread_messages(user_id: int, thread_id: str) -> list[dict[str, str]]:
             )
             rows = cur.fetchall()
 
-    return [
+    messages = [
         {
             "role": str(row["role"]),
             "content": str(row["content"]),
@@ -327,6 +327,10 @@ def get_thread_messages(user_id: int, thread_id: str) -> list[dict[str, str]]:
         }
         for row in rows
     ]
+    print(f"get_thread_messages returning {len(messages)} messages for thread {thread_id}")
+    for msg in messages:
+        print(f"  - role: {msg['role']}, content: {msg['content'][:50]}...")
+    return messages
 
 
 def create_thread(user_id: int, title: str, context: dict[str, Any] = None) -> dict[str, Any]:

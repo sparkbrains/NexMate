@@ -17,6 +17,7 @@ export default function App() {
   const [route, setRoute] = useState('today');
   const [threads, setThreads] = useState([]);
   const [threadId, setThreadId] = useState(null);
+  const [chatParams, setChatParams] = useState(null);
 
   const refreshThreads = useCallback(async () => {
     try {
@@ -31,13 +32,14 @@ export default function App() {
     if (user) refreshThreads();
   }, [user, refreshThreads]);
 
-  const openThread = (id) => {
+  const openThread = (id, params = null) => {
     setThreadId(id);
+    setChatParams(params);
     setRoute('chat');
   };
 
   const beginReflection = () => {
-    openThread(newThreadId());
+    openThread(newThreadId(), null);
   };
 
   const onLogout = () => {
@@ -45,6 +47,7 @@ export default function App() {
     setUser(null);
     setThreads([]);
     setThreadId(null);
+    setChatParams(null);
     setRoute('today');
   };
 
@@ -54,27 +57,47 @@ export default function App() {
 
   let screen;
   if (route === 'chat') {
-    screen = <ChatScreen onNav={setRoute} threadId={threadId} threadTitle={activeThread?.title} onMessageDone={refreshThreads} />;
+    screen = (
+      <ChatScreen
+        onNav={setRoute}
+        threadId={threadId}
+        threadTitle={chatParams?.threadTitle || activeThread?.title}
+        initialMessage={chatParams?.initialMessage}
+        onMessageDone={refreshThreads}
+      />
+    );
   } else if (route === 'journal') {
     screen = <JournalScreen />;
   } else if (route === 'loops') {
-    screen = <LoopsScreen onNav={(r) => (r === 'chat' ? beginReflection() : setRoute(r))} />;
+    screen = (
+      <LoopsScreen
+        onNav={(r, params) => {
+          if (r === 'chat') {
+            params?.threadId ? openThread(params.threadId, params) : beginReflection();
+          } else {
+            setRoute(r);
+          }
+        }}
+      />
+    );
   } else if (route === 'insights') {
     screen = <InsightsScreen />;
   } else if (route === 'weekly') {
     screen = <WeeklyScreen />;
   } else {
-    screen = <TodayScreen
-      onNav={(r, params) => {
-        if (r === 'chat') {
-          params?.threadId ? openThread(params.threadId) : beginReflection();
-        } else {
-          setRoute(r);
-        }
-      }}
-      threads={threads}
-      user={user}
-    />;
+    screen = (
+      <TodayScreen
+        onNav={(r, params) => {
+          if (r === 'chat') {
+            params?.threadId ? openThread(params.threadId, params) : beginReflection();
+          } else {
+            setRoute(r);
+          }
+        }}
+        threads={threads}
+        user={user}
+      />
+    );
   }
 
   return (

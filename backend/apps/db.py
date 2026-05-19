@@ -1,11 +1,14 @@
 import os
+import logging
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Iterator
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
+logger = logging.getLogger(__name__)
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -18,10 +21,34 @@ def get_database_url() -> str:
     return database_url
 
 
+_pool: ConnectionPool | None = None
+
+def get_pool() -> ConnectionPool:
+    global _pool
+    if _pool is None:
+        logger.info("Initializing database connection pool...")
+        _pool = ConnectionPool(
+            conninfo=get_database_url(),
+            min_size=2,
+            max_size=20,
+            kwargs={"row_factory": dict_row, "autocommit": False}
+        )
+    return _pool
+
+
 @contextmanager
 def get_connection(*, autocommit: bool = False) -> Iterator[psycopg.Connection]:
-    with psycopg.connect(get_database_url(), row_factory=dict_row, autocommit=autocommit) as conn:
-        yield conn
+    pool = get_pool()
+    with pool.connection() as conn:
+        original_autocommit = conn.autocommit
+        if autocommit != original_autocommit:
+            conn.autocommit = autocommit
+        
+        try:
+            yield conn
+        finally:
+            if conn.autocommit != original_autocommit:
+                conn.autocommit = original_autocommit
 
 
 def init_postgres() -> None:
@@ -117,7 +144,13 @@ def init_postgres() -> None:
                 """
             )
             cur.execute(
-                "ALTER TABLE journal_logs ADD COLUMN IF NOT EXISTS book_id BIGINT"
+                """
+                ALTER TABLE journal_logs
+                ADD COLUMN IF NOT EXISTS book_id BIGINT,
+                ADD COLUMN IF NOT EXISTS core_theme TEXT NOT NULL DEFAULT '',
+                ADD COLUMN IF NOT EXISTS core_beliefs JSONB NOT NULL DEFAULT '[]'::jsonb,
+                ADD COLUMN IF NOT EXISTS triggers JSONB NOT NULL DEFAULT '[]'::jsonb
+                """
             )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_journal_logs_user_date ON journal_logs(user_id, entry_date DESC)"
@@ -144,6 +177,19 @@ def init_postgres() -> None:
                     suggestion TEXT NOT NULL,
                     confidence_score FLOAT NOT NULL DEFAULT 0.0,
                     validation_metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS threads (
+                    thread_id TEXT PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    title TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL,
+                    loop_id UUID,
+                    last_reflected_at TIMESTAMPTZ
                 )
                 """
             )
@@ -185,3 +231,26 @@ def init_postgres() -> None:
                 ON loops(user_id, thread_id)
                 """
             )
+            # Add loop_id and last_reflected_at columns if they don't exist (for existing installations)
+            cur.execute(
+                """
+                ALTER TABLE threads
+                ADD COLUMN IF NOT EXISTS loop_id UUID
+                """
+            )
+            cur.execute(
+                """
+                ALTER TABLE threads
+                ADD COLUMN IF NOT EXISTS last_reflected_at TIMESTAMPTZ
+                """
+            )
+            # Create index on loop_id after ensuring column exists
+            try:
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_threads_loop_id
+                    ON threads(loop_id)
+                    """
+                )
+            except Exception:
+                pass  # Ignore if column doesn't exist yet

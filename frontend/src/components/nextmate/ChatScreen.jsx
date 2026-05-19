@@ -44,7 +44,7 @@ const StatLine = ({ label, value, teal }) => (
   </div>
 );
 
-export const ChatScreen = ({ onNav, threadId, threadTitle, onMessageDone, context }) => {
+export const ChatScreen = ({ onNav, threadId, threadTitle, onMessageDone, context, initialMessage }) => {
   const [draft, setDraft] = useState('');
   const [loops, setLoops] = useState([]);
   const { messages, streaming, status, error, send, loadHistory } = useChatSocket(threadId, { onDone: onMessageDone, context });
@@ -53,11 +53,25 @@ export const ChatScreen = ({ onNav, threadId, threadTitle, onMessageDone, contex
   useEffect(() => {
     if (!threadId) return;
     let off = false;
+    
+    // If we have an initial message from reflection, load it immediately
+    if (initialMessage) {
+      loadHistory([{ role: 'assistant', content: initialMessage, created_at: new Date().toISOString() }]);
+    }
+    
     getThreadMessages(threadId)
-      .then((data) => { if (!off) loadHistory(data.messages); })
+      .then((data) => { 
+        if (!off) {
+          // Only load from database if we don't already have the initial message
+          // or if the database has more messages
+          if (!initialMessage || (data.messages && data.messages.length > 1)) {
+            loadHistory(data.messages);
+          }
+        }
+      })
       .catch(() => {});
     return () => { off = true; };
-  }, [threadId, loadHistory]);
+  }, [threadId, loadHistory, initialMessage]);
 
   const refreshLoops = () => {
     listLoops()

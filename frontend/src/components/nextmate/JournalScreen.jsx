@@ -160,6 +160,7 @@ export const JournalScreen = () => {
   const [moodLabel, setMoodLabel] = useState('');
   const [entryDate, setEntryDate] = useState(todayISO());
   const [saving, setSaving] = useState(false);
+  const [allowLoopDetection, setAllowLoopDetection] = useState(true);
 
   const [showNewBook, setShowNewBook] = useState(false);
   const [newBookName, setNewBookName] = useState('');
@@ -232,6 +233,7 @@ export const JournalScreen = () => {
         entry_date: entryDate || todayISO(),
         auto_translate: false,
         book_id: activeBookId,
+        allow_loop_detection: allowLoopDetection,
       });
       setBody('');
       setMoodLabel('');
@@ -429,6 +431,21 @@ export const JournalScreen = () => {
                     rows={6}
                     className="nm-paper"
                   />
+
+                  <div className="nm-compose-step" style={{ marginTop: 22 }}>04 · Options</div>
+                  <div style={{ marginBottom: 22 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--ink-2)', cursor: 'pointer' }}>
+                      <span className="nm-switch">
+                        <input 
+                          type="checkbox" 
+                          checked={allowLoopDetection} 
+                          onChange={(e) => setAllowLoopDetection(e.target.checked)} 
+                        />
+                        <span className="nm-switch-slider"></span>
+                      </span>
+                      Allow NextMate to analyze this entry for behavioral loops
+                    </label>
+                  </div>
 
                   <div className="nm-compose-foot">
                     <button

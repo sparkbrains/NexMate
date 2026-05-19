@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
-import { getLoop, listLoops, resolveLoop } from '../../lib/api';
+import { getLoop, listLoops, resolveLoop, reflectOnLoop } from '../../lib/api';
 
 const LoopItem = ({ loop, active, onClick }) => (
   <div onClick={onClick} style={{ padding: '10px 12px', borderRadius: 4, cursor: 'pointer', marginBottom: 1, background: active ? 'var(--surface)' : 'transparent', borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent' }}>
@@ -113,6 +113,7 @@ export const LoopsScreen = ({ onNav }) => {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState(null);
   const [resolving, setResolving] = useState(false);
+  const [reflecting, setReflecting] = useState(false);
 
   const fetchList = async (preserveId = null) => {
     setLoadingList(true);
@@ -159,6 +160,25 @@ export const LoopsScreen = ({ onNav }) => {
       setError(e.message || 'Failed to resolve loop');
     } finally {
       setResolving(false);
+    }
+  };
+
+  const handleReflect = async () => {
+    if (!detail) return;
+    setReflecting(true);
+    try {
+      const result = await reflectOnLoop(detail.loop_id);
+      if (result && result.thread_id) {
+        onNav && onNav('chat', { 
+          threadId: result.thread_id, 
+          threadTitle: result.title,
+          initialMessage: result.opening_message 
+        });
+      }
+    } catch (e) {
+      setError(e.message || 'Failed to create reflection thread');
+    } finally {
+      setReflecting(false);
     }
   };
 
@@ -325,8 +345,8 @@ export const LoopsScreen = ({ onNav }) => {
                 </div>
 
                 <div style={{ display: 'flex', gap: 6, marginTop: 22 }}>
-                  <button className="nm-btn accent" onClick={() => onNav && onNav('chat')}>
-                    <Icon name="plus" size={12} /> Reflect on this loop
+                  <button className="nm-btn accent" onClick={handleReflect} disabled={reflecting}>
+                    <Icon name="plus" size={12} /> {reflecting ? 'Creating thread…' : 'Reflect on this loop'}
                   </button>
                   {loop.state !== 'resolved' && (
                     <button className="nm-btn" onClick={handleResolve} disabled={resolving}>
