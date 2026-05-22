@@ -136,11 +136,8 @@ async def get_or_create_daily_question(user_id: int) -> List[Dict[str, Any]]:
             )
             existing = cur.fetchall()
 
-            # If there are pending questions for today, replace them with new ones
-            if existing and any(row["status"] == "pending" for row in existing):
-                replace_today_pending_question(user_id)
-                existing = []  # Reset to create new questions
-            elif existing:
+            # If there are any questions for today, return them
+            if existing:
                 return [
                     {
                         "id": row["id"],
@@ -156,6 +153,7 @@ async def get_or_create_daily_question(user_id: int) -> List[Dict[str, Any]]:
                     }
                     for row in existing
                 ]
+            # Duplicate block removed - existing questions are returned above
 
     # Create new questions from previous day's entries
     entries = get_previous_day_entries(user_id)
