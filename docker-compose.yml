@@ -6,6 +6,7 @@ services:
       POSTGRES_DB: nextmate
       POSTGRES_USER: nextmate_user
       POSTGRES_PASSWORD: nextmate_password
+      POSTGRES_MAX_CONNECTIONS: "200"
     ports:
       - "5434:5432"
     volumes:

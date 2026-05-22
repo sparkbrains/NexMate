@@ -7,13 +7,28 @@ from nextmate_agent.utils.llm import invoke_with_logging, get_chat_model
 
 
 def get_previous_day_entries(user_id: int) -> List[Dict[str, Any]]:
-    """Get all journal entries from the previous day."""
-    yesterday = datetime.now(timezone.utc).date() - timedelta(days=1)
-    start_of_yesterday = datetime.combine(yesterday, datetime.min.time()).replace(tzinfo=timezone.utc)
-    end_of_yesterday = datetime.combine(yesterday, datetime.max.time()).replace(tzinfo=timezone.utc)
-    
+    """Get journal entries from the most recent previous day with entries."""
+    today = datetime.now(timezone.utc).date()
+    start_of_today = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+
     with get_connection() as conn:
         with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT MAX(created_at::date) AS entry_date
+                FROM journal_entries_v2
+                WHERE user_id = %s AND created_at < %s
+                """,
+                (user_id, start_of_today),
+            )
+            row = cur.fetchone()
+            if not row or not row.get("entry_date"):
+                return []
+
+            previous_day = row["entry_date"]
+            start_of_previous_day = datetime.combine(previous_day, datetime.min.time()).replace(tzinfo=timezone.utc)
+            end_of_previous_day = datetime.combine(previous_day, datetime.max.time()).replace(tzinfo=timezone.utc)
+
             cur.execute(
                 """
                 SELECT thread_id, core_theme, user_input, assistant_reply, created_at
@@ -21,7 +36,7 @@ def get_previous_day_entries(user_id: int) -> List[Dict[str, Any]]:
                 WHERE user_id = %s AND created_at BETWEEN %s AND %s
                 ORDER BY created_at DESC
                 """,
-                (user_id, start_of_yesterday, end_of_yesterday),
+                (user_id, start_of_previous_day, end_of_previous_day),
             )
             return cur.fetchall()
 

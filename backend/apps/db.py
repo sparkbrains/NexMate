@@ -30,7 +30,7 @@ def get_pool() -> ConnectionPool:
         _pool = ConnectionPool(
             conninfo=get_database_url(),
             min_size=2,
-            max_size=20,
+            max_size=80,
             kwargs={"row_factory": dict_row, "autocommit": False}
         )
     return _pool

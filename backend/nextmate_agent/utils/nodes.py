@@ -11,17 +11,20 @@ from nextmate_agent.utils.llm import get_chat_model, parse_json_object, invoke_w
 from nextmate_agent.utils.node_logger import log_node
 from nextmate_agent.utils.prompts import (
     CHAT_SYSTEM_PROMPT,
+    EXPLICIT_ADVICE_DETECTION_SYSTEM_PROMPT,
     LOOP_COMPARISON_SYSTEM_PROMPT,
     LOOP_DETECTION_SYSTEM_PROMPT,
     LOOP_RESURFACE_CHECK_SYSTEM_PROMPT,
     SUMMARY_SYSTEM_PROMPT,
     _RESPONSE_MODES,
     build_chat_user_prompt,
+    build_explicit_advice_detection_prompt,
     build_loop_comparison_prompt,
     build_loop_detection_prompt,
     build_loop_resurface_check_prompt,
     build_mode_selection_prompt,
     build_summary_user_prompt,
+    is_explicit_advice_request
 )
 from nextmate_agent.utils.state import NextMateState
 
@@ -384,7 +387,7 @@ def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateS
         if suggestion:
             loops_text.append(f"  suggestion: {suggestion}")
         if thread_count > 1:
-            loops_text.append(f"  🔄 Cross-thread pattern detected across {thread_count} different conversations")
+            loops_text.append(f"  Cross-thread pattern detected across {thread_count} different conversations")
 
         if validated_matches:
             new_loop_info.append(
@@ -433,6 +436,51 @@ def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateS
     }
 
 
+def detect_explicit_advice_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
+    llm = get_chat_model()
+    thread_id = state.get("thread_id", "default")
+    user_input = str(state.get("user_input", ""))
+
+    if not user_input.strip():
+        log_node(
+            thread_id=thread_id,
+            node_name="detect_explicit_advice",
+            inputs={"user_input": user_input},
+            outputs={"explicit_advice_request": False},
+        )
+        return {"explicit_advice_request": False, "response_mode": ""}
+
+    content = build_explicit_advice_detection_prompt(user_input)
+    raw, usage = invoke_with_logging(
+        llm,
+        [
+            {"role": "system", "content": EXPLICIT_ADVICE_DETECTION_SYSTEM_PROMPT},
+            {"role": "user", "content": content},
+        ],
+        "detect_explicit_advice",
+        thread_id,
+    )
+
+    parsed = parse_json_object(raw if isinstance(raw, str) else "")
+    explicit_advice = bool(parsed.get("explicit_advice_request", False))
+    reason = str(parsed.get("reason", "")).strip()
+
+    if not explicit_advice:
+        explicit_advice = is_explicit_advice_request(user_input)
+        if explicit_advice and not reason:
+            reason = "fallback regex matched explicit advice phrasing"
+
+    response_mode = "suggest" if explicit_advice else ""
+
+    log_node(
+        thread_id=thread_id,
+        node_name="detect_explicit_advice",
+        inputs={"user_input": user_input, "prompt": content},
+        outputs={"explicit_advice_request": explicit_advice, "response_mode": response_mode, "reason": reason},
+        extra={"raw_llm_response": raw},
+    )
+    return {"explicit_advice_request": explicit_advice, "response_mode": response_mode}
+
 MODE_SELECTION_SYSTEM_PROMPT = """
 You are a routing classifier. Your job is to pick the single best response mode for a user message.
 Return ONLY the exact mode name from the provided list. No explanation, no markdown.
@@ -445,13 +493,25 @@ def choose_response_mode_node(state: NextMateState) -> NextMateState:
     memory_context = state.get("memory_context", "No prior memory available yet.")
     detected_loops = state.get("detected_loops", "")
     existing_mode = state.get("response_mode", "")
+    explicit_advice = state.get("explicit_advice_request", False)
+    explicit_advice = explicit_advice or is_explicit_advice_request(user_input)
     stored_loops = state.get("stored_loops", [])
     active_loop = state.get("active_loop")
     response_mode_history = state.get("response_mode_history", [])
 
     chat_history = state.get("chat_history", [])
 
-    # If this is a dedicated loop reflection thread and it is the first turn, lock it to pattern_reflect
+    if explicit_advice:
+        log_node(
+            thread_id=thread_id,
+            node_name="choose_response_mode",
+            inputs={"user_input": user_input, "memory_context": memory_context,
+                    "explicit_advice_request": explicit_advice},
+            outputs={"response_mode": "suggest", "response_mode_history": ["suggest"]},
+            extra={"reason": "explicit advice request detected by advice node or regex fallback"},
+        )
+        return {"response_mode": "suggest", "response_mode_history": ["suggest"]}
+
     if active_loop and len(chat_history) <= 1:
         log_node(
             thread_id=thread_id,
@@ -528,6 +588,7 @@ def choose_response_mode_node(state: NextMateState) -> NextMateState:
     else:
         history_context = "No previous messages in this thread yet."
 
+    debug_history = [msg.get("content", "") for msg in recent_history[-3:]]
     llm = get_chat_model()
     content = build_mode_selection_prompt(
         user_input=user_input,
@@ -567,7 +628,14 @@ def choose_response_mode_node(state: NextMateState) -> NextMateState:
     log_node(
         thread_id=thread_id,
         node_name="choose_response_mode",
-        inputs={"user_input": user_input, "memory_context": memory_context, "detected_loops": detected_loops, "prompt": content},
+        inputs={
+            "user_input": user_input,
+            "memory_context": memory_context,
+            "detected_loops": detected_loops,
+            "prompt": content,
+            "chat_history_count": len(chat_history),
+            "recent_history_preview": debug_history,
+        },
         outputs={"response_mode": chosen_mode, "response_mode_history": [chosen_mode]},
         extra={"raw_llm_response": raw},
     )
@@ -590,6 +658,7 @@ def generate_reply_node(state: NextMateState) -> NextMateState:
     else:
         history_context = "No previous messages in this thread yet."
 
+    debug_history = [msg.get("content", "") for msg in recent_history[-3:]]
     detected_loops = state.get("detected_loops", "")
     stored_loops = state.get("stored_loops", [])
     response_mode = state.get("response_mode", "")
@@ -627,6 +696,8 @@ def generate_reply_node(state: NextMateState) -> NextMateState:
             "history_context": history_context,
             "detected_loops": detected_loops,
             "response_mode": response_mode,
+            "chat_history_count": len(recent_history),
+            "recent_history_preview": debug_history,
             "prompt": content,
         },
         outputs={
