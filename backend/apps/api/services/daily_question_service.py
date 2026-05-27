@@ -3,7 +3,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Dict
 from apps.db import get_connection, utc_now
-from nextmate_agent.utils.llm import invoke_with_logging, get_chat_model
+from nextmate_agent.utils.llm import invoke_with_logging, ainvoke_with_logging, get_chat_model
 
 
 def get_previous_day_entries(user_id: int) -> List[Dict[str, Any]]:
@@ -87,7 +87,7 @@ Generate only the natural, rephrased question:"""
     try:
         llm = get_chat_model()
         messages = [{"role": "user", "content": prompt}]
-        content, usage = invoke_with_logging(llm, messages, "daily_question_generation", user_id)
+        content, usage = await ainvoke_with_logging(llm, messages, "daily_question_generation", user_id)
         return content.strip()
     except Exception:
         return "Come back later for today's reflection question."

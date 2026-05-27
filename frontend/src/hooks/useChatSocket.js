@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { chatSocketUrl } from '../lib/api';
 
-export function useChatSocket(threadId, { onDone, context } = {}) {
+export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
   const [messages, setMessages] = useState([]);
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState('idle');
@@ -10,10 +10,15 @@ export function useChatSocket(threadId, { onDone, context } = {}) {
   const wsRef = useRef(null);
   const streamingIdxRef = useRef(null);
   const onDoneRef = useRef(onDone);
+  const onChunkRef = useRef(onChunk);
 
   useEffect(() => {
     onDoneRef.current = onDone;
   }, [onDone]);
+
+  useEffect(() => {
+    onChunkRef.current = onChunk;
+  }, [onChunk]);
 
   useEffect(() => {
     if (!threadId) return;
@@ -60,32 +65,33 @@ export function useChatSocket(threadId, { onDone, context } = {}) {
 
       if (data.event === 'start') {
         setStreaming(true);
-        setMessages((m) => {
-          streamingIdxRef.current = m.length;
-          return [...m, { from: 'nex', text: '' }];
-        });
+        setMessages((m) => [...m, { from: 'nex', text: '' }]);
       } else if (data.event === 'chunk') {
         setMessages((m) => {
-          const i = streamingIdxRef.current;
-          if (i == null) return m;
+          if (m.length === 0) return m;
           const next = m.slice();
-          next[i] = { ...next[i], text: (next[i].text || '') + (data.delta || '') };
+          const i = next.length - 1;
+          if (next[i].from === 'nex') {
+            next[i] = { ...next[i], text: (next[i].text || '') + (data.delta || '') };
+          }
           return next;
         });
+        if (onChunkRef.current) onChunkRef.current(data.delta);
       } else if (data.event === 'done') {
         setStreaming(false);
         setMessages((m) => {
-          const i = streamingIdxRef.current;
-          if (i == null) return m;
+          if (m.length === 0) return m;
           const next = m.slice();
-          next[i] = {
-            ...next[i],
-            text: data.content ?? next[i].text,
-            meta: data.summary?.note,
-          };
+          const i = next.length - 1;
+          if (next[i].from === 'nex') {
+            next[i] = {
+              ...next[i],
+              text: data.content ?? next[i].text,
+              meta: data.summary?.note,
+            };
+          }
           return next;
         });
-        streamingIdxRef.current = null;
         if (onDoneRef.current) onDoneRef.current(data);
       } else if (data.event === 'error') {
         setStreaming(false);
@@ -102,7 +108,7 @@ export function useChatSocket(threadId, { onDone, context } = {}) {
       }
       wsRef.current = null;
     };
-  }, [threadId]);
+  }, [threadId, context]);
 
   const send = useCallback((text) => {
     const ws = wsRef.current;

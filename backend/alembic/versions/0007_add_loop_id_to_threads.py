@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
-from psycopg.types import Jsonb
 
 
 # revision identifiers

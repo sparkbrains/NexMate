@@ -7,3 +7,6 @@ psycopg[binary,pool]
 fastapi
 uvicorn[standard]
 langchain-groq
+line_profiler
+requests
+faster-whisper

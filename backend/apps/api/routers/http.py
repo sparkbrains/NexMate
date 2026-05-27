@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from apps.api.deps.auth import get_current_user
 from apps.api.services.auth_service import User
@@ -9,6 +9,7 @@ from apps.api.services.thread_service import (
     get_thread_messages,
     list_threads,
 )
+from apps.api.services.transcription_service import transcribe_audio
 
 
 router = APIRouter()
@@ -41,3 +42,25 @@ def delete_thread(thread_id: str, current_user: User = Depends(get_current_user)
     if not cleaned_thread_id:
         raise HTTPException(status_code=400, detail="Invalid thread_id")
     return delete_thread_everywhere(current_user.id, cleaned_thread_id)
+
+
+@router.post("/api/transcribe")
+async def transcribe_endpoint(request: Request, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+
+    try:
+        body = await request.body()
+        if not body or len(body) == 0:
+            raise HTTPException(status_code=400, detail="No audio data provided")
+        
+        result = await transcribe_audio(body)
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result.get("error", "Transcription failed"))
+        
+        return {
+            "success": True,
+            "transcript": result["transcript"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription error: {str(e)}")

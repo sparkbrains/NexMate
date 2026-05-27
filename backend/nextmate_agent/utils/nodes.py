@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 from psycopg.types.json import Jsonb
 from apps.db import get_connection
 from nextmate_agent.utils.config import get_settings
-from nextmate_agent.utils.llm import get_chat_model, parse_json_object, invoke_with_logging
+from nextmate_agent.utils.llm import get_chat_model, parse_json_object, invoke_with_logging, ainvoke_with_logging, profile
 from nextmate_agent.utils.node_logger import log_node
 from nextmate_agent.utils.prompts import (
     CHAT_SYSTEM_PROMPT,
@@ -24,7 +24,7 @@ from nextmate_agent.utils.prompts import (
     build_loop_resurface_check_prompt,
     build_mode_selection_prompt,
     build_summary_user_prompt,
-    is_explicit_advice_request
+
 )
 from nextmate_agent.utils.state import NextMateState
 
@@ -465,11 +465,6 @@ def detect_explicit_advice_node(state: NextMateState, config: RunnableConfig) ->
     explicit_advice = bool(parsed.get("explicit_advice_request", False))
     reason = str(parsed.get("reason", "")).strip()
 
-    if not explicit_advice:
-        explicit_advice = is_explicit_advice_request(user_input)
-        if explicit_advice and not reason:
-            reason = "fallback regex matched explicit advice phrasing"
-
     response_mode = "suggest" if explicit_advice else ""
 
     log_node(
@@ -494,7 +489,6 @@ def choose_response_mode_node(state: NextMateState) -> NextMateState:
     detected_loops = state.get("detected_loops", "")
     existing_mode = state.get("response_mode", "")
     explicit_advice = state.get("explicit_advice_request", False)
-    explicit_advice = explicit_advice or is_explicit_advice_request(user_input)
     stored_loops = state.get("stored_loops", [])
     active_loop = state.get("active_loop")
     response_mode_history = state.get("response_mode_history", [])
@@ -559,6 +553,11 @@ def choose_response_mode_node(state: NextMateState) -> NextMateState:
                 extra={"reason": f"LLM resurface check matched: {matched_name}", "raw_llm_response": resurface_raw},
             )
             return {"response_mode": "pattern_reflect", "detected_loops": matched_loop_text, "response_mode_history": ["pattern_reflect"]}
+
+    # Register all node functions with the line profiler
+    for _name, _func in list(globals().items()):
+        if callable(_func) and _name.endswith("_node"):
+            profile(_func)
 
     # Filter allowed modes to prevent repetitive pattern callbacks or alerts in the same thread
     allowed_modes = list(_RESPONSE_MODES)

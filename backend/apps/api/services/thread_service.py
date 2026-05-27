@@ -42,6 +42,27 @@ def summarize_thread_messages(messages: list[dict[str, Any]], thread_id: str) ->
     if not messages:
         return "New thread"
 
+    def _short_title(text: str, max_words: int = 6, max_chars: int = 40) -> str:
+        title = " ".join(str(text or "").replace("\n", " ").split()).strip().strip('"').strip("'")
+        if not title:
+            return "New thread"
+
+        words = title.split()
+        if len(words) > max_words:
+            title = " ".join(words[:max_words])
+
+        if len(title) > max_chars:
+            title = title[:max_chars].rstrip()
+
+        # Avoid ending on a trailing conjunction or article
+        bad_tail = {"and", "or", "but", "so", "for", "nor", "yet", "with", "to", "the", "a", "an"}
+        tail_words = title.split()
+        while len(tail_words) > 1 and tail_words[-1].lower() in bad_tail:
+            tail_words = tail_words[:-1]
+            title = " ".join(tail_words)
+
+        return title or "New thread"
+
     # Take first 4 messages
     first_messages = messages[:4]
 
@@ -64,47 +85,40 @@ def summarize_thread_messages(messages: list[dict[str, Any]], thread_id: str) ->
             llm = get_chat_model()
             system_prompt = """You create concise, meaningful titles for conversations.
 Return ONLY the title as plain text. No quotes, no markdown, no explanation.
-The title should be 3-8 words capturing the essence of the conversation."""
+Use all four example messages together; do not base the title only on the first message.
+The title should be 3-6 words and no more than 40 characters."""
 
-            user_prompt = f"""Create a short title for this conversation:
+            user_prompt = f"""Create a short title for this conversation using all four messages below:
 
 {conversation_text}
 
-Return ONLY the title. 3-8 words maximum."""
+Return ONLY the title. 3-6 words maximum and no more than 40 characters."""
 
             response, _ = invoke_with_logging(
-            llm,
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "thread_title_generation",
-            thread_id,
-        )
+                llm,
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                "thread_title_generation",
+                thread_id,
+            )
 
-            title = str(response).strip()
-            if title and len(title) > 0:
-                # Truncate to 56 characters if needed
-                if len(title) > 56:
-                    title = title[:56] + "…"
+            title = _short_title(str(response))
+            if title and title != "New thread":
                 return title
-        except Exception as e:
+        except Exception:
             # Fallback if summarization fails
             pass
 
-    # Fallback: use first user message, or first assistant message if no user messages
-    user_messages = [str(m["content"]).strip() for m in messages if str(m.get("role")) == "user"]
-    user_messages = [m for m in user_messages if m]
-    if user_messages:
-        title = user_messages[0]
+    # Fallback: derive a short phrase from the first 4 messages rather than only the first message
+    fallback_contents = [str(m.get("content", "")).strip() for m in first_messages if str(m.get("content", "")).strip()]
+    if fallback_contents:
+        title = " | ".join(fallback_contents[:4])
     else:
-        # If no user messages, use the first message regardless of role
-        all_contents = [str(m.get("content", "")).strip() for m in messages if m.get("content")]
-        title = all_contents[0] if all_contents else "New thread"
+        title = "New thread"
 
-    if len(title) > 56:
-        title = title[:56] + "…"
-    return title
+    return _short_title(title)
 
 
 def save_thread_title(user_id: int, thread_id: str, title: str) -> None:
@@ -260,16 +274,14 @@ def list_threads(user_id: int) -> list[dict[str, Any]]:
         title = None
         
         # Check if we should (re)summarize now
-        should_summarize = len(items) >= 8
+        should_summarize = len(items) >= 4
         is_cached_placeholder = cached_title in ("New thread", "Untitled") or (cached_title and cached_title.startswith("Daily Question:"))
-        
-        if should_summarize:
-            if not cached_title or is_cached_placeholder:
-                title = summarize_thread_messages(items, raw_tid)
-                save_thread_title(user_id, raw_tid, title)
-            else:
-                title = cached_title
-        
+
+        if should_summarize and (not cached_title or is_cached_placeholder):
+            title = summarize_thread_messages(items, raw_tid)
+            save_thread_title(user_id, raw_tid, title)
+        elif cached_title:
+            title = cached_title
         if not title:
             if core_theme:
                 title = core_theme

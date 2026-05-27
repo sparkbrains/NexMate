@@ -5,8 +5,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from apps.db import get_database_url
-from apps.env_loader import load_runtime_env
+from backend.apps.db import get_database_url
+from backend.apps.env_loader import load_runtime_env
 
 
 load_runtime_env()
