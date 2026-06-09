@@ -8,6 +8,7 @@ import { InsightsScreen, WeeklyScreen } from './components/nextmate/DataScreens'
 import { JournalScreen } from './components/nextmate/JournalScreen';
 import { AuthGate } from './components/nextmate/AuthGate';
 import { clearSession, getToken, getUser, listThreads } from './lib/api';
+import { AppContext } from './context';
 
 const newThreadId = () =>
   (crypto.randomUUID ? crypto.randomUUID() : `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
@@ -18,6 +19,26 @@ export default function App() {
   const [threads, setThreads] = useState([]);
   const [threadId, setThreadId] = useState(null);
   const [chatParams, setChatParams] = useState(null);
+
+  // Theme state
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('nextmate_theme');
+    return saved === 'light' ? 'light' : 'dark';
+  });
+
+  // Mobile sidebar open state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('nextmate_theme', theme);
+  }, [theme]);
+
+  // Close sidebar drawer on route change
+  const navigateTo = (r) => {
+    setRoute(r);
+    setSidebarOpen(false);
+  };
 
   const refreshThreads = useCallback(async () => {
     try {
@@ -35,7 +56,7 @@ export default function App() {
   const openThread = (id, params = null) => {
     setThreadId(id);
     setChatParams(params);
-    setRoute('chat');
+    navigateTo('chat');
   };
 
   const beginReflection = () => {
@@ -48,7 +69,7 @@ export default function App() {
     setThreads([]);
     setThreadId(null);
     setChatParams(null);
-    setRoute('today');
+    navigateTo('today');
   };
 
   if (!user) return <AuthGate onAuth={setUser} />;
@@ -59,7 +80,7 @@ export default function App() {
   if (route === 'chat') {
     screen = (
       <ChatScreen
-        onNav={setRoute}
+        onNav={navigateTo}
         threadId={threadId}
         threadTitle={chatParams?.threadTitle || activeThread?.title}
         initialMessage={chatParams?.initialMessage}
@@ -75,7 +96,7 @@ export default function App() {
           if (r === 'chat') {
             params?.threadId ? openThread(params.threadId, params) : beginReflection();
           } else {
-            setRoute(r);
+            navigateTo(r);
           }
         }}
       />
@@ -91,7 +112,7 @@ export default function App() {
           if (r === 'chat') {
             params?.threadId ? openThread(params.threadId, params) : beginReflection();
           } else {
-            setRoute(r);
+            navigateTo(r);
           }
         }}
         threads={threads}
@@ -101,18 +122,20 @@ export default function App() {
   }
 
   return (
-    <div className="nm-app" data-screen-label={`Nextmate — ${route}`}>
-      <Sidebar
-        active={route}
-        onNav={setRoute}
-        threads={threads}
-        activeThreadId={threadId}
-        onSelectThread={openThread}
-        onNewThread={beginReflection}
-        user={user}
-        onLogout={onLogout}
-      />
-      {screen}
-    </div>
+    <AppContext.Provider value={{ theme, setTheme, sidebarOpen, setSidebarOpen }}>
+      <div className="nm-app" data-screen-label={`Nextmate — ${route}`}>
+        <Sidebar
+          active={route}
+          onNav={navigateTo}
+          threads={threads}
+          activeThreadId={threadId}
+          onSelectThread={openThread}
+          onNewThread={beginReflection}
+          user={user}
+          onLogout={onLogout}
+        />
+        {screen}
+      </div>
+    </AppContext.Provider>
   );
 }

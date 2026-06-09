@@ -1,28 +1,132 @@
-@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+/* Nextmate — Core Design Tokens & CSS Reset */
 
-html,
-body,
-#root {
+:root {
+  /* Obsidian Dark — richer, more diverse warm tones */
+  --paper:    #1a0f07;
+  --paper-2:  #2a1a0d;
+  --paper-3:  #3d2a18;
+  --surface:  #1e1208;
+  --surface-2: #2c1c10;
+  --surface-3: #3a2619;
+
+  --ink:   #f7f0e8;
+  --ink-2: #d4b896;
+  --ink-3: #8c6e52;
+  --ink-4: #6c5040;
+
+  --rule:      rgba(247, 240, 232, 0.08);
+  --rule-soft: rgba(247, 240, 232, 0.04);
+
+  --accent:      #d97c4a;
+  --accent-2:    #bc5e2e;
+  --accent-soft: rgba(217, 124, 74, 0.2);
+  --accent-wash: rgba(217, 124, 74, 0.06);
+
+  --teal:      #2db896;
+  --teal-soft: rgba(45, 184, 150, 0.15);
+  --sage:      #7aad6e;
+  --sage-soft: rgba(122, 173, 110, 0.15);
+
+  --clay: #c97c3a;
+  --gold: #d4a843;
+  --plum: #b87ac4;
+
+  --loop-strong: #d97c4a;
+  --loop-medium: #c97c3a;
+  --loop-light:  #4a3224;
+
+
+  --font-serif: "Plus Jakarta Sans", "Inter", sans-serif;
+  --font-sans: "Inter", -apple-system, sans-serif;
+  --font-display: "Plus Jakarta Sans", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --radius: 8px;
+  --radius-lg: 16px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+
+[data-theme="light"] {
+  --paper:    #fdf6ee;
+  --paper-2:  #f5ece0;
+  --paper-3:  #ede0d0;
+  --surface:  #ffffff;
+  --surface-2: #fdf6ee;
+  --surface-3: #f5ece0;
+
+  --ink:   #2d1a0a;
+  --ink-2: #7a4c28;
+  --ink-3: #b87c4e;
+  --ink-4: #886a4d;
+
+  --rule:      rgba(45, 26, 10, 0.08);
+  --rule-soft: rgba(45, 26, 10, 0.04);
+
+  --accent:      #c45e2a;
+  --accent-2:    #a34420;
+  --accent-soft: rgba(196, 94, 42, 0.15);
+  --accent-wash: rgba(196, 94, 42, 0.04);
+
+  --teal:      #1a9e7c;
+  --teal-soft: rgba(26, 158, 124, 0.12);
+  --sage:      #5c9450;
+  --sage-soft: rgba(92, 148, 80, 0.12);
+
+  --clay: #b86e2a;
+  --gold: #c49230;
+  --plum: #9c5eb8;
+
+  --loop-strong: #c45e2a;
+  --loop-medium: #b86e2a;
+  --loop-light:  #d9b99a;
+
+  --shadow-sm: 0 1px 2px rgba(45, 26, 10, 0.06);
+  --shadow:    0 8px 32px rgba(45, 26, 10, 0.08), 0 0 0 1px rgba(45, 26, 10, 0.04);
+}
+
+::selection {
+  background: var(--paper-2); 
+  color: var(--ink);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+}
+
+html, body, #root {
   width: 100%;
-  min-height: 100%;
+  height: 100%;
   margin: 0;
+  padding: 0;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  font-family: "Inter", sans-serif;
-  color: #1a1512;
-  background:
-    radial-gradient(circle at top left, rgba(214, 107, 74, 0.12), transparent 32%),
-    radial-gradient(circle at bottom right, rgba(217, 180, 135, 0.18), transparent 28%),
-    #efe4d2;
-}
-
-button,
-input,
-textarea {
-  font: inherit;
-}
-
-button {
+button, input, textarea, select {
+  font-family: inherit;
+  font-size: inherit;
   color: inherit;
+}
+
+/* Scrollbar customization */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-4);
 }

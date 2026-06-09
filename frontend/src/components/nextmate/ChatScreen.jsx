@@ -3,27 +3,37 @@ import { Icon, TopBar, LoopRing } from './Shell';
 import { useChatSocket } from '../../hooks/useChatSocket';
 import { getThreadMessages, listLoops } from '../../lib/api';
 
-const Msg = ({ from, text, meta, quoted, choices }) => {
-  if (from === 'me') return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-      <div
-        style={{
-          maxWidth: '78%',
-          background: 'var(--ink)',
-          color: 'var(--paper)',
-          padding: '11px 15px',
-          borderRadius: '14px 14px 3px 14px',
-          fontSize: 14.5,
-          lineHeight: 1.5,
-          whiteSpace: 'pre-wrap',
-        }}
-      >
-        {text}
+const Msg = ({ from, text, meta, quoted, choices, className }) => {
+  const containerStyle = {
+    display: from === 'me' ? 'flex' : 'flex',
+    justifyContent: from === 'me' ? 'flex-end' : 'flex-start',
+    marginBottom: from === 'me' ? 16 : 22,
+    gap: from === 'me' ? undefined : 12,
+    ...(className ? {} : {}),
+  };
+
+  if (from === 'me') {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }} className={className}>
+        <div
+          style={{
+            maxWidth: '78%',
+            background: 'var(--ink)',
+            color: 'var(--paper)',
+            padding: '11px 15px',
+            borderRadius: '14px 14px 3px 14px',
+            fontSize: 14.5,
+            lineHeight: 1.5,
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {text}
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
   return (
-    <div className="nm-fade-up" style={{ display: 'flex', gap: 12, marginBottom: 22 }}>
+    <div className={`nm-fade-up ${className || ''}`} style={{ display: 'flex', gap: 12, marginBottom: 22 }}>
       <div
         style={{
           width: 28,
@@ -148,6 +158,8 @@ export const ChatScreen = ({
   const [voiceGender, setVoiceGender] = useState('female'); // 'female' | 'male' | 'custom'
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
+  const [showSidePanel, setShowSidePanel] = useState(true);
+
   const recognitionRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
@@ -156,6 +168,7 @@ export const ChatScreen = ({
   const voiceInterimRef = useRef('');
   const scrollRef = useRef(null);
   const unspokenTextRef = useRef('');
+
 
   const { messages, streaming, status, error, send, loadHistory } = useChatSocket(threadId, {
     onChunk: (delta) => {
@@ -207,7 +220,8 @@ export const ChatScreen = ({
     };
   }, []);
 
-  // Browser TTS helper
+
+
   const speakText = (text, cancelPrevious = true) => {
     if (!window.speechSynthesis) {
       console.warn('Speech synthesis not supported');
@@ -222,31 +236,50 @@ export const ChatScreen = ({
     const voices = window.speechSynthesis.getVoices();
 
     let voice = null;
+        // Select voice based on gender without hard‑coded names
+    const getVoiceByGender = (gender) => {
+      // Detect platform via userAgent
+      const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+      const isWindows = ua.includes('Windows');
+      const isMac = ua.includes('Mac');
+
+      // Platform‑specific preferred voice names
+      const platformPreferred = [];
+      if (isWindows) {
+        if (gender === 'female') platformPreferred.push('Zira', 'Microsoft Zira Desktop');
+        if (gender === 'male') platformPreferred.push('David', 'Microsoft David Desktop');
+      } else if (isMac) {
+        if (gender === 'female') platformPreferred.push('Samantha');
+        if (gender === 'male') platformPreferred.push('Alex');
+      }
+
+      // Try platform‑specific names first
+      for (const name of platformPreferred) {
+        const v = voices.find((v) => v.name && v.name.includes(name));
+        if (v) return v;
+      }
+
+      const genderKey = gender.toLowerCase();
+      const matched = voices.filter((v) => v.name && v.name.toLowerCase().includes(genderKey));
+      const enMatched = matched.filter((v) => v.lang && v.lang.toLowerCase().startsWith('en'));
+      if (enMatched.length) return enMatched[0];
+      if (matched.length) return matched[0];
+
+      const enVoices = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith('en'));
+      return enVoices[0] || voices.find((v) => v.default) || null;
+    };
 
     if (voiceGender === 'custom' && selectedVoiceName) {
       // Use the explicitly chosen voice
       voice = voices.find((v) => v.name === selectedVoiceName) || null;
-    } else if (voiceGender === 'female') {
-      voice =
-        voices.find((v) => v.name.toLowerCase().includes('female')) ||
-        voices.find((v) => v.name.toLowerCase().includes('zira')) ||
-        voices.find((v) => v.name.toLowerCase().includes('samantha')) ||
-        voices.find((v) => v.name.toLowerCase().includes('google us english')) ||
-        voices.find((v) => v.name.toLowerCase().includes('assistant')) ||
-        null;
-    } else if (voiceGender === 'male') {
-      voice =
-        voices.find((v) => v.name.toLowerCase().includes('male')) ||
-        voices.find((v) => v.name.toLowerCase().includes('david')) ||
-        voices.find((v) => v.name.toLowerCase().includes('alex')) ||
-        voices.find((v) => v.name.toLowerCase().includes('google uk english male')) ||
-        voices.find((v) => v.name.toLowerCase().includes('daniel')) ||
-        null;
+    } else {
+      // Dynamically pick a voice based on gender
+      voice = getVoiceByGender(voiceGender);
     }
 
     utterance.voice = voice || voices.find((v) => v.default) || null;
     utterance.lang = 'en-US';
-    utterance.rate = 1.25;
+    utterance.rate = 0.80;
     utterance.pitch = 0.95;
     utterance.volume = 1.0;
 
@@ -517,9 +550,9 @@ export const ChatScreen = ({
           <span className="nm-dot" />
           {status === 'open' ? 'live' : status}
         </span>
-        <button className="nm-btn">
-          <Icon name="more" size={12} />
-        </button>
+
+        {/* Side panel toggle */}
+        
       </TopBar>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
@@ -547,7 +580,7 @@ export const ChatScreen = ({
               />
             </div>
             {messages.map((m, i) => (
-              <Msg key={i} {...m} />
+              <Msg key={i} {...m} className="nm-msg" />
             ))}
             {streaming && (
               <div
@@ -571,7 +604,8 @@ export const ChatScreen = ({
           </div>
         </div>
 
-        <aside
+        <div
+          className={`nm-side-panel${showSidePanel ? '' : ' collapsed'}`}
           style={{
             width: 300,
             flexShrink: 0,
@@ -636,7 +670,7 @@ export const ChatScreen = ({
           <div className="nm-meta" style={{ lineHeight: 1.5, color: 'var(--ink-4)' }}>
             Nextmate doesn't provide clinical advice. Safety screens run on every message.
           </div>
-        </aside>
+        </div>
       </div>
 
       <div style={{ borderTop: '1px solid var(--rule)', padding: '14px 40px', background: 'var(--surface)' }}>
@@ -671,6 +705,7 @@ export const ChatScreen = ({
               gap: 6,
               background: recording ? 'var(--accent)' : undefined,
               color: recording ? '#fff' : undefined,
+              animation: recording ? 'nm-pulse 1.2s infinite' : undefined,
             }}
           >
             <Icon name="mic" />
@@ -696,21 +731,8 @@ export const ChatScreen = ({
             disabled={!threadId}
             style={{ minHeight: 42, maxHeight: 140, padding: '10px 14px', fontSize: 15 }}
           />
-          <button
-            className="nm-btn primary"
-            onClick={submit}
-            disabled={!threadId || streaming || status !== 'open'}
-            style={{ padding: '8px 14px' }}
-          >
-            <Icon name="arrow" />
-          </button>
         </div>
 
-        {recording && (
-          <div className="nm-meta" style={{ marginTop: 10, marginLeft: 6 }}>
-            Listening… Speak now to add your message.
-          </div>
-        )}
         {!recording && voiceError && (
           <div className="nm-meta" style={{ marginTop: 10, marginLeft: 6, color: 'var(--accent)' }}>
             {voiceError}

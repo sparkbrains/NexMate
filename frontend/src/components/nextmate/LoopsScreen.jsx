@@ -207,9 +207,6 @@ export const LoopsScreen = ({ onNav }) => {
             </p>
             {error && <p className="nm-meta" style={{ color: 'var(--accent)', marginTop: 14 }}>{error}</p>}
             <div style={{ marginTop: 28 }}>
-              <button className="nm-btn primary" onClick={() => onNav && onNav('chat')}>
-                <Icon name="plus" size={12} /> Begin reflection
-              </button>
             </div>
           </div>
         </div>
@@ -222,8 +219,8 @@ export const LoopsScreen = ({ onNav }) => {
   return (
     <div className="nm-main">
       <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Loops</b></>}>
-        <button className="nm-btn"><Icon name="search" size={12} /> Filter</button>
-        <button className="nm-btn"><Icon name="download" size={12} /> Export</button>
+
+
       </TopBar>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>

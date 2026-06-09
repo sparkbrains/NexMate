@@ -23,8 +23,6 @@ const EmotionChart = ({ trend }) => {
   const w = 600, h = 170;
   const dx = days > 1 ? w / (days - 1) : w;
 
-  // Build stacked mood bands per day (normalized to mood mix proportions per day, weighted by entry count)
-  // Collect all moods seen
   const moodSet = new Set();
   trend.forEach((d) => Object.keys(d.moods || {}).forEach((m) => moodSet.add(m)));
   const moods = [...moodSet];
@@ -223,7 +221,7 @@ export const InsightsScreen = () => {
             </button>
           ))}
         </div>
-        <button className="nm-btn"><Icon name="download" size={12} /> Export</button>
+        
       </TopBar>
 
       <div className="nm-content">
@@ -358,7 +356,6 @@ export const WeeklyScreen = () => {
   return (
     <div className="nm-main">
       <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Weekly report</b></>}>
-        <button className="nm-btn primary"><Icon name="download" size={12} /> PDF</button>
       </TopBar>
       <div className="nm-content">
         <div style={{ maxWidth: 760, margin: '0 auto' }} className="nm-fade-up">
