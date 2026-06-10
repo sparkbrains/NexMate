@@ -1,10 +1,10 @@
-
 import { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './components/nextmate/Shell';
 import { TodayScreen } from './components/nextmate/TodayScreen';
 import { ChatScreen } from './components/nextmate/ChatScreen';
 import { LoopsScreen } from './components/nextmate/LoopsScreen';
-import { InsightsScreen, WeeklyScreen } from './components/nextmate/DataScreens';
+import { InsightsScreen } from './components/nextmate/DataScreens';
+
 import { JournalScreen } from './components/nextmate/JournalScreen';
 import { AuthGate } from './components/nextmate/AuthGate';
 import { clearSession, getToken, getUser, listThreads } from './lib/api';
@@ -103,8 +103,6 @@ export default function App() {
     );
   } else if (route === 'insights') {
     screen = <InsightsScreen />;
-  } else if (route === 'weekly') {
-    screen = <WeeklyScreen />;
   } else {
     screen = (
       <TodayScreen

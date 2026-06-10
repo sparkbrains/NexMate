@@ -84,6 +84,7 @@ Schema:
 }
 
 Rules:
+- intensity: ALWAYS include an integer 1-10 field named "intensity".
 - core_theme: NOT "work stress" or "family conflict" — go deeper, e.g. "feels their competence is being questioned and spirals into self-blame"
 - core_beliefs: internal self-talk or worldviews. Examples: "feeling incompetent", "fear of being abandoned", "need to control outcomes", "narcissistic wound"
 - triggers: external situations or relationship domains. Examples: "work deadline", "parent criticism", "partner distance", "social comparison", "alone time"

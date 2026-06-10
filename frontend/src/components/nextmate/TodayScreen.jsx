@@ -26,33 +26,48 @@ const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last
   </div>
 );
 
+const colorFor = (e) => ({
+  overwhelm: 'var(--accent)', anxious: 'var(--clay)', stressed: 'var(--clay)',
+  negative: 'var(--accent)', very_negative: 'var(--accent)', mixed: 'var(--clay)',
+  tired: 'var(--ink-4)', neutral: 'var(--ink-4)',
+  calm: 'var(--teal)', hopeful: 'var(--teal)', positive: 'var(--teal)', very_positive: 'var(--teal)'
+}[e] || 'var(--ink-4)');
+
+const intensityColor = (i) => {
+  if (i == null) return 'var(--ink-4)';
+  if (i >= 7) return 'var(--accent)';
+  if (i >= 4) return 'var(--clay)';
+  return 'var(--teal)';
+};
+
+const DayByDayIntensity = ({ days }) => (
+  <div style={{ display: 'flex', gap: 8 }}>
+    {days.map((d) => (
+      <div key={d.day} style={{ flex: 1, textAlign: 'center' }}>
+        <div style={{
+          height: 80,
+          background: intensityColor(d.avg_intensity),
+          border: d.dominant_mood ? 'none' : '1px dashed var(--rule)',
+          opacity: d.avg_intensity ? 0.35 + (d.avg_intensity / 10) * 0.6 : 0.5,
+          borderRadius: 2,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          {d.avg_intensity != null && (
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--ink)' }}>{d.avg_intensity}</span>
+          )}
+        </div>
+        <div className="nm-meta" style={{ marginTop: 6 }}>{d.weekday}</div>
+        <div style={{ fontSize: 11, color: 'var(--ink-2)' }}>{d.dominant_mood || '—'}</div>
+      </div>
+    ))}
+  </div>
+);
+
 const WeekDots = ({ days }) => {
-  const colorFor = (e) => ({
-    overwhelm: 'var(--accent)', anxious: 'var(--clay)', stressed: 'var(--clay)',
-    negative: 'var(--accent)', very_negative: 'var(--accent)', mixed: 'var(--clay)',
-    tired: 'var(--ink-4)', neutral: 'var(--ink-4)',
-    calm: 'var(--teal)', hopeful: 'var(--teal)', positive: 'var(--teal)', very_positive: 'var(--teal)',
-  }[e] || 'var(--ink-4)');
-  return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
-      {days.map((d, i) => {
-        const v = d.avg_intensity;
-        const e = d.dominant_mood;
-        return (
-          <div key={i} style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{
-              height: v ? 34 + v * 4 : 14,
-              background: v ? colorFor(e) : 'transparent',
-              border: v ? 'none' : '1px dashed rgba(255,255,255,0.15)',
-              opacity: v ? 0.4 + (v / 10) * 0.6 : 1,
-              borderRadius: 2,
-            }} />
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-4)', marginTop: 5 }}>{d.weekday?.[0] || '·'}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
+  // Legacy component kept for backward compatibility; render nothing.
+  return null;
 };
 
 const TriggerBar = ({ label, pct, color, last }) => (
@@ -206,8 +221,6 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   return (
     <div className="nm-main">
       <TopBar crumb={<><b>Today</b> <span className="sep">/</span> {dateLabel}</>}>
-
-        <button className="nm-btn primary" onClick={() => onNav && onNav('chat')}><Icon name="plus" size={12} /> Begin reflection</button>
       </TopBar>
 
       <div className="nm-content">
@@ -311,7 +324,7 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
                 days with reflections
               </div>
 
-              <WeekDots days={weekDays} />
+              <DayByDayIntensity days={weekDays} />
 
               <div
                 className="nm-hr"

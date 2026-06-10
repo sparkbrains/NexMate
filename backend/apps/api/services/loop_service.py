@@ -24,21 +24,43 @@ def _strength(detection_count: int, matched_entries: list[dict[str, Any]]) -> fl
     count = max(detection_count, len(matched_entries))
     count_factor = min(1.0, count / 10.0)
 
-    # 2. Intensity factor: average intensity of all matched entries.
-    intensities = []
+    # 2. Intensity factor: weighted average intensity of all matched entries, weighted by recency.
+    now = datetime.now(timezone.utc)
+    weighted_sum = 0.0
+    total_weight = 0.0
     for entry in matched_entries:
-        if isinstance(entry, dict):
-            val = entry.get("intensity")
-            if val is not None:
-                try:
-                    intensities.append(float(val))
-                except (ValueError, TypeError):
-                    pass
-    if not intensities:
+        if not isinstance(entry, dict):
+            continue
+        val = entry.get("intensity")
+        if val is None:
+            continue
+        try:
+            intensity = float(val)
+        except (ValueError, TypeError):
+            continue
+        # Determine recency weight (exponential decay, half-life ~7 days). Adjust decay factor as needed.
+        date_str = entry.get("date")
+        weight = 1.0
+        if isinstance(date_str, str) and date_str:
+            try:
+                entry_dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                # Ensure timezone-aware UTC
+                if entry_dt.tzinfo is None:
+                    entry_dt = entry_dt.replace(tzinfo=timezone.utc)
+                days_ago = (now - entry_dt).days
+                # Decay factor: recent entries have weight close to 1, older decay exponentially.
+                decay_rate = 0.85  # per day decay; tweak for desired speed
+                weight = decay_rate ** days_ago
+            except Exception:
+                weight = 1.0
+        weighted_sum += intensity * weight
+        total_weight += weight
+
+    if total_weight == 0:
         avg_intensity = 5.0
     else:
-        avg_intensity = sum(intensities) / len(intensities)
-    
+        avg_intensity = weighted_sum / total_weight
+
     # Scale avg_intensity to 0-1 range (intensity is on a 1-10 scale)
     intensity_factor = avg_intensity / 10.0
 

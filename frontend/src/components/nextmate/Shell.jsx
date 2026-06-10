@@ -96,7 +96,7 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
         <NavItem icon="book" label="Journal" k="journal" active={active} onNav={onNav} />
         <NavItem icon="loops" label="Loops" k="loops" active={active} onNav={onNav} />
         <NavItem icon="insights" label="Insights" k="insights" active={active} onNav={onNav} />
-        <NavItem icon="weekly" label="Weekly" k="weekly" active={active} onNav={onNav} />
+
 
         <div className="nm-nav-section">Threads · {threads.length}</div>
         <div className="nm-threads">
