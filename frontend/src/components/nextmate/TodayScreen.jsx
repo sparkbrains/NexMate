@@ -26,7 +26,6 @@ const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last
     </div>
   </div>
 );
-
 const WeekDots = ({ days }) => {
   const colorFor = (e) => ({
     overwhelm: 'var(--accent)', anxious: 'var(--clay)', stressed: 'var(--clay)',
