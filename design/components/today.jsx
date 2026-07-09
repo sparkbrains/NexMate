@@ -68,9 +68,9 @@ const TodayScreen = ({ onNav }) => (
             <div className="nm-eyebrow" style={{ marginBottom: 16 }}>This week · so far</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
               <div style={{ fontFamily: 'var(--font-display)', fontSize: 54, lineHeight: 1, letterSpacing: '-0.03em' }}>6</div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--ink-4)' }}>of 7</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--ink-1)' }}>of 7</div>
             </div>
-            <div className="nm-body" style={{ color: 'var(--ink-4)', marginBottom: 20 }}>days with reflections</div>
+            <div className="nm-body" style={{ color: 'var(--ink-1)', marginBottom: 20 }}>days with reflections</div>
 
             <WeekDots days={[
               { v: 7, e: 'overwhelm' }, { v: 7, e: 'anxious' }, { v: 9, e: 'overwhelm' },

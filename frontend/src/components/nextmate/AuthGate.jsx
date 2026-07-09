@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
-import { login, signup } from '../../lib/api';
-import { BrandMark } from './Shell';
+import { useMemo, useState } from "react";
+import { login, signup } from "../../lib/api";
+import { BrandMark } from "./Shell";
+import LogoIco from "../../assets/ic_logo.svg";
 
 const QUOTES = [
   "The thought you keep circling is trying to tell you something.",
@@ -10,23 +11,38 @@ const QUOTES = [
 ];
 
 const HeroMark = () => (
-  <svg className="nm-breathe" width="72" height="72" viewBox="0 0 72 72" aria-hidden>
+  <svg
+    className="nm-breathe"
+    width="72"
+    height="72"
+    viewBox="0 0 72 72"
+    aria-hidden
+  >
     <defs>
       <linearGradient id="nm-arc" x1="0" y1="0" x2="1" y2="1">
         <stop offset="0%" stopColor="var(--accent)" />
         <stop offset="100%" stopColor="var(--accent-2)" />
       </linearGradient>
     </defs>
-    <circle cx="36" cy="36" r="30" fill="none" stroke="var(--rule)" strokeWidth="1" />
     <circle
-      cx="36" cy="36" r="30"
+      cx="36"
+      cy="36"
+      r="30"
+      fill="none"
+      stroke="var(--rule)"
+      strokeWidth="1"
+    />
+    <circle
+      cx="36"
+      cy="36"
+      r="30"
       fill="none"
       stroke="url(#nm-arc)"
       strokeWidth="1.8"
       strokeLinecap="round"
       strokeDasharray="140 188"
       transform="rotate(-90 36 36)"
-      style={{ animation: 'nm-draw 2.2s cubic-bezier(.2,.7,.3,1) 0.3s both' }}
+      style={{ animation: "nm-draw 2.2s cubic-bezier(.2,.7,.3,1) 0.3s both" }}
     />
     <circle cx="36" cy="36" r="3" fill="var(--accent)" />
   </svg>
@@ -34,29 +50,37 @@ const HeroMark = () => (
 
 const today = () => {
   const d = new Date();
-  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  return d.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
 };
 
 export function AuthGate({ onAuth }) {
-  const [mode, setMode] = useState('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
 
-  const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], []);
-  const isLogin = mode === 'login';
+  const quote = useMemo(
+    () => QUOTES[Math.floor(Math.random() * QUOTES.length)],
+    [],
+  );
+  const isLogin = mode === "login";
 
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
-    setBusy(true); setErr(null);
+    setBusy(true);
+    setErr(null);
     try {
       const fn = isLogin ? login : signup;
       const data = await fn(email.trim(), password);
       onAuth(data.user);
     } catch (ex) {
-      setErr(prettyError(ex.message) || 'Something didn’t connect. Try again.');
+      setErr(prettyError(ex.message) || "Something didn’t connect. Try again.");
     } finally {
       setBusy(false);
     }
@@ -64,7 +88,7 @@ export function AuthGate({ onAuth }) {
 
   const toggle = () => {
     setErr(null);
-    setMode(isLogin ? 'signup' : 'login');
+    setMode(isLogin ? "signup" : "login");
   };
 
   return (
@@ -72,8 +96,7 @@ export function AuthGate({ onAuth }) {
       {/* LEFT — editorial hero */}
       <section className="nm-auth-hero">
         <header className="nm-auth-mast nm-reveal" data-d="1">
-          <BrandMark />
-          <div className="nm-brand-name">next<em>mate</em></div>
+          <img src={LogoIco} alt="Nextmate" height={30} />
         </header>
 
         <div>
@@ -81,28 +104,45 @@ export function AuthGate({ onAuth }) {
             className="nm-reveal"
             data-d="2"
             style={{
-              fontFamily: 'var(--font-mono)',
+              fontFamily: "var(--font-mono)",
               fontSize: 11,
-              letterSpacing: '0.22em',
-              textTransform: 'uppercase',
-              color: 'var(--ink-4)',
+              letterSpacing: "0.22em",
+              textTransform: "uppercase",
+              color: "var(--ink-4)",
               marginBottom: 28,
-              display: 'flex',
-              alignItems: 'center',
+              display: "flex",
+              alignItems: "center",
               gap: 12,
             }}
           >
             <span>Chapter ∞ ·</span>
-            <span style={{ color: 'var(--accent)', fontStyle: 'italic', textTransform: 'none', fontFamily: 'var(--font-display)', fontSize: 14, letterSpacing: '-0.01em' }}>
+            <span
+              style={{
+                color: "var(--accent)",
+                fontStyle: "italic",
+                textTransform: "none",
+                fontFamily: "var(--font-display)",
+                fontSize: 14,
+                letterSpacing: "-0.01em",
+              }}
+            >
               a quiet place to think out loud
             </span>
           </div>
 
           <h1 className="nm-auth-headline nm-reveal" data-d="3">
             {isLogin ? (
-              <>Come back to the <em>thought</em><br />you were having.</>
+              <>
+                Come back to the <em>thought</em>
+                <br />
+                you were having.
+              </>
             ) : (
-              <>Begin a <em>thinking</em><br />practice.</>
+              <>
+                Begin a <em>thinking</em>
+                <br />
+                practice.
+              </>
             )}
           </h1>
 
@@ -120,7 +160,9 @@ export function AuthGate({ onAuth }) {
         <footer className="nm-auth-foot nm-reveal" data-d="6">
           <div>
             <div style={{ marginBottom: 4 }}>{today()}</div>
-            <div><b>entry 001</b> · you</div>
+            <div>
+              <b>entry 001</b> · you
+            </div>
           </div>
           <div className="nm-auth-quote">{quote}</div>
         </footer>
@@ -129,17 +171,32 @@ export function AuthGate({ onAuth }) {
       {/* RIGHT — entry form */}
       <section className="nm-auth-pane">
         <div className="nm-auth-pane-head nm-reveal" data-d="2">
-          <span>{isLogin ? 'To return —' : 'To begin —'}</span>
-          <span className="entry-no">no. 00{isLogin ? '1' : '2'}</span>
+          <span>{isLogin ? "To return —" : "To begin —"}</span>
+          <span className="entry-no">no. 00{isLogin ? "1" : "2"}</span>
         </div>
 
-        <form onSubmit={submit} className="nm-auth-form nm-reveal" data-d="3" noValidate>
+        <form
+          onSubmit={submit}
+          className="nm-auth-form nm-reveal"
+          data-d="3"
+          noValidate
+        >
           <h2 className="nm-auth-title">
-            {isLogin ? <>Sign <em>in.</em></> : <>Make <em>room.</em></>}
+            {isLogin ? (
+              <>
+                Sign <em>in.</em>
+              </>
+            ) : (
+              <>
+                Make <em>room.</em>
+              </>
+            )}
           </h2>
 
           <div className="nm-field">
-            <label htmlFor="nm-email" className="nm-field-label">Email</label>
+            <label htmlFor="nm-email" className="nm-field-label">
+              Email
+            </label>
             <input
               id="nm-email"
               className="nm-field-input"
@@ -156,14 +213,17 @@ export function AuthGate({ onAuth }) {
 
           <div className="nm-field">
             <label htmlFor="nm-pass" className="nm-field-label">
-              Password · {isLogin ? 'the one you chose' : 'pick something memorable'}
+              Password ·{" "}
+              {isLogin ? "the one you chose" : "pick something memorable"}
             </label>
             <input
               id="nm-pass"
               className="nm-field-input"
               type="password"
-              autoComplete={isLogin ? 'current-password' : 'new-password'}
-              placeholder={isLogin ? '••••••••' : 'at least eight soft characters'}
+              autoComplete={isLogin ? "current-password" : "new-password"}
+              placeholder={
+                isLogin ? "••••••••" : "at least eight soft characters"
+              }
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -176,18 +236,47 @@ export function AuthGate({ onAuth }) {
 
           <button className="nm-auth-submit" type="submit" disabled={busy}>
             <span>
-              {busy ? (isLogin ? 'Returning' : 'Opening') : isLogin ? <>Return<em>.</em></> : <>Begin<em>.</em></>}
+              {busy ? (
+                isLogin ? (
+                  "Returning"
+                ) : (
+                  "Opening"
+                )
+              ) : isLogin ? (
+                <>
+                  Return<em>.</em>
+                </>
+              ) : (
+                <>
+                  Begin<em>.</em>
+                </>
+              )}
             </span>
-            <span className="arrow" aria-hidden>→</span>
+            <span className="arrow" aria-hidden>
+              →
+            </span>
           </button>
         </form>
 
-        <div className="nm-reveal" data-d="5" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div
+          className="nm-reveal"
+          data-d="5"
+          style={{ display: "flex", flexDirection: "column", gap: 14 }}
+        >
           <button className="nm-auth-toggle" onClick={toggle} type="button">
-            {isLogin ? <>New here? <u>Make a space</u></> : <>Been here before? <u>Sign in</u></>}
+            {isLogin ? (
+              <>
+                New here? <u>Make a space</u>
+              </>
+            ) : (
+              <>
+                Been here before? <u>Sign in</u>
+              </>
+            )}
           </button>
           <div className="nm-auth-fineprint">
-            Nextmate keeps 90 days of memory.<br />
+            Nextmate keeps 90 days of memory.
+            <br />
             It doesn’t provide clinical advice — it reflects.
           </div>
         </div>
@@ -198,11 +287,15 @@ export function AuthGate({ onAuth }) {
 
 function prettyError(msg) {
   if (!msg) return null;
-  if (msg.includes('Invalid credentials')) return 'That combination doesn’t match anything here.';
-  if (msg.toLowerCase().includes('fetch')) return 'Couldn’t reach the server. Is it running?';
+  if (msg.includes("Invalid credentials"))
+    return "That combination doesn’t match anything here.";
+  if (msg.toLowerCase().includes("fetch"))
+    return "Couldn’t reach the server. Is it running?";
   try {
     const parsed = JSON.parse(msg);
     if (parsed?.detail) return parsed.detail;
-  } catch { /* not JSON */ }
+  } catch {
+    /* not JSON */
+  }
   return msg;
 }

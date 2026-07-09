@@ -45,7 +45,7 @@ const EmotionChart = ({ trend }) => {
   trend.forEach((d) => Object.keys(d.moods || {}).forEach((m) => moodSet.add(m)));
   const moods = [...moodSet];
   if (moods.length === 0) {
-    return <div className="nm-meta" style={{ padding: 30 }}>No mood data yet.</div>;
+    return <div className="nm-meta">No mood data yet.</div>;
   }
 
   // Per-day stacks (normalize by total in day)
@@ -105,7 +105,7 @@ const BigStat = ({ label, value, color }) => (
 
 const TriggerHeat = ({ heatmap, days }) => {
   if (!heatmap || heatmap.length === 0) {
-    return <div className="nm-meta" style={{ padding: 20 }}>No triggers detected in this window.</div>;
+    return <div className="nm-meta">No triggers detected in this window.</div>;
   }
   const cols = days || heatmap[0]?.cells?.length || 30;
   const shade = (v) => v <= 0 ? 'var(--rule-soft)' : v < 0.34 ? 'var(--loop-light)' : v < 0.67 ? 'var(--loop-medium)' : 'var(--loop-strong)';
@@ -139,7 +139,7 @@ const TriggerHeat = ({ heatmap, days }) => {
 
 const LoopSummary = ({ loops }) => {
   if (!loops || loops.length === 0) {
-    return <div className="nm-meta" style={{ padding: 16 }}>No loops detected yet. They surface after recurring patterns appear in your reflections.</div>;
+    return <div className="nm-meta">No loops detected yet. They surface after recurring patterns appear in your reflections.</div>;
   }
   return (
     <div>
@@ -323,7 +323,7 @@ export const InsightsScreen = () => {
               <div className="nm-h3" style={{ marginBottom: 18 }}>{loopsActive} active · {loopsResolved} resolved</div>
               <LoopSummary loops={loops} />
             </div>
-            <div className="nm-card soft">
+            <div className="nm-card">
               <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Growth · this window vs prior</div>
               <G label="Threads" before={growthPrev?.threads} after={growthCur?.threads} good={(growthCur?.threads ?? 0) >= (growthPrev?.threads ?? 0)} />
               <G label="Reflections" before={growthPrev?.entries} after={growthCur?.entries} good={(growthCur?.entries ?? 0) >= (growthPrev?.entries ?? 0)} />
@@ -374,7 +374,7 @@ export const WeeklyScreen = () => {
   return (
     <div className="nm-main">
       <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Weekly report</b></>}>
-        <button className="nm-btn primary" onClick={() => window.print()}><Icon name="download" size={12} /> PDF</button>
+        <button className="nm-btn accent" onClick={() => window.print()}><Icon name="download" size={12} /> PDF</button>
       </TopBar>
       <div className="nm-content">
         <div style={{ maxWidth: 760, margin: '0 auto' }} className="nm-fade-up">

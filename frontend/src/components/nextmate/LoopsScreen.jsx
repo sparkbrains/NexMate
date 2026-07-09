@@ -211,7 +211,7 @@ export const LoopsScreen = ({ onNav }) => {
             </p>
             {error && <p className="nm-meta" style={{ color: 'var(--accent)', marginTop: 14 }}>{error}</p>}
             <div style={{ marginTop: 28 }}>
-              <button className="nm-btn primary" onClick={() => onNav && onNav('chat')}>
+              <button className="nm-btn accent w-auto" onClick={() => onNav && onNav('chat')}>
                 <Icon name="plus" size={12} /> Begin reflection
               </button>
             </div>

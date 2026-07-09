@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
 import { getDashboardInsights } from '../../lib/api';
+import { FileIcon } from '../ui/icons';
 
 const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last }) => (
   <div style={{ padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--rule-soft)', cursor: 'pointer' }}>
@@ -43,11 +44,11 @@ const WeekDots = ({ days }) => {
             <div style={{
               height: v ? 34 + v * 4 : 14,
               background: v ? colorFor(e) : 'transparent',
-              border: v ? 'none' : '1px dashed rgba(255,255,255,0.15)',
+              border: v ? 'none' : '1px dashed',
               opacity: v ? 0.4 + (v / 10) * 0.6 : 1,
               borderRadius: 2,
             }} />
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--ink-4)', marginTop: 5 }}>{d.weekday?.[0] || '·'}</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, marginTop: 5 }}>{d.weekday?.[0] || '·'}</div>
           </div>
         );
       })}
@@ -173,7 +174,7 @@ export const TodayScreen = ({ onNav, onAnswerQuestion, threads = [], user }) => 
           if (!hits.length) { window.alert(`No threads match "${q}".`); return; }
           window.alert(`${hits.length} match${hits.length === 1 ? '' : 'es'}:\n\n` + hits.map((t) => `• ${t.title || 'Untitled'}`).join('\n'));
         }}><Icon name="search" size={12} /> Search</button>
-        <button className="nm-btn primary" onClick={() => onNav && onNav('chat')}><Icon name="plus" size={12} /> Begin reflection</button>
+        <button className="nm-btn accent" onClick={() => onNav && onNav('chat')}><Icon name="plus" size={12} /> Begin reflection</button>
       </TopBar>
 
       <div className="nm-content">
@@ -227,7 +228,10 @@ export const TodayScreen = ({ onNav, onAnswerQuestion, threads = [], user }) => 
                 <div className="nm-meta">{recentThreads.length ? `last ${recentThreads.length} · open one to continue` : 'no threads yet'}</div>
               </div>
               {recentThreads.length === 0 && (
-                <div className="nm-meta" style={{ padding: '20px 0' }}>
+                <div className="nm-no-data">
+                  <div className="nm-no-data-icon">
+                  <FileIcon size={40} />
+                  </div>
                   Start your first reflection to see it here.
                 </div>
               )}
@@ -252,9 +256,9 @@ export const TodayScreen = ({ onNav, onAnswerQuestion, threads = [], user }) => 
               <div className="nm-eyebrow" style={{ marginBottom: 16 }}>This week · so far</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 54, lineHeight: 1, letterSpacing: '-0.03em' }}>{daysWithEntries}</div>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--ink-4)' }}>of 7</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--ink-1)' }}>of 7</div>
               </div>
-              <div className="nm-body" style={{ color: 'var(--ink-4)', marginBottom: 20 }}>days with reflections</div>
+              <div className="nm-body" style={{ color: 'var(--ink-1)', marginBottom: 20 }}>days with reflections</div>
 
               <WeekDots days={weekDays} />
 
@@ -262,18 +266,18 @@ export const TodayScreen = ({ onNav, onAnswerQuestion, threads = [], user }) => 
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div>
-                  <div className="nm-tag" style={{ color: 'var(--ink-4)' }}>Avg intensity</div>
+                  <div className="nm-tag" style={{ color: 'var(--ink-1)' }}>Avg intensity</div>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 24 }}>
                     {avgIntensity ?? '—'}
                     {intensityDelta && (
-                      <span className="nm-meta" style={{ color: 'var(--ink-4)', marginLeft: 6 }}>{intensityDelta}</span>
+                      <span className="nm-meta" style={{ color: 'var(--ink-1)', marginLeft: 6 }}>{intensityDelta}</span>
                     )}
                   </div>
                 </div>
                 <div>
-                  <div className="nm-tag" style={{ color: 'var(--ink-4)' }}>Streak</div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, color: 'var(--accent)' }}>
-                    {insights?.checkin_streak_days ?? 0}<span className="nm-meta" style={{ color: 'var(--ink-4)', marginLeft: 6 }}>days</span>
+                  <div className="nm-tag" style={{ color: 'var(--ink-1)' }}>Streak</div>
+                  <div className="nm-days-body" style={{ fontFamily: 'var(--font-display)',  }}>
+                    {insights?.checkin_streak_days ?? 0}<span className="nm-meta" style={{ color: 'var(--ink-1)', marginLeft: 6 }}>days</span>
                   </div>
                 </div>
               </div>
@@ -281,10 +285,10 @@ export const TodayScreen = ({ onNav, onAnswerQuestion, threads = [], user }) => 
           </div>
 
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
-            <div className="nm-card soft">
-              <div className="nm-eyebrow" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
+            <div className="nm-card">
+              <div className="nm-meta" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
               {topTriggers.length === 0 && (
-                <div className="nm-meta">No triggers detected yet.</div>
+                <div className="nm-meta-data">No triggers detected yet.</div>
               )}
               {topTriggers.map((t, i) => (
                 <TriggerBar
@@ -296,21 +300,21 @@ export const TodayScreen = ({ onNav, onAnswerQuestion, threads = [], user }) => 
                 />
               ))}
             </div>
-            <div className="nm-card soft">
-              <div className="nm-eyebrow" style={{ marginBottom: 10 }}><Icon name="sparkle" size={10} /> {echo ? `Echo from ${echo.age_days} days ago` : 'Echo'}</div>
+            <div className="nm-card">
+              <div className="nm-meta" style={{ marginBottom: 10 }}><Icon name="sparkle" size={10} /> {echo ? `Echo from ${echo.age_days} days ago` : 'Echo'}</div>
               {echo ? (
                 <>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, lineHeight: 1.45, fontStyle: 'italic', color: 'var(--ink)', letterSpacing: '-0.005em' }}>
                     "{echo.text}"
                   </div>
-                  <div className="nm-meta" style={{ marginTop: 12 }}>— you, {formatDateShort(echo.date)}</div>
+                  <div className="nm-meta-data" style={{ marginTop: 12 }}>— you, {formatDateShort(echo.date)}</div>
                 </>
               ) : (
-                <div className="nm-meta">Echoes appear after ~60 days of reflections.</div>
+                <div className="nm-meta-data">Echoes appear after ~60 days of reflections.</div>
               )}
             </div>
-            <div className="nm-card soft">
-              <div className="nm-eyebrow" style={{ marginBottom: 10 }}>Today's open question</div>
+            <div className="nm-card">
+              <div className="nm-meta" style={{ marginBottom: 10 }}>Today's open question</div>
               {openQuestion ? (
                 <>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, lineHeight: 1.4, color: 'var(--ink)', letterSpacing: '-0.005em' }}>
@@ -322,7 +326,7 @@ export const TodayScreen = ({ onNav, onAnswerQuestion, threads = [], user }) => 
                   </div>
                 </>
               ) : (
-                <div className="nm-meta">Your next question will appear after your first reflection.</div>
+                <div className="nm-meta-data">Your next question will appear after your first reflection.</div>
               )}
             </div>
           </div>

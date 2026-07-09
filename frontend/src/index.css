@@ -26,3 +26,7 @@ textarea {
 button {
   color: inherit;
 }
+
+.w-auto{
+  width: auto !important;
+}

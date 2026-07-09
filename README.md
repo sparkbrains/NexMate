@@ -63,13 +63,32 @@ You can switch at runtime with `/thread <id>`.
 1. Install dependencies:
    `cd backend`
    `pip install -r requirements.txt`
-2. Configure backend env:
+2. Make sure Python is `3.12+`
+3. Configure backend env:
    `cp .env.local .env`
    - `OPENROUTER_API_KEY`
    - `DATABASE_URL`
    - `ALLOWED_ORIGINS` (optional)
-3. Start server:
+4. Start server:
    `python3 apps/web_app.py`
+
+If your local Python is older than 3.12, run the backend with Docker instead of the host interpreter.
+
+## Backend Setup
+
+Recommended local backend setup:
+1. `cd backend`
+2. `cp .env.local .env`
+3. Fill in `OPENROUTER_API_KEY` and confirm `DATABASE_URL`
+4. Install dependencies with `pip install -r requirements.txt`
+5. Start PostgreSQL and run the API
+
+Docker-based backend setup:
+1. `docker compose up -d postgres`
+2. `docker compose run --rm backend alembic upgrade head`
+3. `docker compose up --build`
+
+Backend API will be available at `http://127.0.0.1:8000` and it reads runtime env from `backend/.env` plus `backend/.env.local` or `backend/.env.prod` depending on `APP_ENV`.
 
 ## Database Migrations
 
@@ -113,12 +132,15 @@ Local non-Docker commands:
    `cd frontend`
 2. Install packages:
    `npm install`
-3. Set env:
+3. Make sure Node.js is `20+`
+4. Set env:
    `cp .env.example .env`
-4. Start:
+5. Start:
    `npm run dev`
-5. Open:
+6. Open:
    `http://127.0.0.1:5173`
+
+If your local Node.js is older than 20, use Docker for the frontend or upgrade Node first.
 
 ## Run With Docker (Recommended Team Setup)
 

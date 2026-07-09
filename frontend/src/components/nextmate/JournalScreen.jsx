@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon, TopBar } from './Shell';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import {
   createJournalBook,
   createJournalEntry,
@@ -9,7 +10,8 @@ import {
   listJournalBooks,
   listJournalEntries,
 } from '../../lib/api';
-
+import WelcomeBookImg from '../../assets/ic_welcome_book.png';
+import { DeleteIcon, StreakIcon } from '../ui/icons';
 const MOODS = [
   { emoji: '😄', label: 'great' },
   { emoji: '🙂', label: 'good' },
@@ -34,8 +36,7 @@ const todayISO = () => {
 
 const moodFor = (label) => MOODS.find((m) => m.label === label);
 
-const Entry = ({ entry, onDelete }) => {
-  const [confirming, setConfirming] = useState(false);
+const Entry = ({ entry, onRequestDelete }) => {
   const time = entry.created_at
     ? new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '';
@@ -49,16 +50,15 @@ const Entry = ({ entry, onDelete }) => {
         <div className="nm-entry-time">
           <span>{time}</span>
           <span className="nm-entry-del">
-            {confirming ? (
-              <>
-                <button className="nm-btn ghost" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => setConfirming(false)}>Cancel</button>
-                <button className="nm-btn accent" style={{ fontSize: 10, padding: '2px 8px', marginLeft: 4 }} onClick={() => onDelete(entry.id)}>Delete</button>
-              </>
-            ) : (
-              <button className="nm-btn ghost" title="Delete entry" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
-                <Icon name="trash" size={11} />
-              </button>
-            )}
+            <button
+              type="button"
+              className="nm-btn ghost"
+              title="Delete entry"
+              style={{ padding: 4 }}
+              onClick={() => onRequestDelete(entry)}
+            >
+              <DeleteIcon size={20} />
+            </button>
           </span>
         </div>
         <div className="nm-entry-body">{entry.body}</div>
@@ -67,11 +67,10 @@ const Entry = ({ entry, onDelete }) => {
   );
 };
 
-const BookRow = ({ book, active, onClick, onDelete }) => {
-  const [confirming, setConfirming] = useState(false);
+const BookRow = ({ book, active, onClick, onRequestDelete }) => {
   return (
     <div
-      className={'nm-book-row' + (active ? ' active' : '') + (confirming ? ' confirming' : '')}
+      className={'nm-book-row' + (active ? ' active' : '')}
       onClick={onClick}
     >
       <div className="nm-book-spine" style={{ background: book.color || 'var(--accent)' }} />
@@ -82,16 +81,15 @@ const BookRow = ({ book, active, onClick, onDelete }) => {
         </div>
       </div>
       <div className="nm-book-actions" onClick={(e) => e.stopPropagation()}>
-        {confirming ? (
-          <span style={{ display: 'flex', gap: 4 }}>
-            <button className="nm-btn ghost" style={{ fontSize: 9, padding: '2px 6px' }} onClick={() => setConfirming(false)}>×</button>
-            <button className="nm-btn accent" style={{ fontSize: 9, padding: '2px 6px' }} onClick={() => onDelete(book.id)}>del</button>
-          </span>
-        ) : (
-          <button className="nm-btn ghost" title="Delete book" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
-            <Icon name="trash" size={11} />
-          </button>
-        )}
+        <button
+          type="button"
+          className="nm-btn ghost"
+          title="Delete book"
+          style={{ padding: 4 }}
+          onClick={() => onRequestDelete(book)}
+        >
+          <DeleteIcon size={20} />
+        </button>
       </div>
     </div>
   );
@@ -126,10 +124,14 @@ const StreakBlock = ({ streak }) => {
 
   return (
     <div className={'nm-streak' + (lit ? ' lit' : '')}>
+      <div className='nm-no-data-icon nm-streak-ico'>
+        <StreakIcon size={40}/>
+      </div>
+      <div className="nm-streak-info">
       <div className="nm-streak-row">
-        <span className="nm-streak-flame">{lit ? '🔥' : '·'}</span>
+        {/* <span className="nm-streak-flame">{lit ? '🔥' : '·'}</span> */}
         <span className="nm-streak-num">{streak.current}</span>
-        <span className="nm-streak-unit">day{streak.current === 1 ? '' : 's'}<br/>streak</span>
+        <span className="nm-streak-unit">day{streak.current === 1 ? '' : 's'} streak</span>
       </div>
       <div className="nm-streak-sub">{sub}</div>
       {streak.last_7 && (
@@ -143,6 +145,7 @@ const StreakBlock = ({ streak }) => {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 };
@@ -164,6 +167,7 @@ export const JournalScreen = () => {
   const [showNewBook, setShowNewBook] = useState(false);
   const [newBookName, setNewBookName] = useState('');
   const [newBookColor, setNewBookColor] = useState(BOOK_COLORS[0]);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const selectedMood = useMemo(() => moodFor(moodLabel), [moodLabel]);
   const activeBook = useMemo(() => books.find((b) => b.id === activeBookId), [books, activeBookId]);
@@ -280,6 +284,36 @@ export const JournalScreen = () => {
     }
   };
 
+  const requestDeleteBook = (book) => {
+    setDeleteTarget({
+      kind: 'book',
+      id: book.id,
+      title: `Delete "${book.name}"?`,
+      description: 'This book and every entry inside it will be removed permanently.',
+      confirmLabel: 'Delete book',
+    });
+  };
+
+  const requestDeleteEntry = (entry) => {
+    setDeleteTarget({
+      kind: 'entry',
+      id: entry.id,
+      title: 'Delete this entry?',
+      description: 'This entry will be removed permanently from the current book.',
+      confirmLabel: 'Delete entry',
+    });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    if (deleteTarget.kind === 'book') {
+      await handleDeleteBook(deleteTarget.id);
+    } else {
+      await handleDeleteEntry(deleteTarget.id);
+    }
+    setDeleteTarget(null);
+  };
+
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
@@ -291,17 +325,24 @@ export const JournalScreen = () => {
           <span className="sep">/</span> {dateLabel}
         </>
       } />
-
+      <div className="nm-journal-container">
+      <div className="nm-journal-welcome">
+        <div className="nm-journal-welcome-text">
+          <h3>Welcome back, Girish!</h3>
+          <p>Your daily journal is a space for clarity,<br></br> growth and self reflection.</p>
+        </div>
+        <img src={WelcomeBookImg} all='welcome'/>
+      </div>
       <div className="nm-journal">
         {/* Bookshelf */}
         <aside className="nm-journal-shelf">
-          <div className="nm-journal-shelf-head">
+          {/* <div className="nm-journal-shelf-head">
             <div className="nm-eyebrow">A library of</div>
             <h2>your <em>thoughts</em>.</h2>
-          </div>
+          </div> */}
 
           <StreakBlock streak={streak} />
-
+            <div className="nm-card">
           <div className="nm-journal-shelf-list" style={{ marginTop: 8 }}>
             {loadingBooks && <div className="nm-meta" style={{ padding: 14 }}>Loading…</div>}
             {!loadingBooks && books.map((b) => (
@@ -310,11 +351,10 @@ export const JournalScreen = () => {
                 book={b}
                 active={b.id === activeBookId}
                 onClick={() => setActiveBookId(b.id)}
-                onDelete={handleDeleteBook}
+                onRequestDelete={requestDeleteBook}
               />
             ))}
           </div>
-
           <div className="nm-journal-shelf-add">
             {showNewBook ? (
               <div className="nm-book-new">
@@ -351,10 +391,11 @@ export const JournalScreen = () => {
                 </div>
               </div>
             ) : (
-              <button className="nm-btn" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setShowNewBook(true)}>
+              <button className="nm-btn nm-btn-border" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setShowNewBook(true)}>
                 <Icon name="plus" size={12} /> New book
               </button>
             )}
+          </div>
           </div>
         </aside>
 
@@ -433,7 +474,7 @@ export const JournalScreen = () => {
                   <div className="nm-compose-foot">
                     <button
                       type="button"
-                      className="nm-btn primary"
+                      className="nm-btn accent w-auto"
                       onClick={handleSave}
                       disabled={!body.trim() || saving}
                     >
@@ -476,7 +517,7 @@ export const JournalScreen = () => {
                             </div>
                           </div>
                           {items.map((e) => (
-                            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} />
+                            <Entry key={e.id} entry={e} onRequestDelete={requestDeleteEntry} />
                           ))}
                         </div>
                       );
@@ -487,6 +528,16 @@ export const JournalScreen = () => {
             )}
           </div>
         </main>
+      </div>
+      <ConfirmModal
+        open={!!deleteTarget}
+        title={deleteTarget?.title || ''}
+        description={deleteTarget?.description || ''}
+        confirmLabel={deleteTarget?.confirmLabel || 'Delete'}
+        cancelLabel="Cancel"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
+      />
       </div>
     </div>
   );
