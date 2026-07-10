@@ -5,15 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    host: "0.0.0.0",
+    host: "127.0.0.1",
     port: 5173,
-    watch: {
-      // Required for file-change detection through Docker volumes on Windows
-      usePolling: true,
-      interval: 1000,
-    },
-    hmr: {
-      clientPort: 5173,
-    },
   },
 });

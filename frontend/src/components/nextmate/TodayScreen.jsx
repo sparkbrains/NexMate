@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
-import { getDashboardInsights, answerDailyQuestion, getDailyQuestionContext, reflectOnLoop } from '../../lib/api';
+import { answerDailyQuestion, getDashboardInsights, reflectOnLoop } from '../../lib/api';
+import { FileIcon } from '../ui/icons';
 
-const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last, onClick }) => (
-  <div onClick={onClick} style={{ padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--rule-soft)', cursor: 'pointer' }}>
+const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last }) => (
+  <div style={{ padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--rule-soft)', cursor: 'pointer' }}>
     <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
@@ -25,49 +26,33 @@ const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last
     </div>
   </div>
 );
-
-const colorFor = (e) => ({
-  overwhelm: 'var(--accent)', anxious: 'var(--clay)', stressed: 'var(--clay)',
-  negative: 'var(--accent)', very_negative: 'var(--accent)', mixed: 'var(--clay)',
-  tired: 'var(--ink-4)', neutral: 'var(--ink-4)',
-  calm: 'var(--teal)', hopeful: 'var(--teal)', positive: 'var(--teal)', very_positive: 'var(--teal)'
-}[e] || 'var(--ink-4)');
-
-const intensityColor = (i) => {
-  if (i == null) return 'var(--ink-4)';
-  if (i >= 7) return 'var(--accent)';
-  if (i >= 4) return 'var(--clay)';
-  return 'var(--teal)';
-};
-
-const DayByDayIntensity = ({ days }) => (
-  <div style={{ display: 'flex', gap: 8 }}>
-    {days.map((d) => (
-      <div key={d.day} style={{ flex: 1, textAlign: 'center' }}>
-        <div style={{
-          height: 80,
-          background: intensityColor(d.avg_intensity),
-          border: d.dominant_mood ? 'none' : '1px dashed var(--rule)',
-          opacity: d.avg_intensity ? 0.35 + (d.avg_intensity / 10) * 0.6 : 0.5,
-          borderRadius: 2,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          {d.avg_intensity != null && (
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--ink)' }}>{d.avg_intensity}</span>
-          )}
-        </div>
-        <div className="nm-meta" style={{ marginTop: 6 }}>{d.weekday}</div>
-        <div style={{ fontSize: 11, color: 'var(--ink-2)' }}>{d.dominant_mood || '—'}</div>
-      </div>
-    ))}
-  </div>
-);
-
 const WeekDots = ({ days }) => {
-  // Legacy component kept for backward compatibility; render nothing.
-  return null;
+  const colorFor = (e) => ({
+    overwhelm: 'var(--accent)', anxious: 'var(--clay)', stressed: 'var(--clay)',
+    negative: 'var(--accent)', very_negative: 'var(--accent)', mixed: 'var(--clay)',
+    tired: 'var(--ink-4)', neutral: 'var(--ink-4)',
+    calm: 'var(--teal)', hopeful: 'var(--teal)', positive: 'var(--teal)', very_positive: 'var(--teal)',
+  }[e] || 'var(--ink-4)');
+  return (
+    <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+      {days.map((d, i) => {
+        const v = d.avg_intensity;
+        const e = d.dominant_mood;
+        return (
+          <div key={i} style={{ flex: 1, textAlign: 'center' }}>
+            <div style={{
+              height: v ? 34 + v * 4 : 14,
+              background: v ? colorFor(e) : 'transparent',
+              border: v ? 'none' : '1px dashed',
+              opacity: v ? 0.4 + (v / 10) * 0.6 : 1,
+              borderRadius: 2,
+            }} />
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, marginTop: 5 }}>{d.weekday?.[0] || '·'}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
 };
 
 const TriggerBar = ({ label, pct, color, last }) => (
@@ -112,7 +97,6 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   const [error, setError] = useState(null);
   const [answeringQuestion, setAnsweringQuestion] = useState(false);
   const [reflecting, setReflecting] = useState(false);
-  const [questionContext, setQuestionContext] = useState(null);
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
 
   useEffect(() => {
@@ -125,26 +109,30 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
     return () => { cancelled = true; };
   }, []);
 
+  const refreshInsights = async () => {
+    const data = await getDashboardInsights(7);
+    setInsights(data.insights);
+    return data.insights;
+  };
+
   const handleAnswerQuestion = async (question) => {
+    if (!question) return;
     try {
       setAnsweringQuestion(true);
-      // Answer the question and get new thread ID
       const response = await answerDailyQuestion(question.id);
-
       if (response.success && response.thread_id) {
-        // Refresh the dashboard data to update question statuses
-        const refreshedData = await getDashboardInsights(7);
-        setInsights(refreshedData.insights);
-
-        // Navigate to the new thread for answering
+        await refreshInsights();
         if (onNav) {
-          onNav('chat', { threadId: response.thread_id });
+          onNav('chat', {
+            threadId: response.thread_id,
+            threadTitle: `Daily Question: ${response.question_text || question.question_text || ''}`,
+          });
         }
       } else {
         setError(response.message || 'Failed to answer question');
       }
-    } catch (err) {
-      setError(err.message || 'Failed to answer question');
+    } catch (e) {
+      setError(e.message || 'Failed to answer question');
     } finally {
       setAnsweringQuestion(false);
     }
@@ -162,14 +150,11 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
     setReflecting(true);
     try {
       const result = await reflectOnLoop(topLoop.loop_id);
-      if (result && result.thread_id) {
-        if (onNav) {
-          onNav('chat', {
-            threadId: result.thread_id,
-            threadTitle: result.title,
-            initialMessage: result.opening_message,
-          });
-        }
+      if (result?.thread_id && onNav) {
+        onNav('chat', {
+          threadId: result.thread_id,
+          threadTitle: result.title,
+        });
       }
     } catch (e) {
       setError(e.message || 'Failed to create reflection thread');
@@ -194,9 +179,8 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   const topTriggers = (insights?.top_triggers || []).slice(0, 4);
   const echo = insights?.echo;
   const dailyQuestions = Array.isArray(insights?.daily_question) ? insights.daily_question : [];
-  const pendingQuestions = dailyQuestions.filter(q => q.status === 'pending');
-  const currentQuestion = pendingQuestions[currentQuestionIdx] || null;
-  const isLastQuestion = currentQuestionIdx >= pendingQuestions.length - 1;
+  const pendingQuestions = dailyQuestions.filter((q) => q.status === 'pending');
+  const currentQuestion = pendingQuestions[currentQuestionIdx] || pendingQuestions[0] || null;
   const threadSummaries = insights?.thread_summaries || {};
 
   const recentThreads = threads.slice(0, 5);
@@ -221,13 +205,23 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   return (
     <div className="nm-main">
       <TopBar crumb={<><b>Today</b> <span className="sep">/</span> {dateLabel}</>}>
+        <button className="nm-btn ghost" onClick={() => {
+          const q = (window.prompt('Search your threads:') || '').trim().toLowerCase();
+          if (!q) return;
+          const hits = threads.filter((t) =>
+            (t.title || '').toLowerCase().includes(q) || (t.preview || '').toLowerCase().includes(q)
+          );
+          if (!hits.length) { window.alert(`No threads match "${q}".`); return; }
+          window.alert(`${hits.length} match${hits.length === 1 ? '' : 'es'}:\n\n` + hits.map((t) => `• ${t.title || 'Untitled'}`).join('\n'));
+        }}><Icon name="search" size={12} /> Search</button>
+        <button className="nm-btn accent" onClick={() => onNav && onNav('chat')}><Icon name="plus" size={12} /> Begin reflection</button>
       </TopBar>
 
       <div className="nm-content">
         <div style={{ maxWidth: 960, margin: '0 auto' }} className="nm-fade-up">
           <div style={{ marginBottom: 32 }}>
             <div className="nm-eyebrow" style={{ marginBottom: 14 }}>
-              {greeting()}, {userName}
+              {greeting()}, {userName} · {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>
             <h1 className="nm-h1">{heroLead}</h1>
             {heroSub && (
@@ -258,227 +252,132 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
                     </p>
                   )}
                   <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
-                    <button
-                      className="nm-btn accent"
-                      onClick={handleReflect}
-                      disabled={reflecting}
-                    >
-                      {reflecting ? 'Reflecting…' : 'Reflect on this'} <Icon name="arrow" size={12} />
+                    <button className="nm-btn accent" onClick={handleReflect} disabled={reflecting}>
+                      {reflecting ? 'Reflecting...' : 'Reflect on this'} <Icon name="arrow" size={12} />
                     </button>
                     <button className="nm-btn" onClick={() => onNav && onNav('loops')}>See all {topLoop.occurrences} occurrences</button>
-
+                    <button className="nm-btn ghost">Not today</button>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 16,
-              marginBottom: 16,
-            }}
-          >
-            {/* Left Column */}
-            <div className="nm-card ink">
-              <div className="nm-eyebrow" style={{ marginBottom: 16 }}>
-                This week · so far
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 16, marginBottom: 16 }}>
+            <div className="nm-card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
+                <div className="nm-h3">Recent threads</div>
+                <div className="nm-meta">{recentThreads.length ? `last ${recentThreads.length} · open one to continue` : 'no threads yet'}</div>
               </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "baseline",
-                  gap: 6,
-                  marginBottom: 2,
-                }}
-              >
-                <div
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    fontSize: 54,
-                    lineHeight: 1,
-                    letterSpacing: "-0.03em",
-                  }}
-                >
-                  {daysWithEntries}
-                </div>
-
-                <div
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    fontSize: 22,
-                    color: "var(--ink-4)",
-                  }}
-                >
-                  of 7
-                </div>
-              </div>
-
-              <div
-                className="nm-body"
-                style={{ color: "var(--ink-4)", marginBottom: 20 }}
-              >
-                days with reflections
-              </div>
-
-              <DayByDayIntensity days={weekDays} />
-
-              <div
-                className="nm-hr"
-                style={{
-                  background: "rgba(255,255,255,0.08)",
-                  margin: "20px 0 14px",
-                }}
-              />
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 14,
-                }}
-              >
-                <div>
-                  <div className="nm-tag" style={{ color: "var(--ink-4)" }}>
-                    Avg intensity
+              {recentThreads.length === 0 && (
+                <div className="nm-no-data">
+                  <div className="nm-no-data-icon">
+                  <FileIcon size={40} />
                   </div>
+                  Start your first reflection to see it here.
+                </div>
+              )}
+              {recentThreads.map((t, i) => {
+                const summary = threadSummaries[t.thread_id] || {};
+                return (
+                  <ThreadRow
+                    key={t.thread_id}
+                    title={t.title || 'New thread'}
+                    preview={t.preview || ''}
+                    date={formatDateShort(t.updated_at)}
+                    msgs={t.message_count ?? 0}
+                    intensity={summary.avg_intensity ?? null}
+                    positive={!!summary.positive}
+                    last={i === recentThreads.length - 1}
+                  />
+                );
+              })}
+            </div>
 
-                  <div
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      fontSize: 24,
-                    }}
-                  >
-                    {avgIntensity ?? "—"}
+            <div className="nm-card ink">
+              <div className="nm-eyebrow" style={{ marginBottom: 16 }}>This week · so far</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 54, lineHeight: 1, letterSpacing: '-0.03em' }}>{daysWithEntries}</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--ink-1)' }}>of 7</div>
+              </div>
+              <div className="nm-body" style={{ color: 'var(--ink-1)', marginBottom: 20 }}>days with reflections</div>
 
+              <WeekDots days={weekDays} />
+
+              <div className="nm-hr" style={{ background: 'rgba(255,255,255,0.08)', margin: '20px 0 14px' }} />
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <div className="nm-tag" style={{ color: 'var(--ink-1)' }}>Avg intensity</div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 24 }}>
+                    {avgIntensity ?? '—'}
                     {intensityDelta && (
-                      <span
-                        className="nm-meta"
-                        style={{
-                          color: "var(--ink-4)",
-                          marginLeft: 6,
-                        }}
-                      >
-                        {intensityDelta}
-                      </span>
+                      <span className="nm-meta" style={{ color: 'var(--ink-1)', marginLeft: 6 }}>{intensityDelta}</span>
                     )}
                   </div>
                 </div>
-
                 <div>
-                  <div className="nm-tag" style={{ color: "var(--ink-4)" }}>
-                    Streak
-                  </div>
-
-                  <div
-                    style={{
-                      fontFamily: "var(--font-display)",
-                      fontSize: 24,
-                      color: "var(--accent)",
-                    }}
-                  >
-                    {insights?.checkin_streak_days ?? 0}
-                    <span
-                      className="nm-meta"
-                      style={{
-                        color: "var(--ink-4)",
-                        marginLeft: 6,
-                      }}
-                    >
-                      days
-                    </span>
+                  <div className="nm-tag" style={{ color: 'var(--ink-1)' }}>Streak</div>
+                  <div className="nm-days-body" style={{ fontFamily: 'var(--font-display)',  }}>
+                    {insights?.checkin_streak_days ?? 0}<span className="nm-meta" style={{ color: 'var(--ink-1)', marginLeft: 6 }}>days</span>
                   </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Right Column */}
-            <div
-              style={{
-                display: "grid",
-                gridTemplateRows: "1fr 1fr",
-                gap: 16,
-              }}
-            >
-              {/* Triggers Card */}
-              <div className="nm-card soft">
-                <div className="nm-eyebrow" style={{ marginBottom: 10 }}>
-                  Triggers, last 7 days
-                </div>
-
-                {topTriggers.length === 0 && (
-                  <div className="nm-meta">No triggers detected yet.</div>
-                )}
-
-                {topTriggers.map((t, i) => (
-                  <TriggerBar
-                    key={t.trigger}
-                    label={t.trigger}
-                    pct={t.pct}
-                    color={TRIGGER_COLORS[i % TRIGGER_COLORS.length]}
-                    last={i === topTriggers.length - 1}
-                  />
-                ))}
-              </div>
-
-              {/* Today's Question Card */}
-              <div className="nm-card soft">
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "baseline",
-                    marginBottom: 10,
-                  }}
-                >
-                  <div className="nm-eyebrow">Today's question</div>
-
-                  {pendingQuestions.length > 1 && (
-                    <div className="nm-meta">
-                      {currentQuestionIdx + 1} / {pendingQuestions.length}
-                    </div>
-                  )}
-                </div>
-
-                {dailyQuestions.length === 0 ? (
-                  <div className="nm-meta">
-                    Your daily questions will appear after your first reflection.
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            <div className="nm-card">
+              <div className="nm-meta" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
+              {topTriggers.length === 0 && (
+                <div className="nm-meta-data">No triggers detected yet.</div>
+              )}
+              {topTriggers.map((t, i) => (
+                <TriggerBar
+                  key={t.trigger}
+                  label={t.trigger}
+                  pct={t.pct}
+                  color={TRIGGER_COLORS[i % TRIGGER_COLORS.length]}
+                  last={i === topTriggers.length - 1}
+                />
+              ))}
+            </div>
+            <div className="nm-card">
+              <div className="nm-meta" style={{ marginBottom: 10 }}><Icon name="sparkle" size={10} /> {echo ? `Echo from ${echo.age_days} days ago` : 'Echo'}</div>
+              {echo ? (
+                <>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, lineHeight: 1.45, fontStyle: 'italic', color: 'var(--ink)', letterSpacing: '-0.005em' }}>
+                    "{echo.text}"
                   </div>
-                ) : pendingQuestions.length === 0 ? (
-                  <div className="nm-meta" style={{ color: "var(--teal)" }}>
-                    You've answered all of today's questions. See you tomorrow.
+                  <div className="nm-meta-data" style={{ marginTop: 12 }}>— you, {formatDateShort(echo.date)}</div>
+                </>
+              ) : (
+                <div className="nm-meta-data">Echoes appear after ~60 days of reflections.</div>
+              )}
+            </div>
+            <div className="nm-card">
+              <div className="nm-meta" style={{ marginBottom: 10 }}>Today's question</div>
+              {dailyQuestions.length === 0 ? (
+                <div className="nm-meta-data">Your daily questions will appear after your first reflection.</div>
+              ) : pendingQuestions.length === 0 ? (
+                <div className="nm-meta-data" style={{ color: 'var(--teal)' }}>You've answered all of today's questions. See you tomorrow.</div>
+              ) : currentQuestion ? (
+                <>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, lineHeight: 1.4, color: 'var(--ink)', letterSpacing: '-0.005em' }}>
+                    {currentQuestion.question_text}
                   </div>
-                ) : currentQuestion ? (
-                  <>
-                    <div
-                      style={{
-                        fontFamily: "var(--font-display)",
-                        fontSize: 16,
-                        lineHeight: 1.45,
-                        color: "var(--ink)",
-                        letterSpacing: "-0.005em",
-                        marginBottom: 14,
-                      }}
-                    >
-                      {currentQuestion.question_text}
-                    </div>
-
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <button
-                        className="nm-btn"
-                        onClick={() => handleAnswerQuestion(currentQuestion)}
-                        disabled={answeringQuestion}
-                      >
-                        {answeringQuestion ? "Loading…" : "Answer"}
-                        <Icon name="arrow" size={11} />
-                      </button>
-                    </div>
-                  </>
-                ) : null}
-              </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
+                    <button className="nm-btn" onClick={() => handleAnswerQuestion(currentQuestion)} disabled={answeringQuestion}>
+                      {answeringQuestion ? 'Loading...' : 'Answer'} <Icon name="arrow" size={11} />
+                    </button>
+                    {pendingQuestions.length > 1 && (
+                      <button className="nm-btn ghost" onClick={handleSkipQuestion}>Skip</button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="nm-meta-data">Your next question will appear after your first reflection.</div>
+              )}
             </div>
           </div>
         </div>

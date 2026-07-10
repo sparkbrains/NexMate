@@ -10,30 +10,26 @@ const MOOD_COLORS = {
 };
 const moodColor = (m) => MOOD_COLORS[m] || 'var(--ink-3)';
 
-const LINE_COLORS = [
-  '#7C9CF5', '#F28C6E', '#6ECFB5', '#C97FE3',
-  '#F2C46E', '#E36F8C', '#6EB5F2', '#A8E36F',
-];
-
 const formatShort = (iso) => {
   if (!iso) return '';
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-// Slice the last N items from an array
-const sliceLast = (arr, n) => (arr || []).slice(-n);
-
-// Given granularity, how many data points to show
-const GRANULARITY_WINDOW = { day: 1, week: 7, month: 30 };
-
-// Format an x-axis tick label based on granularity
-const formatTick = (iso, granularity) => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (granularity === 'day') return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-  if (granularity === 'week') return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const downloadJson = (filename, data) => {
+  try {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch {
+    /* ignore */
+  }
 };
 
 const EmotionChart = ({ trend }) => {
@@ -43,13 +39,16 @@ const EmotionChart = ({ trend }) => {
   const w = 600, h = 170;
   const dx = days > 1 ? w / (days - 1) : w;
 
+  // Build stacked mood bands per day (normalized to mood mix proportions per day, weighted by entry count)
+  // Collect all moods seen
   const moodSet = new Set();
   trend.forEach((d) => Object.keys(d.moods || {}).forEach((m) => moodSet.add(m)));
   const moods = [...moodSet];
   if (moods.length === 0) {
-    return <div className="nm-meta" style={{ padding: 30 }}>No mood data yet.</div>;
+    return <div className="nm-meta">No mood data yet.</div>;
   }
 
+  // Per-day stacks (normalize by total in day)
   const stacks = trend.map((d) => {
     const total = Object.values(d.moods || {}).reduce((a, b) => a + b, 0) || 0;
     if (!total) return moods.map(() => 0);
@@ -104,42 +103,24 @@ const BigStat = ({ label, value, color }) => (
   </div>
 );
 
-// Sliced heatmap: trim each row's intensity array to the last N cells
-const sliceHeatmap = (heatmap, n) =>
-  (heatmap || []).map((row) => ({ ...row, intensity: (row.intensity || []).slice(-n) }));
-
-const TriggerHeat = ({ heatmap, granularity }) => {
+const TriggerHeat = ({ heatmap, days }) => {
   if (!heatmap || heatmap.length === 0) {
-    return <div className="nm-meta" style={{ padding: 20 }}>No triggers detected in this window.</div>;
+    return <div className="nm-meta">No triggers detected in this window.</div>;
   }
-
-  const cols = heatmap[0]?.intensity?.length || 1;
+  const cols = days || heatmap[0]?.cells?.length || 30;
   const shade = (v) => v <= 0 ? 'var(--rule-soft)' : v < 0.34 ? 'var(--loop-light)' : v < 0.67 ? 'var(--loop-medium)' : 'var(--loop-strong)';
   const today = new Date();
-
-  // Show a label every N columns depending on how many cols we have
-  const labelEvery = granularity === 'day' ? 4 : granularity === 'week' ? 1 : 7;
-
-  const getColDate = (i) => {
-    const offset = cols - 1 - i;
-    const d = new Date(today);
-    if (granularity === 'day') {
-      d.setHours(d.getHours() - offset);
-      return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-    }
-    d.setDate(d.getDate() - offset);
-    if (granularity === 'week') return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric' });
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  };
-
   return (
     <div>
       <div style={{ display: 'flex', gap: 2, marginLeft: 88, marginBottom: 6 }}>
         {Array.from({ length: cols }).map((_, i) => {
-          const show = i % labelEvery === 0;
+          const offset = cols - 1 - i;
+          const d = new Date(today);
+          d.setDate(d.getDate() - offset);
+          const showLabel = i % 7 === 0;
           return (
-            <div key={i} className="nm-meta" style={{ flex: 1, fontSize: 9, textAlign: 'center', color: show ? 'var(--ink-2)' : 'transparent' }}>
-              {show ? getColDate(i) : '·'}
+            <div key={i} className="nm-meta" style={{ flex: 1, fontSize: 9, textAlign: 'center', color: showLabel ? 'var(--ink-2)' : 'transparent' }}>
+              {showLabel ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '·'}
             </div>
           );
         })}
@@ -148,9 +129,7 @@ const TriggerHeat = ({ heatmap, granularity }) => {
         <div key={row.trigger} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
           <div style={{ width: 80, fontSize: 12, textAlign: 'right', fontFamily: 'var(--font-display)' }}>{row.trigger}</div>
           <div style={{ display: 'flex', gap: 2, flex: 1 }}>
-            {row.intensity.map((v, i) => (
-              <div key={i} style={{ flex: 1, height: 16, background: shade(v) }} />
-            ))}
+            {row.intensity.map((v, i) => <div key={i} style={{ flex: 1, aspectRatio: '1', background: shade(v) }} />)}
           </div>
         </div>
       ))}
@@ -160,7 +139,7 @@ const TriggerHeat = ({ heatmap, granularity }) => {
 
 const LoopSummary = ({ loops }) => {
   if (!loops || loops.length === 0) {
-    return <div className="nm-meta" style={{ padding: 16 }}>No loops detected yet. They surface after recurring patterns appear in your reflections.</div>;
+    return <div className="nm-meta">No loops detected yet. They surface after recurring patterns appear in your reflections.</div>;
   }
   return (
     <div>
@@ -199,77 +178,6 @@ const G = ({ label, before, after, good, last }) => (
   </div>
 );
 
-const ValenceIntensityLineChart = ({ data }) => {
-  if (!data || data.length === 0) {
-    return <div className="nm-meta" style={{ padding: 30 }}>No valence/intensity data yet.</div>;
-  }
-  const w = 600, h = 120;
-  const n = data.length;
-  const dx = n > 1 ? w / (n - 1) : w;
-  const valPoints = data.map((d, i) => [i * dx, h - ((d.valence + 1) / 2) * h * 0.9]).map(p => p.join(',')).join(' L ');
-  const intPoints = data.map((d, i) => [i * dx, h - (d.intensity / 10) * h * 0.9]).map(p => p.join(',')).join(' L ');
-  return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{ display: 'block', marginTop: 8 }}>
-      <polyline points={valPoints} fill="none" stroke="var(--teal)" strokeWidth="2" />
-      <polyline points={intPoints} fill="none" stroke="var(--accent)" strokeWidth="2" strokeDasharray="4 2" />
-      <line x1="0" y1={h} x2={w} y2={h} stroke="var(--rule)" />
-    </svg>
-  );
-};
-
-const EmotionLineChart = ({ trend, granularity }) => {
-  const n = trend?.length || 0;
-  if (!n) return <div className="nm-meta" style={{ padding: 30 }}>No emotion data yet.</div>;
-
-  const emotions = Array.from(new Set(trend.flatMap(d => Object.keys(d.moods || {}))));
-  if (!emotions.length) return <div className="nm-meta" style={{ padding: 30 }}>No mood data yet.</div>;
-
-  const w = 600, h = 120, tickH = 18;
-  // Always render across full width — fewer points just means wider spacing
-  const dx = n > 1 ? w / (n - 1) : w;
-  const tickEvery = n <= 7 ? 1 : n <= 14 ? 2 : Math.ceil(n / 8);
-
-  return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h + tickH}`} style={{ display: 'block', marginTop: 8 }}>
-      {emotions.map((emotion, ei) => {
-        const pts = trend.map((d, i) => {
-          const total = Object.values(d.moods || {}).reduce((a, b) => a + b, 0) || 1;
-          const val = (d.moods?.[emotion] || 0) / total;
-          return `${i * dx},${h - val * h * 0.88}`;
-        }).join(' ');
-        return (
-          <polyline
-            key={emotion}
-            points={pts}
-            fill="none"
-            stroke={LINE_COLORS[ei % LINE_COLORS.length]}
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        );
-      })}
-      <line x1="0" y1={h} x2={w} y2={h} stroke="var(--rule)" />
-      {trend.map((d, i) => {
-        if (i % tickEvery !== 0 && i !== n - 1) return null;
-        const label = formatTick(d.date || d.label, granularity);
-        if (!label) return null;
-        return (
-          <text
-            key={i}
-            x={i * dx}
-            y={h + tickH - 2}
-            textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}
-            style={{ fontSize: 9, fill: 'var(--ink-3)', fontFamily: 'var(--font-display)' }}
-          >
-            {label}
-          </text>
-        );
-      })}
-    </svg>
-  );
-};
-
 const RANGES = [
   { k: '7d', d: 7 },
   { k: '30d', d: 30 },
@@ -277,11 +185,8 @@ const RANGES = [
   { k: '1y', d: 365 },
 ];
 
-const GRANULARITY_LABELS = { day: 'Today', week: 'This week', month: 'This month' };
-
 export const InsightsScreen = () => {
   const [rangeKey, setRangeKey] = useState('30d');
-  const [granularity, setGranularity] = useState('month');
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -297,18 +202,6 @@ export const InsightsScreen = () => {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [days]);
-
-  // Slice emotion_trend to the granularity window
-  const visibleTrend = useMemo(() => {
-    const window = GRANULARITY_WINDOW[granularity] ?? 30;
-    return sliceLast(insights?.emotion_trend, window);
-  }, [insights, granularity]);
-
-  // Slice each trigger row's intensity cells to the granularity window
-  const visibleHeatmap = useMemo(() => {
-    const window = GRANULARITY_WINDOW[granularity] ?? 30;
-    return sliceHeatmap(insights?.trigger_heatmap, window);
-  }, [insights, granularity]);
 
   const totalEntries = insights?.total_entries ?? 0;
   const threadCount = insights?.thread_count ?? 0;
@@ -335,27 +228,18 @@ export const InsightsScreen = () => {
   return (
     <div className="nm-main">
       <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Insights</b></>}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <select
-            value={granularity}
-            onChange={(e) => setGranularity(e.target.value)}
-            style={{
-              background: 'var(--surface-2, var(--ink-6))',
-              border: '1px solid var(--rule)',
-              borderRadius: 6,
-              color: 'var(--ink)',
-              fontFamily: 'var(--font-display)',
-              fontSize: 12,
-              padding: '4px 10px',
-              cursor: 'pointer',
-              outline: 'none',
-            }}
-          >
-            <option value="day">Day</option>
-            <option value="week">Week</option>
-            <option value="month">Month</option>
-          </select>
+        <div className="nm-range">
+          {RANGES.map((r) => (
+            <button
+              key={r.k}
+              onClick={() => setRangeKey(r.k)}
+              className={r.k === rangeKey ? 'on' : ''}
+            >
+              {r.k}
+            </button>
+          ))}
         </div>
+        <button className="nm-btn" disabled={!insights} onClick={() => downloadJson(`nextmate-insights-${days}d.json`, insights)}><Icon name="download" size={12} /> Export</button>
       </TopBar>
 
       <div className="nm-content">
@@ -368,6 +252,16 @@ export const InsightsScreen = () => {
               <h1 className="nm-h1">
                 {totalEntries === 0 ? <>A blank window —<br /><em>begin reflecting</em>.</> : <>The shape of your <em>{days <= 7 ? 'week' : days <= 30 ? 'month' : 'season'}</em>.</>}
               </h1>
+            </div>
+            <div className="nm-hero-meta">
+              avg intensity <b>{intensityAvg ?? '—'}</b>{' '}
+              {intensityDelta != null && (
+                <span style={{ color: intensityDelta < 0 ? 'var(--teal)' : 'var(--accent)' }}>
+                  {intensityDelta > 0 ? '+' : ''}{intensityDelta}
+                </span>
+              )}
+              <br />
+              loops resolved <b style={{ color: 'var(--teal)' }}>{loopsResolved}</b> · new <b style={{ color: 'var(--accent)' }}>{loopsNew}</b>
             </div>
           </header>
 
@@ -384,27 +278,52 @@ export const InsightsScreen = () => {
           )}
 
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 14, marginBottom: 14 }}>
-            {/* Emotion Trend card */}
             <div className="nm-card">
               <div style={{ marginBottom: 14 }}>
-                <div className="nm-eyebrow">Emotion Trend · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
+                <div className="nm-eyebrow">Emotion trend</div>
                 <div className="nm-h3" style={{ marginTop: 4 }}>
-                  {totalEntries === 0 ? 'Start reflecting to see your trend.' : 'Emotions over time'}
-                </div>
-                <EmotionLineChart trend={visibleTrend} granularity={granularity} />
-                <div style={{ display: 'flex', gap: 14, marginTop: 14, flexWrap: 'wrap' }}>
-                  {moods.slice(0, 6).map((m, mi) => (
-                    <div key={m.mood} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
-                      <span style={{ width: 10, height: 10, background: LINE_COLORS[mi % LINE_COLORS.length], borderRadius: 1 }} />
-                      <span>{m.mood}</span><span className="nm-meta">{m.pct}%</span>
-                    </div>
-                  ))}
+                  {totalEntries === 0 ? 'Start reflecting to see your trend.' : 'Daily mood mix'}
                 </div>
               </div>
+              <EmotionChart trend={insights?.emotion_trend} />
+              <div style={{ display: 'flex', gap: 14, marginTop: 14, flexWrap: 'wrap' }}>
+                {moods.slice(0, 6).map((m) => (
+                  <div key={m.mood} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
+                    <span style={{ width: 10, height: 10, background: moodColor(m.mood), borderRadius: 1 }} />
+                    <span>{m.mood}</span><span className="nm-meta">{m.pct}%</span>
+                  </div>
+                ))}
+              </div>
             </div>
+            <div className="nm-card">
+              <div className="nm-eyebrow" style={{ marginBottom: 4 }}>Intensity distribution</div>
+              <div className="nm-h3" style={{ marginBottom: 18 }}>
+                {intensityAvg != null ? `Avg intensity ${intensityAvg}` : 'No intensity data yet'}
+              </div>
+              <IntensityBars distribution={insights?.intensity_distribution} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 16, gap: 12 }}>
+                <BigStat label="avg" value={intensityAvg ?? '—'} />
+                <BigStat label={peakDay ? `peak · ${formatShort(peakDay)}` : 'peak'} value={peak ?? '—'} color="var(--accent)" />
+                <BigStat label={lowDay ? `low · ${formatShort(lowDay)}` : 'low'} value={low ?? '—'} color="var(--teal)" />
+              </div>
+            </div>
+          </div>
 
-            {/* Growth card */}
-            <div className="nm-card soft">
+          <div className="nm-card" style={{ marginBottom: 14 }}>
+            <div style={{ marginBottom: 14 }}>
+              <div className="nm-eyebrow">Trigger heatmap</div>
+              <div className="nm-h3" style={{ marginTop: 4 }}>When each trigger showed up</div>
+            </div>
+            <TriggerHeat heatmap={insights?.trigger_heatmap} days={days} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div className="nm-card">
+              <div className="nm-eyebrow" style={{ marginBottom: 4 }}>Loop occurrences</div>
+              <div className="nm-h3" style={{ marginBottom: 18 }}>{loopsActive} active · {loopsResolved} resolved</div>
+              <LoopSummary loops={loops} />
+            </div>
+            <div className="nm-card">
               <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Growth · this window vs prior</div>
               <G label="Threads" before={growthPrev?.threads} after={growthCur?.threads} good={(growthCur?.threads ?? 0) >= (growthPrev?.threads ?? 0)} />
               <G label="Reflections" before={growthPrev?.entries} after={growthCur?.entries} good={(growthCur?.entries ?? 0) >= (growthPrev?.entries ?? 0)} />
@@ -413,17 +332,115 @@ export const InsightsScreen = () => {
             </div>
           </div>
 
-          <div className="nm-card" style={{ marginBottom: 14 }}>
-            <div style={{ marginBottom: 14 }}>
-              <div className="nm-eyebrow">Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
-              <div className="nm-h3" style={{ marginTop: 4 }}>When each trigger showed up</div>
-            </div>
-            <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />
-          </div>
-
           {loading && totalEntries === 0 && (
             <div className="nm-meta" style={{ textAlign: 'center', marginTop: 24 }}>Loading insights…</div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Weekly screen kept mostly as-is (mocked); will be wired in a follow-up. ---
+
+const WStat = ({ label, value, delta, good }) => (
+  <div style={{ borderLeft: '2px solid var(--rule)', paddingLeft: 16 }}>
+    <div className="nm-eyebrow" style={{ marginBottom: 8 }}>{label}</div>
+    <div className="nm-numeral sm">{value}</div>
+    {delta && <div className="nm-meta" style={{ marginTop: 6, color: good ? 'var(--teal)' : 'var(--ink-4)' }}>{delta} vs last</div>}
+  </div>
+);
+
+export const WeeklyScreen = () => {
+  const [insights, setInsights] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDashboardInsights(7)
+      .then((d) => { if (!cancelled) setInsights(d.insights); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const week = insights?.week;
+  const days = week?.days || [];
+  const stats = week?.stats || {};
+  const prev = week?.previous_stats || {};
+  const intensityDelta = fmtDelta(stats.avg_intensity, prev.avg_intensity);
+  const topTriggers = insights?.top_triggers || [];
+
+  return (
+    <div className="nm-main">
+      <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Weekly report</b></>}>
+        <button className="nm-btn accent" onClick={() => window.print()}><Icon name="download" size={12} /> PDF</button>
+      </TopBar>
+      <div className="nm-content">
+        <div style={{ maxWidth: 760, margin: '0 auto' }} className="nm-fade-up">
+          <header className="nm-hero">
+            <div>
+              <div className="nm-eyebrow" style={{ marginBottom: 12 }}>
+                {(() => {
+                  const today = new Date();
+                  const start = new Date(today); start.setDate(today.getDate() - 6);
+                  const fmt = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                  return `Week of ${fmt(start)} – ${fmt(today)}`;
+                })()}
+              </div>
+              <h1 className="nm-h1">
+                {loading ? 'Drawing the week…' : (stats.entries ? <>Your week, <em>so far</em>.</> : <>A blank week —<br /><em>still time</em>.</>)}
+              </h1>
+            </div>
+          </header>
+
+          <div className="nm-grid-4 nm-stagger" style={{ marginBottom: 36 }}>
+            <WStat label="Threads" value={stats.threads ?? 0} delta={prev.threads != null ? `${(stats.threads ?? 0) - (prev.threads ?? 0) >= 0 ? '+' : ''}${(stats.threads ?? 0) - (prev.threads ?? 0)}` : null} good={(stats.threads ?? 0) >= (prev.threads ?? 0)} />
+            <WStat label="Avg intensity" value={stats.avg_intensity ?? '—'} delta={intensityDelta != null ? (intensityDelta > 0 ? `+${intensityDelta}` : `${intensityDelta}`) : null} good={intensityDelta != null && intensityDelta < 0} />
+            <WStat label="Active loops" value={insights?.loops?.active ?? 0} />
+            <WStat label="New patterns" value={insights?.loops?.new_in_window ?? 0} />
+          </div>
+
+          <section style={{ marginBottom: 36 }} className="nm-fade-up">
+            <div className="nm-eyebrow" style={{ marginBottom: 6 }}>01 · Emotional trend</div>
+            <h2 className="nm-h2" style={{ marginBottom: 14 }}>Day-by-day intensity</h2>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {days.map((d) => (
+                <div key={d.day} style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{
+                    height: 80,
+                    background: d.dominant_mood ? moodColor(d.dominant_mood) : 'transparent',
+                    border: d.dominant_mood ? 'none' : '1px dashed var(--rule)',
+                    opacity: d.avg_intensity ? 0.35 + (d.avg_intensity / 10) * 0.6 : 0.5,
+                    borderRadius: 2,
+                    position: 'relative',
+                  }}>
+                    {d.avg_intensity != null && (
+                      <div style={{ position: 'absolute', bottom: 6, left: 0, right: 0, fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--ink)' }}>{d.avg_intensity}</div>
+                    )}
+                  </div>
+                  <div className="nm-meta" style={{ marginTop: 6 }}>{d.weekday}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-2)' }}>{d.dominant_mood || '—'}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={{ marginBottom: 36 }} className="nm-fade-up">
+            <div className="nm-eyebrow" style={{ marginBottom: 6 }}>02 · Triggers</div>
+            <h2 className="nm-h2" style={{ marginBottom: 14 }}>{topTriggers[0] ? `${topTriggers[0].trigger} leads the week.` : 'No triggers yet.'}</h2>
+            {topTriggers.length === 0 && <div className="nm-meta">No triggers detected this window.</div>}
+            {topTriggers.map((t, i) => (
+              <div key={t.trigger} style={{ display: 'grid', gridTemplateColumns: '20px 100px 1fr 50px', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: i === topTriggers.length - 1 ? 'none' : '1px dashed var(--rule)' }}>
+                <span className="nm-meta">{String(i + 1).padStart(2, '0')}</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: 16 }}>{t.trigger}</span>
+                <div style={{ height: 4, background: 'var(--rule-soft)', overflow: 'hidden' }}>
+                  <div style={{ width: `${t.pct}%`, height: '100%', background: 'var(--accent)' }} />
+                </div>
+                <span className="nm-meta" style={{ textAlign: 'right' }}>{t.count}</span>
+              </div>
+            ))}
+          </section>
         </div>
       </div>
     </div>

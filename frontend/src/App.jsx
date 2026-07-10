@@ -1,14 +1,13 @@
+
 import { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './components/nextmate/Shell';
 import { TodayScreen } from './components/nextmate/TodayScreen';
 import { ChatScreen } from './components/nextmate/ChatScreen';
 import { LoopsScreen } from './components/nextmate/LoopsScreen';
-import { InsightsScreen } from './components/nextmate/DataScreens';
-
+import { InsightsScreen, WeeklyScreen } from './components/nextmate/DataScreens';
 import { JournalScreen } from './components/nextmate/JournalScreen';
 import { AuthGate } from './components/nextmate/AuthGate';
 import { clearSession, getToken, getUser, listThreads } from './lib/api';
-import { AppContext } from './context';
 
 const newThreadId = () =>
   (crypto.randomUUID ? crypto.randomUUID() : `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
@@ -19,26 +18,6 @@ export default function App() {
   const [threads, setThreads] = useState([]);
   const [threadId, setThreadId] = useState(null);
   const [chatParams, setChatParams] = useState(null);
-
-  // Theme state
-  const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('nextmate_theme');
-    return saved === 'light' ? 'light' : 'dark';
-  });
-
-  // Mobile sidebar open state
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('nextmate_theme', theme);
-  }, [theme]);
-
-  // Close sidebar drawer on route change
-  const navigateTo = (r) => {
-    setRoute(r);
-    setSidebarOpen(false);
-  };
 
   const refreshThreads = useCallback(async () => {
     try {
@@ -56,11 +35,23 @@ export default function App() {
   const openThread = (id, params = null) => {
     setThreadId(id);
     setChatParams(params);
-    navigateTo('chat');
+    setRoute('chat');
   };
 
-  const beginReflection = () => {
-    openThread(newThreadId(), null);
+  const beginReflection = (initialDraft = '') => {
+    openThread(newThreadId(), initialDraft ? { initialDraft } : null);
+  };
+
+  const navigateTo = (nextRoute, params = null) => {
+    if (nextRoute === 'chat') {
+      if (params?.threadId) {
+        openThread(params.threadId, params);
+      } else {
+        beginReflection(params?.initialDraft || params?.initialMessage || '');
+      }
+      return;
+    }
+    setRoute(nextRoute);
   };
 
   const onLogout = () => {
@@ -69,7 +60,7 @@ export default function App() {
     setThreads([]);
     setThreadId(null);
     setChatParams(null);
-    navigateTo('today');
+    setRoute('today');
   };
 
   if (!user) return <AuthGate onAuth={setUser} />;
@@ -83,57 +74,37 @@ export default function App() {
         onNav={navigateTo}
         threadId={threadId}
         threadTitle={chatParams?.threadTitle || activeThread?.title}
-        initialMessage={chatParams?.initialMessage}
         onMessageDone={refreshThreads}
+        initialDraft={chatParams?.initialDraft || chatParams?.initialMessage || ''}
+        onDraftConsumed={() => setChatParams((prev) => (prev ? { ...prev, initialDraft: '', initialMessage: '' } : prev))}
       />
     );
   } else if (route === 'journal') {
     screen = <JournalScreen />;
   } else if (route === 'loops') {
-    screen = (
-      <LoopsScreen
-        onNav={(r, params) => {
-          if (r === 'chat') {
-            params?.threadId ? openThread(params.threadId, params) : beginReflection();
-          } else {
-            navigateTo(r);
-          }
-        }}
-      />
-    );
+    screen = <LoopsScreen onNav={navigateTo} />;
+
   } else if (route === 'insights') {
     screen = <InsightsScreen />;
+  } else if (route === 'weekly') {
+    screen = <WeeklyScreen />;
   } else {
-    screen = (
-      <TodayScreen
-        onNav={(r, params) => {
-          if (r === 'chat') {
-            params?.threadId ? openThread(params.threadId, params) : beginReflection();
-          } else {
-            navigateTo(r);
-          }
-        }}
-        threads={threads}
-        user={user}
-      />
-    );
+    screen = <TodayScreen onNav={navigateTo} threads={threads} user={user} />;
   }
 
   return (
-    <AppContext.Provider value={{ theme, setTheme, sidebarOpen, setSidebarOpen }}>
-      <div className="nm-app" data-screen-label={`Nextmate — ${route}`}>
-        <Sidebar
-          active={route}
-          onNav={navigateTo}
-          threads={threads}
-          activeThreadId={threadId}
-          onSelectThread={openThread}
-          onNewThread={beginReflection}
-          user={user}
-          onLogout={onLogout}
-        />
-        {screen}
-      </div>
-    </AppContext.Provider>
+    <div className="nm-app" data-screen-label={`Nextmate — ${route}`}>
+      <Sidebar
+        active={route}
+        onNav={setRoute}
+        threads={threads}
+        activeThreadId={threadId}
+        onSelectThread={openThread}
+        onNewThread={beginReflection}
+        user={user}
+        onLogout={onLogout}
+      />
+      {screen}
+    </div>
   );
 }

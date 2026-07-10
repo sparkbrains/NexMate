@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
-import { getLoop, listLoops, resolveLoop, reflectOnLoop } from '../../lib/api';
+import { getLoop, listLoops, resolveLoop } from '../../lib/api';
 
 const LoopItem = ({ loop, active, onClick }) => (
   <div onClick={onClick} style={{ padding: '10px 12px', borderRadius: 4, cursor: 'pointer', marginBottom: 1, background: active ? 'var(--surface)' : 'transparent', borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent' }}>
@@ -113,7 +113,7 @@ export const LoopsScreen = ({ onNav }) => {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState(null);
   const [resolving, setResolving] = useState(false);
-  const [reflecting, setReflecting] = useState(false);
+  const [filterQuery, setFilterQuery] = useState('');
 
   const fetchList = async (preserveId = null) => {
     setLoadingList(true);
@@ -147,8 +147,31 @@ export const LoopsScreen = ({ onNav }) => {
     return () => { cancelled = true; };
   }, [selectedId]);
 
-  const activeLoops = useMemo(() => loops.filter((l) => l.state === 'active'), [loops]);
-  const resolvedLoops = useMemo(() => loops.filter((l) => l.state === 'resolved'), [loops]);
+  const filteredLoops = useMemo(() => {
+    const q = filterQuery.trim().toLowerCase();
+    if (!q) return loops;
+    return loops.filter((l) =>
+      (l.core_belief || '').toLowerCase().includes(q) ||
+      (l.name || '').toLowerCase().includes(q) ||
+      (l.trigger || '').toLowerCase().includes(q)
+    );
+  }, [loops, filterQuery]);
+  const activeLoops = useMemo(() => filteredLoops.filter((l) => l.state === 'active'), [filteredLoops]);
+  const resolvedLoops = useMemo(() => filteredLoops.filter((l) => l.state === 'resolved'), [filteredLoops]);
+
+  const exportLoops = () => {
+    try {
+      const blob = new Blob([JSON.stringify({ counts, items: loops }, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'nextmate-loops.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch { /* ignore */ }
+  };
 
   const handleResolve = async () => {
     if (!detail) return;
@@ -160,25 +183,6 @@ export const LoopsScreen = ({ onNav }) => {
       setError(e.message || 'Failed to resolve loop');
     } finally {
       setResolving(false);
-    }
-  };
-
-  const handleReflect = async () => {
-    if (!detail) return;
-    setReflecting(true);
-    try {
-      const result = await reflectOnLoop(detail.loop_id);
-      if (result && result.thread_id) {
-        onNav && onNav('chat', { 
-          threadId: result.thread_id, 
-          threadTitle: result.title,
-          initialMessage: result.opening_message 
-        });
-      }
-    } catch (e) {
-      setError(e.message || 'Failed to create reflection thread');
-    } finally {
-      setReflecting(false);
     }
   };
 
@@ -207,6 +211,9 @@ export const LoopsScreen = ({ onNav }) => {
             </p>
             {error && <p className="nm-meta" style={{ color: 'var(--accent)', marginTop: 14 }}>{error}</p>}
             <div style={{ marginTop: 28 }}>
+              <button className="nm-btn accent w-auto" onClick={() => onNav && onNav('chat')}>
+                <Icon name="plus" size={12} /> Begin reflection
+              </button>
             </div>
           </div>
         </div>
@@ -219,8 +226,14 @@ export const LoopsScreen = ({ onNav }) => {
   return (
     <div className="nm-main">
       <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Loops</b></>}>
-
-
+        <input
+          className="nm-input"
+          placeholder="Filter loops…"
+          value={filterQuery}
+          onChange={(e) => setFilterQuery(e.target.value)}
+          style={{ padding: '4px 10px', fontSize: 12, minWidth: 160 }}
+        />
+        <button className="nm-btn" disabled={!loops.length} onClick={exportLoops}><Icon name="download" size={12} /> Export</button>
       </TopBar>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
@@ -342,8 +355,8 @@ export const LoopsScreen = ({ onNav }) => {
                 </div>
 
                 <div style={{ display: 'flex', gap: 6, marginTop: 22 }}>
-                  <button className="nm-btn accent" onClick={handleReflect} disabled={reflecting}>
-                    <Icon name="plus" size={12} /> {reflecting ? 'Creating thread…' : 'Reflect on this loop'}
+                  <button className="nm-btn accent" onClick={() => onNav && onNav('chat')}>
+                    <Icon name="plus" size={12} /> Reflect on this loop
                   </button>
                   {loop.state !== 'resolved' && (
                     <button className="nm-btn" onClick={handleResolve} disabled={resolving}>
