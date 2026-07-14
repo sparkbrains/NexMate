@@ -3,6 +3,7 @@ import logging
 from typing import Any
 
 from nextmate_agent.agent import checkpoint_thread_id, get_reply_graph, get_summary_graph
+# from nextmate_agent.guardrails import screen_user_input, GuardrailViolation
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,17 @@ def _fallback_reply_for_error(exc: Exception) -> str:
 
 
 async def generate_assistant_reply(user_id: int, thread_id: str, user_message: str) -> tuple[str, dict[str, Any]]:
+    # Apply guardrails: toxic language + jailbreak detection (blocking), PII redaction (non-blocking).
+    # try:
+    #     user_message = await screen_user_input(user_message)
+    # except GuardrailViolation as exc:
+    #     logger.info(
+    #         "Guardrail blocked message for user_id=%s thread_id=%s",
+    #         user_id,
+    #         thread_id,
+    #     )
+    #     return exc.user_message, {"error": "guardrail_blocked"}
+
     try:
         internal_thread_id = checkpoint_thread_id(user_id, thread_id)
         payload = await asyncio.to_thread(
@@ -34,15 +46,20 @@ async def generate_assistant_reply(user_id: int, thread_id: str, user_message: s
             {"configurable": {"thread_id": internal_thread_id, "user_id": user_id}},
         )
         assistant_reply = str(payload.get("assistant_reply", "")).strip()
-        asyncio.create_task(
-            _persist_summary_background(
-                user_id=user_id,
-                thread_id=thread_id,
-                user_message=user_message,
-                assistant_reply=assistant_reply,
+        
+        toxic_detected = payload.get("toxic_language_detected", False)
+        if not toxic_detected:
+            asyncio.create_task(
+                _persist_summary_background(
+                    user_id=user_id,
+                    thread_id=thread_id,
+                    user_message=user_message,
+                    assistant_reply=assistant_reply,
+                )
             )
-        )
-        return assistant_reply, {}
+            return assistant_reply, {}
+        else:
+            return assistant_reply, {"error": "toxic_blocked"}
     except Exception as exc:
         logger.exception(
             "Assistant reply generation failed for user_id=%s thread_id=%s",
@@ -73,4 +90,3 @@ async def _persist_summary_background(user_id: int, thread_id: str, user_message
             len(assistant_reply),
         )
         # Background summary failures should not block chat delivery.
-        return

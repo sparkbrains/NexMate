@@ -33,5 +33,9 @@ class NextMateState(TypedDict, total=False):
     thread_id: str
     stored_loops: list[dict[str, Any]]
     active_loop: dict[str, Any]
+    toxic_language_detected: bool
+    prompt_injection_detected: bool
+    pii_detected: bool
+    crisis_detected: bool
 
 

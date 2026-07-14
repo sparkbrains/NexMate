@@ -36,7 +36,7 @@ export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
         meta: msg.created_at ? new Date(msg.created_at).toLocaleDateString() : null,
       })));
       setStatus('connected');
-      return () => {};
+      return () => { };
     }
 
     const ws = new WebSocket(chatSocketUrl(threadId));
@@ -66,6 +66,8 @@ export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
       if (data.event === 'start') {
         setStreaming(true);
         setMessages((m) => [...m, { from: 'nex', text: '' }]);
+      } else if (data.event === 'error') {
+        setError(data.message);
       } else if (data.event === 'chunk') {
         setMessages((m) => {
           if (m.length === 0) return m;
@@ -114,6 +116,7 @@ export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
     const ws = wsRef.current;
     if (!ws || ws.readyState !== WebSocket.OPEN) return false;
 
+    setError(null);
     setMessages((m) => [...m, { from: 'me', text }]);
     ws.send(JSON.stringify({ message: text }));
     return true;

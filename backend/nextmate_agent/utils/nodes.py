@@ -446,9 +446,22 @@ def detect_explicit_advice_node(state: NextMateState, config: RunnableConfig) ->
             thread_id=thread_id,
             node_name="detect_explicit_advice",
             inputs={"user_input": user_input},
-            outputs={"explicit_advice_request": False},
+            outputs={
+                "explicit_advice_request": False,
+                "toxic_language_detected": False,
+                "prompt_injection_detected": False,
+                "pii_detected": False,
+                "crisis_detected": False,
+            },
         )
-        return {"explicit_advice_request": False, "response_mode": ""}
+        return {
+            "explicit_advice_request": False,
+            "response_mode": "",
+            "toxic_language_detected": False,
+            "prompt_injection_detected": False,
+            "pii_detected": False,
+            "crisis_detected": False,
+        }
 
     content = build_explicit_advice_detection_prompt(user_input)
     raw, usage = invoke_with_logging(
@@ -463,18 +476,39 @@ def detect_explicit_advice_node(state: NextMateState, config: RunnableConfig) ->
 
     parsed = parse_json_object(raw if isinstance(raw, str) else "")
     explicit_advice = bool(parsed.get("explicit_advice_request", False))
+    toxic_language_detected = bool(parsed.get("toxic_language_detected", False))
+    prompt_injection_detected = bool(parsed.get("prompt_injection_detected", False))
+    pii_detected = bool(parsed.get("pii_detected", False))
+    crisis_detected = bool(parsed.get("crisis_detected", False))
     reason = str(parsed.get("reason", "")).strip()
 
     response_mode = "suggest" if explicit_advice else ""
+    if toxic_language_detected or prompt_injection_detected or pii_detected or crisis_detected:
+        response_mode = "safety_mode"
 
     log_node(
         thread_id=thread_id,
         node_name="detect_explicit_advice",
         inputs={"user_input": user_input, "prompt": content},
-        outputs={"explicit_advice_request": explicit_advice, "response_mode": response_mode, "reason": reason},
+        outputs={
+            "explicit_advice_request": explicit_advice,
+            "toxic_language_detected": toxic_language_detected,
+            "prompt_injection_detected": prompt_injection_detected,
+            "pii_detected": pii_detected,
+            "crisis_detected": crisis_detected,
+            "response_mode": response_mode,
+            "reason": reason
+        },
         extra={"raw_llm_response": raw},
     )
-    return {"explicit_advice_request": explicit_advice, "response_mode": response_mode}
+    return {
+        "explicit_advice_request": explicit_advice,
+        "toxic_language_detected": toxic_language_detected,
+        "prompt_injection_detected": prompt_injection_detected,
+        "pii_detected": pii_detected,
+        "crisis_detected": crisis_detected,
+        "response_mode": response_mode
+    }
 
 MODE_SELECTION_SYSTEM_PROMPT = """
 You are a routing classifier. Your job is to pick the single best response mode for a user message.
@@ -485,6 +519,28 @@ Return ONLY the exact mode name from the provided list. No explanation, no markd
 def choose_response_mode_node(state: NextMateState) -> NextMateState:
     thread_id = state.get("thread_id", "default")
     user_input = state.get("user_input", "")
+    toxic_language_detected = state.get("toxic_language_detected", False)
+    prompt_injection_detected = state.get("prompt_injection_detected", False)
+    pii_detected = state.get("pii_detected", False)
+    crisis_detected = state.get("crisis_detected", False)
+    
+    if toxic_language_detected or prompt_injection_detected or pii_detected or crisis_detected:
+        reason = "safety violation or crisis detected (toxic/injection/PII/crisis) — mode locked to safety_mode"
+        log_node(
+            thread_id=thread_id,
+            node_name="choose_response_mode",
+            inputs={
+                "user_input": user_input,
+                "toxic_language_detected": toxic_language_detected,
+                "prompt_injection_detected": prompt_injection_detected,
+                "pii_detected": pii_detected,
+                "crisis_detected": crisis_detected,
+            },
+            outputs={"response_mode": "safety_mode", "response_mode_history": ["safety_mode"]},
+            extra={"reason": reason},
+        )
+        return {"response_mode": "safety_mode", "response_mode_history": ["safety_mode"]}
+
     memory_context = state.get("memory_context", "No prior memory available yet.")
     detected_loops = state.get("detected_loops", "")
     existing_mode = state.get("response_mode", "")
@@ -645,6 +701,53 @@ def generate_reply_node(state: NextMateState) -> NextMateState:
     llm = get_chat_model()
     thread_id = state.get("thread_id", "default")
     user_input = state.get("user_input", "")
+    toxic_language_detected = state.get("toxic_language_detected", False)
+    prompt_injection_detected = state.get("prompt_injection_detected", False)
+    pii_detected = state.get("pii_detected", False)
+    crisis_detected = state.get("crisis_detected", False)
+
+    if (toxic_language_detected and not crisis_detected) or prompt_injection_detected or pii_detected:
+        if prompt_injection_detected:
+            assistant_reply = "That message looks like it's trying to manipulate the assistant's instructions, so I can't process it. Please rephrase."
+            reason = "prompt injection detected, safety reply returned"
+        elif pii_detected:
+            assistant_reply = "Please do not share sensitive personal information (such as email addresses, phone numbers, credit card numbers, or social security numbers)."
+            reason = "personal information leakage detected, safety reply returned"
+        else:
+            assistant_reply = "Please use respectful language so I can help you."
+            reason = "toxic language detected, safety reply returned"
+
+        log_node(
+            thread_id=thread_id,
+            node_name="generate_reply",
+            inputs={
+                "user_input": user_input,
+                "toxic_language_detected": toxic_language_detected,
+                "prompt_injection_detected": prompt_injection_detected,
+                "pii_detected": pii_detected,
+                "crisis_detected": crisis_detected,
+            },
+            outputs={
+                "assistant_reply": assistant_reply,
+                "chat_history_update": [
+                    {"role": "user", "content": user_input},
+                    {"role": "assistant", "content": assistant_reply},
+                ],
+            },
+            extra={"reason": reason},
+        )
+        return {
+            "assistant_reply": assistant_reply,
+            "chat_history": [
+                {"role": "user", "content": user_input},
+                {"role": "assistant", "content": assistant_reply},
+            ],
+            "toxic_language_detected": toxic_language_detected,
+            "prompt_injection_detected": prompt_injection_detected,
+            "pii_detected": pii_detected,
+            "crisis_detected": crisis_detected,
+        }
+
     memory_context = state.get("memory_context", "No prior memory available yet.")
     recent_history = state.get("chat_history", [])[-16:]
     if recent_history:

@@ -30,6 +30,16 @@ async def chat_socket(websocket: WebSocket, thread_id: str) -> None:
         while True:
             raw = await websocket.receive_json()
             user_message = str(raw.get("message", "")).strip()
+            
+            if len(user_message) > 30000:
+                logger.warning("Rejecting oversized message from user_id=%s (length: %s)", user.id, len(user_message))
+                await websocket.send_json({
+                    "event": "error",
+                    "message": "Message is too long. Please shorten it to under 30,000 characters.",
+                    "thread_id": cleaned_thread_id
+                })
+                continue
+
             if not user_message:
                 continue
 
@@ -41,6 +51,39 @@ async def chat_socket(websocket: WebSocket, thread_id: str) -> None:
             )
             append_thread_message(user.id, cleaned_thread_id, "user", user_message)
             assistant_reply, turn_summary = await generate_assistant_reply(user.id, cleaned_thread_id, user_message)
+
+            if turn_summary.get("error") == "toxic_blocked":
+                await websocket.send_json(
+                    {
+                        "event": "start",
+                        "thread_id": cleaned_thread_id,
+                        "role": "assistant",
+                    }
+                )
+                await websocket.send_json(
+                    {
+                        "event": "chunk",
+                        "thread_id": cleaned_thread_id,
+                        "role": "assistant",
+                        "delta": assistant_reply,
+                    }
+                )
+                append_thread_message(user.id, cleaned_thread_id, "assistant", assistant_reply)
+                logger.info(
+                    "Delivered toxic warning message user_id=%s thread_id=%s",
+                    user.id,
+                    cleaned_thread_id,
+                )
+                await websocket.send_json(
+                    {
+                        "event": "done",
+                        "thread_id": cleaned_thread_id,
+                        "role": "assistant",
+                        "content": assistant_reply,
+                        "summary": turn_summary,
+                    }
+                )
+                continue
 
             await websocket.send_json(
                 {
