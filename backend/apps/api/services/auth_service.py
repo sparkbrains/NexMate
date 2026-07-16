@@ -169,10 +169,16 @@ def _generate_otp() -> str:
 
 
 def _send_otp_email(to_email: str, code: str) -> None:
-    host = os.environ["SMTP_HOST"]
+    host = os.getenv("SMTP_HOST")
+    if not host:
+        raise EnvironmentError("SMTP_HOST environment variable is required for sending OTP emails.")
     port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.environ["SMTP_USER"]
-    smtp_password = os.environ["SMTP_PASSWORD"]
+    smtp_user = os.getenv("SMTP_USER")
+    if not smtp_user:
+        raise EnvironmentError("SMTP_USER environment variable is required for sending OTP emails.")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    if not smtp_password:
+        raise EnvironmentError("SMTP_PASSWORD environment variable is required for sending OTP emails.")
     sender = os.getenv("SMTP_FROM", smtp_user)
 
     msg = MIMEText(
