@@ -12,6 +12,8 @@ from nextmate_agent.utils.nodes import (
     detect_loops_node,
     generate_reply_node,
     load_memory_node,
+    manage_cross_thread_memory_node,
+    manage_thread_summary_node,
     persist_summary_node,
     summarize_turn_node,
 )
@@ -67,6 +69,8 @@ atexit.register(close_checkpointer)
 def _build_graph(checkpointer: PostgresSaver | None):
     builder = StateGraph(NextMateState)
     builder.add_node("load_memory", load_memory_node)
+    builder.add_node("manage_thread_summary", manage_thread_summary_node)
+    builder.add_node("manage_cross_thread_memory", manage_cross_thread_memory_node)
     builder.add_node("build_memory_context", build_memory_context_node)
     builder.add_node("detect_loops", detect_loops_node)
     builder.add_node("detect_explicit_advice", detect_explicit_advice_node)
@@ -76,7 +80,9 @@ def _build_graph(checkpointer: PostgresSaver | None):
     builder.add_node("persist_summary", persist_summary_node)
 
     builder.add_edge(START, "load_memory")
-    builder.add_edge("load_memory", "build_memory_context")
+    builder.add_edge("load_memory", "manage_thread_summary")
+    builder.add_edge("manage_thread_summary", "manage_cross_thread_memory")
+    builder.add_edge("manage_cross_thread_memory", "build_memory_context")
     builder.add_conditional_edges(
         "build_memory_context",
         _should_detect_loops,
@@ -94,6 +100,8 @@ def _build_graph(checkpointer: PostgresSaver | None):
 def _build_reply_graph(checkpointer: PostgresSaver):
     builder = StateGraph(NextMateState)
     builder.add_node("load_memory", load_memory_node)
+    builder.add_node("manage_thread_summary", manage_thread_summary_node)
+    builder.add_node("manage_cross_thread_memory", manage_cross_thread_memory_node)
     builder.add_node("build_memory_context", build_memory_context_node)
     builder.add_node("detect_loops", detect_loops_node)
     builder.add_node("detect_explicit_advice", detect_explicit_advice_node)
@@ -101,7 +109,9 @@ def _build_reply_graph(checkpointer: PostgresSaver):
     builder.add_node("generate_reply", generate_reply_node)
 
     builder.add_edge(START, "load_memory")
-    builder.add_edge("load_memory", "build_memory_context")
+    builder.add_edge("load_memory", "manage_thread_summary")
+    builder.add_edge("manage_thread_summary", "manage_cross_thread_memory")
+    builder.add_edge("manage_cross_thread_memory", "build_memory_context")
     builder.add_conditional_edges(
         "build_memory_context",
         _should_detect_loops,

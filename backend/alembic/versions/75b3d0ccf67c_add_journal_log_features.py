@@ -18,12 +18,18 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column('journal_logs', sa.Column('core_theme', sa.Text(), server_default='', nullable=False))
-    op.add_column('journal_logs', sa.Column('core_beliefs', sa.JSON(), server_default='[]', nullable=False))
-    op.add_column('journal_logs', sa.Column('triggers', sa.JSON(), server_default='[]', nullable=False))
+    op.execute(
+        "ALTER TABLE journal_logs ADD COLUMN IF NOT EXISTS core_theme TEXT NOT NULL DEFAULT ''"
+    )
+    op.execute(
+        "ALTER TABLE journal_logs ADD COLUMN IF NOT EXISTS core_beliefs JSON NOT NULL DEFAULT '[]'"
+    )
+    op.execute(
+        "ALTER TABLE journal_logs ADD COLUMN IF NOT EXISTS triggers JSON NOT NULL DEFAULT '[]'"
+    )
 
 
 def downgrade() -> None:
-    op.drop_column('journal_logs', 'triggers')
-    op.drop_column('journal_logs', 'core_beliefs')
-    op.drop_column('journal_logs', 'core_theme')
+    op.execute("ALTER TABLE journal_logs DROP COLUMN IF EXISTS triggers")
+    op.execute("ALTER TABLE journal_logs DROP COLUMN IF EXISTS core_beliefs")
+    op.execute("ALTER TABLE journal_logs DROP COLUMN IF EXISTS core_theme")

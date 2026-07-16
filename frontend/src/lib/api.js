@@ -82,6 +82,38 @@ export async function signup(email, password) {
   return data;
 }
 
+// Step 1 of OTP signup: request a code be emailed to the address. No
+// account exists yet — the backend holds a pending signup until it's
+// verified.
+export async function signupRequestOtp(email, password) {
+  return request('/api/auth/signup/request-otp', {
+    method: 'POST',
+    body: { email, password },
+    auth: false,
+  });
+}
+
+// Ask the backend to send a fresh code to the same pending signup.
+export async function resendSignupOtp(email) {
+  return request('/api/auth/signup/resend-otp', {
+    method: 'POST',
+    body: { email },
+    auth: false,
+  });
+}
+
+// Step 2 of OTP signup: verify the code. On success the backend creates
+// the account and this returns the same {token, user} shape as login().
+export async function signupVerifyOtp(email, otp) {
+  const data = await request('/api/auth/signup/verify-otp', {
+    method: 'POST',
+    body: { email, otp },
+    auth: false,
+  });
+  setSession(data.token, data.user);
+  return data;
+}
+
 export async function login(email, password) {
   const data = await request('/api/auth/login', {
     method: 'POST',

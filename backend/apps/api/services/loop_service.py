@@ -278,52 +278,128 @@ def _loops_match(loops_a: dict[str, Any], loops_b: dict[str, Any]) -> bool:
     return belief_match and trigger_match
 
 
+# =============================================================================
+# REPLACE the existing _get_cross_thread_memory_entries function in
+# loop_service.py with this version.
+#
+# Changes from the original:
+# - Drops user_input/assistant_reply/next_focus from the SELECT -- nothing in
+#   loop_service.py's matching/validation functions reads them, so this is a
+#   free size reduction with zero quality impact.
+# - LIMIT raised 100 -> 150. Safe to raise because, after this change, this
+#   function's output is used ONLY for the free deterministic Python
+#   validation path (_validate_cross_thread_loop_recurrence) -- the LLM-facing
+#   prompt now gets a separately-capped subset via
+#   _select_prompt_cross_thread_entries, so a larger validation pool costs
+#   zero extra tokens and improves persistence-detection accuracy.
+# =============================================================================
+
+
 def _get_cross_thread_memory_entries(user_id: int, current_thread_id: str) -> list[dict[str, Any]]:
     """
-    Retrieve all memory entries for a user across all threads except the current one.
+    Retrieve memory entries for a user across all threads except the current
+    one. Used as the FULL evidence pool for deterministic cross-thread loop
+    validation -- not directly injected into any LLM prompt (see
+    _select_prompt_cross_thread_entries in nodes.py for the prompt-facing
+    subset).
     """
     with get_connection(autocommit=True) as conn:
         with conn.cursor() as cur:
-            # Get entries from journal_entries_v2 across all threads for this user
             cur.execute(
                 """
-                SELECT 
-                    user_input,
-                    assistant_reply,
+                SELECT
                     core_theme,
                     mood,
                     core_beliefs,
                     triggers,
-                    key_facts,
-                    next_focus,
                     intensity,
                     created_at,
                     thread_id
-                FROM journal_entries_v2 
+                FROM journal_entries_v2
                 WHERE user_id = %s AND thread_id != %s
                 ORDER BY created_at DESC
-                LIMIT 100
+                LIMIT 150
                 """,
                 (user_id, current_thread_id)
             )
             cross_thread_entries = []
             for row in cur.fetchall():
                 cross_thread_entries.append({
-                    "user_input": row["user_input"],
-                    "assistant_reply": row["assistant_reply"],
                     "core_theme": row["core_theme"],
                     "mood": row["mood"],
                     "core_beliefs": row["core_beliefs"] or [],
                     "triggers": row["triggers"] or [],
-                    "key_facts": row["key_facts"] or [],
-                    "next_focus": row["next_focus"],
                     "intensity": row["intensity"],
                     "created_at": row["created_at"].isoformat(),
                     "thread_id": row["thread_id"]
                 })
-            
+
     return cross_thread_entries
 
+# =============================================================================
+# APPEND THIS FUNCTION TO loop_service.py
+# (place it near _get_cross_thread_memory_entries -- no new imports needed,
+# it only uses stdlib and things loop_service.py already imports)
+# =============================================================================
+
+
+def _select_prompt_cross_thread_entries(
+    cross_thread_entries: list[dict[str, Any]],
+    current_entries: list[dict[str, Any]],
+    stored_loops: list[dict[str, Any]],
+    max_entries: int = 12,
+) -> list[dict[str, Any]]:
+    """Choose which cross-thread entries the detect_loops LLM actually sees.
+
+    Prioritizes entries that share a belief/trigger with the current thread or
+    a known stored loop (the only entries actually useful for spotting a
+    candidate cross-thread pattern), then fills remaining slots with a
+    temporally-SPREAD sample of the rest -- not a recency slice -- so the LLM
+    still sees that a pattern spans weeks, not just today.
+
+    Deterministic validation (_validate_cross_thread_loop_recurrence) should
+    always be called with the FULL unfiltered cross_thread_entries list, not
+    this trimmed result -- this function only controls prompt size, never
+    validation evidence.
+    """
+    if len(cross_thread_entries) <= max_entries:
+        return cross_thread_entries
+
+    relevant_terms: set[str] = set()
+    for e in current_entries:
+        relevant_terms.update(b.lower() for b in e.get("core_beliefs", []) if b)
+        relevant_terms.update(t.lower() for t in e.get("triggers", []) if t)
+    for loop in stored_loops:
+        if loop.get("core_belief"):
+            relevant_terms.add(loop["core_belief"].lower())
+        if loop.get("trigger"):
+            relevant_terms.add(loop["trigger"].lower())
+
+    def _is_relevant(entry: dict[str, Any]) -> bool:
+        beliefs = [b.lower() for b in entry.get("core_beliefs", [])]
+        triggers = [t.lower() for t in entry.get("triggers", [])]
+        for term in relevant_terms:
+            if any(term in b or b in term for b in beliefs):
+                return True
+            if any(term in t or t in term for t in triggers):
+                return True
+        return False
+
+    relevant = [e for e in cross_thread_entries if _is_relevant(e)]
+    remainder = [e for e in cross_thread_entries if e not in relevant]
+
+    if len(relevant) >= max_entries:
+        # Still cap, but keep a spread across the relevant set rather than a
+        # contiguous recency block, to preserve visible temporal diversity.
+        step = max(1, len(relevant) // max_entries)
+        return relevant[::step][:max_entries]
+
+    slots_left = max_entries - len(relevant)
+    if remainder and slots_left > 0:
+        step = max(1, len(remainder) // slots_left)
+        relevant = relevant + remainder[::step][:slots_left]
+
+    return relevant
 
 def _validate_cross_thread_loop_recurrence(
     loop_belief: str, loop_trigger: str, current_entries: list[dict[str, Any]], 

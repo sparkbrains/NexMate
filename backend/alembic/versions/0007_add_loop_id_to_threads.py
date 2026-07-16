@@ -19,26 +19,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "threads",
-        sa.Column("loop_id", sa.UUID(), nullable=True),
-    )
-    
-    op.add_column(
-        "threads",
-        sa.Column("last_reflected_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    
-    # Create index for efficient loop-based queries
-    op.create_index(
-        "idx_threads_loop_id",
-        "threads",
-        ["loop_id"],
-        unique=False,
+    op.execute(
+        "ALTER TABLE threads ADD COLUMN IF NOT EXISTS loop_id UUID"
     )
 
 
 def downgrade() -> None:
-    op.drop_index("idx_threads_loop_id", table_name="threads")
-    op.drop_column("threads", "last_reflected_at")
-    op.drop_column("threads", "loop_id")
+    op.execute("ALTER TABLE threads DROP COLUMN IF EXISTS loop_id")

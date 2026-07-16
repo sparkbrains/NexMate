@@ -5,7 +5,9 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from apps.db import get_connection
-from nextmate_agent.utils.llm import get_chat_model, invoke_with_logging, parse_json_object
+from nextmate_agent.utils.llm import get_fast_chat_model, invoke_with_logging, parse_json_object
+from nextmate_agent.utils.config import get_settings
+from nextmate_agent.utils.tokens import estimate_tokens
 from nextmate_agent.utils.prompts import (
     LOOP_COMPARISON_SYSTEM_PROMPT,
     LOOP_DETECTION_SYSTEM_PROMPT,
@@ -16,6 +18,7 @@ from nextmate_agent.utils.prompts import (
 )
 from apps.api.services.loop_service import (
     _validate_cross_thread_loop_recurrence,
+    _select_prompt_cross_thread_entries,
     _loops_match,
     _update_loop_last_seen,
     _save_merged_loop_info,
@@ -59,7 +62,9 @@ def _get_journal_logs_as_memory(user_id: int) -> list[dict[str, Any]]:
 
 
 def _get_cross_thread_entries_for_journal(user_id: int) -> list[dict[str, Any]]:
-    """Fetch recent chat entries from journal_entries_v2 for cross-context loop detection."""
+    """Fetch recent chat entries from journal_entries_v2 for cross-context loop
+    detection. Full evidence pool for validation -- NOT directly used as the
+    LLM-facing prompt content, which is capped separately."""
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -68,7 +73,7 @@ def _get_cross_thread_entries_for_journal(user_id: int) -> list[dict[str, Any]]:
                 FROM journal_entries_v2
                 WHERE user_id = %s
                 ORDER BY created_at DESC
-                LIMIT 100
+                LIMIT 150
                 """,
                 (user_id,),
             )
@@ -95,6 +100,8 @@ def extract_features_and_detect_loops(user_id: int, entry_id: int) -> None:
     2. Save them to the journal_logs table.
     3. Run loop detection using history from both journals and chats.
     """
+    settings = get_settings()
+
     # 1. Fetch the journal entry
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -115,8 +122,8 @@ def extract_features_and_detect_loops(user_id: int, entry_id: int) -> None:
     if not text_to_analyze.strip():
         return
 
-    # 2. Extract features
-    llm = get_chat_model()
+    # 2. Extract features -- classification/extraction task, use the fast model
+    llm = get_fast_chat_model()
     prompt_content = build_journal_summary_user_prompt(text_to_analyze, mood_label)
     raw_summary, _ = invoke_with_logging(
         llm,
@@ -185,14 +192,33 @@ def extract_features_and_detect_loops(user_id: int, entry_id: int) -> None:
     if len(journal_entries) < 2:
         return  # Not enough history
 
+    # Full set -- used for FREE, deterministic cross-thread validation later.
     cross_thread_entries = _get_cross_thread_entries_for_journal(user_id)
+
+    # What the LLM actually sees: a small, relevance + temporal-spread sample.
+    prompt_cross_thread_entries = _select_prompt_cross_thread_entries(
+        cross_thread_entries,
+        journal_entries,
+        stored_loops,
+        max_entries=settings.detect_loops_cross_thread_prompt_limit,
+    )
 
     # 6. Detect Loops
     detection_prompt = build_loop_detection_prompt(
         user_input=text_to_analyze,
         memory_entries=journal_entries,
-        cross_thread_entries=cross_thread_entries,
+        cross_thread_entries=prompt_cross_thread_entries,
     )
+
+    # Hard safety net: progressively drop lowest-priority cross-thread entries
+    # rather than let Groq 413 the whole background task.
+    while estimate_tokens(detection_prompt) > settings.detect_loops_max_prompt_tokens and prompt_cross_thread_entries:
+        prompt_cross_thread_entries = prompt_cross_thread_entries[:-1]
+        detection_prompt = build_loop_detection_prompt(
+            user_input=text_to_analyze,
+            memory_entries=journal_entries,
+            cross_thread_entries=prompt_cross_thread_entries,
+        )
 
     raw_loops, _ = invoke_with_logging(
         llm,
@@ -216,7 +242,8 @@ def extract_features_and_detect_loops(user_id: int, entry_id: int) -> None:
         trigger = loop.get("trigger", "")
         valence = loop.get("valence", "neutral")
 
-        # Validate loop recurrence
+        # Validate loop recurrence against the FULL cross-thread set, not the
+        # prompt-limited sample.
         is_valid, validated_matches, confidence = _validate_cross_thread_loop_recurrence(
             core_belief, trigger, journal_entries, cross_thread_entries
         )

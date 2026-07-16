@@ -21,51 +21,51 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "loops",
-        sa.Column("loop_id", sa.UUID(), primary_key=True),
-        sa.Column("thread_id", sa.Text(), nullable=False),
-        sa.Column("user_id", sa.BigInteger(), nullable=False),
-        sa.Column("loop_name", sa.Text(), nullable=False),
-        sa.Column("core_belief", sa.Text(), nullable=False),
-        sa.Column("trigger", sa.Text(), nullable=False),
-        sa.Column("valence", sa.Text(), nullable=False),
-        sa.Column("first_detected_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("last_detected_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("detection_count", sa.Integer(), nullable=False, server_default="1"),
-        sa.Column(
-            "detection_dates",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=False,
-            server_default=sa.text("'[]'::jsonb"),
-        ),
-        sa.Column(
-            "matched_entries",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=False,
-            server_default=sa.text("'[]'::jsonb"),
-        ),
-        sa.Column("description", sa.Text(), nullable=False),
-        sa.Column("suggestion", sa.Text(), nullable=False),
-        sa.Column("confidence_score", sa.Float(), nullable=False, server_default="0.0"),
-        sa.Column(
-            "validation_metadata",
-            postgresql.JSONB(astext_type=sa.Text()),
-            nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
-        ),
+    # Create the loops table if it doesn't already exist.
+    # Using raw SQL so this is idempotent for databases that already had the
+    # table bootstrapped via db.py's CREATE TABLE IF NOT EXISTS path.
+    op.execute(
+        """
+        CREATE TABLE IF NOT EXISTS loops (
+            loop_id UUID PRIMARY KEY,
+            thread_id TEXT NOT NULL,
+            user_id BIGINT NOT NULL,
+            loop_name TEXT NOT NULL,
+            core_belief TEXT NOT NULL,
+            trigger TEXT NOT NULL,
+            valence TEXT NOT NULL,
+            first_detected_at TIMESTAMPTZ NOT NULL,
+            last_detected_at TIMESTAMPTZ NOT NULL,
+            detection_count INT NOT NULL DEFAULT 1,
+            detection_dates JSONB NOT NULL DEFAULT '[]'::jsonb,
+            matched_entries JSONB NOT NULL DEFAULT '[]'::jsonb,
+            description TEXT NOT NULL,
+            suggestion TEXT NOT NULL,
+            confidence_score FLOAT NOT NULL DEFAULT 0.0,
+            validation_metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+        )
+        """
     )
 
-    op.create_index("idx_loops_user_id", "loops", ["user_id"], unique=False)
-    op.create_index(
-        "idx_loops_user_last_detected",
-        "loops",
-        ["user_id", "last_detected_at"],
-        unique=False,
+    # For databases where the loops table already existed without confidence_score,
+    # add the column if it's missing. ADD COLUMN IF NOT EXISTS is idempotent.
+    op.execute(
+        """
+        ALTER TABLE loops
+            ADD COLUMN IF NOT EXISTS confidence_score FLOAT NOT NULL DEFAULT 0.0
+        """
+    )
+
+    # Indexes — use IF NOT EXISTS so re-running is safe too.
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_loops_user_id ON loops (user_id)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS idx_loops_user_last_detected ON loops (user_id, last_detected_at)"
     )
 
 
 def downgrade() -> None:
-    op.drop_index("idx_loops_user_last_detected", table_name="loops")
-    op.drop_index("idx_loops_user_id", table_name="loops")
+    op.execute("DROP INDEX IF EXISTS idx_loops_user_last_detected")
+    op.execute("DROP INDEX IF EXISTS idx_loops_user_id")
     op.drop_table("loops")

@@ -9,6 +9,9 @@ from apps.api.services.auth_service import (
     create_session,
     create_user,
     delete_session,
+    request_signup_otp,
+    resend_signup_otp,
+    verify_signup_otp,
 )
 
 
@@ -29,6 +32,40 @@ def signup(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     password = str(payload.get("password", ""))
     try:
         user = create_user(email=email, password=password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    token = create_session(user.id)
+    return {"token": token, "user": _user_payload(user)}
+
+
+@router.post("/signup/request-otp")
+def signup_request_otp(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    email = str(payload.get("email", "")).strip()
+    password = str(payload.get("password", ""))
+    try:
+        request_signup_otp(email=email, password=password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"message": "Code sent"}
+
+
+@router.post("/signup/resend-otp")
+def signup_resend_otp(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    email = str(payload.get("email", "")).strip()
+    try:
+        resend_signup_otp(email=email)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"message": "Code resent"}
+
+
+@router.post("/signup/verify-otp")
+def signup_verify_otp(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    email = str(payload.get("email", "")).strip()
+    otp = str(payload.get("otp", "")).strip()
+    try:
+        user = verify_signup_otp(email=email, otp=otp)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

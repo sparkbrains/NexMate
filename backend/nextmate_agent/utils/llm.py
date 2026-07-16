@@ -82,50 +82,12 @@ def log_token_usage(node_name: str, usage_metadata: dict, thread_id: str = "unkn
         logger.error(f"Failed to log token usage: {e}")
 
     logger.info(f"Token usage - {node_name}: {total_tokens} tokens (prompt: {prompt_tokens}, completion: {completion_tokens})")
-#
-# def get_chat_model() -> ChatOpenAI:
-#     settings = get_settings()
-#     if not settings.llm_api_key:
-#         raise ValueError("OPENROUTER_API_KEY or LLM_API_KEY is missing in ..env")
-#
-#     return ChatOpenAI(
-#         model=settings.generation_model,
-#         api_key=settings.llm_api_key,
-#         base_url="https://openrouter.ai/api/v1",
-#         temperature=0.3,
-#         default_headers={
-#             "HTTP-Referer": settings.app_referer,
-#             "X-Title": settings.app_title,
-#         },
-#     )
-# def get_chat_model() -> ChatOpenAI:
-#     settings = get_settings()
-#     if not settings.llm_api_key:
-#         raise ValueError("OPENROUTER_API_KEY or LLM_API_KEY is missing in ..env")
-#
-#     return ChatOpenAI(
-#         model=settings.generation_model,
-#         api_key=settings.llm_api_key,
-#         base_url="https://openrouter.ai/api/v1",
-#         temperature=0.3,
-#         default_headers={
-#             "HTTP-Referer": settings.app_referer,
-#             "X-Title": settings.app_title,
-#         },
-#     )
-
-_cached_chat_model: ChatGroq | None = None
-_cached_model_name: str | None = None
 
 
-def get_chat_model() -> ChatGroq:
-    global _cached_chat_model, _cached_model_name
-    settings = get_settings()
-
-    # Return cached instance if model hasn't changed
-    if _cached_chat_model is not None and _cached_model_name == settings.generation_model:
-        return _cached_chat_model
-
+def _resolve_groq_api_key() -> str:
+    """Shared API key resolution for both the generation and fast chat models.
+    Checks env var first, falls back to reading .env directly (matches prior
+    behavior in get_chat_model so nothing regresses for existing setups)."""
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key or not api_key.strip():
         from pathlib import Path
@@ -148,6 +110,29 @@ def get_chat_model() -> ChatGroq:
     if not api_key or not api_key.strip():
         raise ValueError("GROQ_API_KEY is missing or empty in environment configuration")
 
+    return api_key
+
+
+_cached_chat_model: ChatGroq | None = None
+_cached_model_name: str | None = None
+
+_cached_fast_model: ChatGroq | None = None
+_cached_fast_model_name: str | None = None
+
+
+def get_chat_model() -> ChatGroq:
+    """Generation-quality model (GENERATION_MODEL, e.g. Llama 4 Scout).
+    Use ONLY for user-facing reply generation (generate_reply_node) — this is
+    the highest-quality/most expensive model and shares its own TPM budget on
+    the Groq free tier, so it should not be spent on classification/routing
+    calls that don't need that quality."""
+    global _cached_chat_model, _cached_model_name
+    settings = get_settings()
+
+    if _cached_chat_model is not None and _cached_model_name == settings.generation_model:
+        return _cached_chat_model
+
+    api_key = _resolve_groq_api_key()
     _cached_chat_model = ChatGroq(
         model=settings.generation_model,
         api_key=api_key,
@@ -156,6 +141,28 @@ def get_chat_model() -> ChatGroq:
     _cached_model_name = settings.generation_model
     return _cached_chat_model
 
+
+def get_fast_chat_model() -> ChatGroq:
+    """Cheap/fast model (FAST_MODEL, default llama-3.1-8b-instant).
+    Use for classification, routing, extraction, and summarization nodes:
+    choose_response_mode, detect_loops, detect_explicit_advice, summarize_turn,
+    and thread compaction. On Groq's free tier each model has its own
+    independent rate-limit bucket, so routing these calls here means they
+    don't compete with generate_reply for the same 6,000 TPM cap."""
+    global _cached_fast_model, _cached_fast_model_name
+    settings = get_settings()
+
+    if _cached_fast_model is not None and _cached_fast_model_name == settings.fast_model:
+        return _cached_fast_model
+
+    api_key = _resolve_groq_api_key()
+    _cached_fast_model = ChatGroq(
+        model=settings.fast_model,
+        api_key=api_key,
+        temperature=0.2,
+    )
+    _cached_fast_model_name = settings.fast_model
+    return _cached_fast_model
 
 
 def parse_json_object(text: str) -> dict:
@@ -206,4 +213,3 @@ def invoke_with_logging(llm, messages: list, node_name: str, thread_id: str = "u
     usage = getattr(response, "usage_metadata", {})
     log_token_usage(node_name, usage, thread_id)
     return response.content, usage
-

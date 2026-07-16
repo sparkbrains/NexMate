@@ -244,6 +244,18 @@ def init_postgres() -> None:
                 ADD COLUMN IF NOT EXISTS last_reflected_at TIMESTAMPTZ
                 """
             )
+            cur.execute(
+    """
+    CREATE TABLE IF NOT EXISTS pending_signups (
+        email TEXT PRIMARY KEY,
+        password_hash TEXT NOT NULL,
+        otp_hash TEXT NOT NULL,
+        attempts INT NOT NULL DEFAULT 0,
+        expires_at TIMESTAMPTZ NOT NULL,
+        last_sent_at TIMESTAMPTZ NOT NULL
+    )
+    """
+)
             # Create index on loop_id after ensuring column exists
             try:
                 cur.execute(

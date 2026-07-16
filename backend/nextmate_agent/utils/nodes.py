@@ -7,8 +7,9 @@ from langchain_core.runnables import RunnableConfig
 from psycopg.types.json import Jsonb
 from apps.db import get_connection
 from nextmate_agent.utils.config import get_settings
-from nextmate_agent.utils.llm import get_chat_model, parse_json_object, invoke_with_logging, ainvoke_with_logging, profile
+from nextmate_agent.utils.llm import get_chat_model, parse_json_object, invoke_with_logging, ainvoke_with_logging, profile, get_fast_chat_model
 from nextmate_agent.utils.node_logger import log_node
+from nextmate_agent.utils.tokens import estimate_tokens
 from nextmate_agent.utils.prompts import (
     CHAT_SYSTEM_PROMPT,
     EXPLICIT_ADVICE_DETECTION_SYSTEM_PROMPT,
@@ -33,6 +34,7 @@ from apps.api.services.loop_service import (
     _loop_signature,
     _loops_match,
     _get_cross_thread_memory_entries,
+    _select_prompt_cross_thread_entries,
     _validate_cross_thread_loop_recurrence,
     _validate_loop_recurrence,
     _match_entries_for_loop,
@@ -41,6 +43,14 @@ from apps.api.services.loop_service import (
     _analyze_loop_persistence,
     _save_merged_loop_info
 )
+from apps.api.services.thread_summary_service import (
+    get_thread_summary,
+    should_compact,
+    compact_thread,
+    summarize_stale_threads,
+)
+from apps.api.services.cross_thread_memory_service import build_cross_thread_context
+
 
 def _thread_id_from_config(config: RunnableConfig | None) -> str:
     if not config:
@@ -168,8 +178,8 @@ def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateSt
 
     # Fetch active loop for current thread if linked
     active_loop = None
+    active_loop_id = None
     if uuid_part:
-        active_loop_id = None
         try:
             with get_connection() as conn:
                 with conn.cursor() as cur:
@@ -198,10 +208,91 @@ def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateSt
         inputs={"user_input": state.get("user_input", "")},
         outputs={"memory_entries_count": len(thread_entries), "stored_loops_count": len(stored_loops), "thread_id": thread_id, "active_loop_id": str(active_loop_id) if active_loop_id else None},
     )
-    outputs = {"memory_entries": thread_entries, "thread_id": thread_id, "stored_loops": stored_loops, "active_loop": active_loop}
+    outputs = {"memory_entries": thread_entries, "thread_id": thread_id, "thread_uuid": uuid_part, "stored_loops": stored_loops, "active_loop": active_loop}
     if chat_history_update is not None:
         outputs["chat_history"] = chat_history_update
     return outputs
+
+
+def manage_thread_summary_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
+    """Runs after load_memory_node. If this thread's chat_history has grown past
+    the token threshold, folds older turns into a persisted summary via the fast
+    model and trims chat_history, keeping generate_reply/choose_response_mode
+    prompt sizes bounded regardless of how long a single thread runs."""
+    thread_id = state.get("thread_id", "default")  # composite, for logging only
+    thread_uuid = state.get("thread_uuid") or thread_id  # raw UUID, for DB queries
+    user_id = _user_id_from_config(config)
+    chat_history = state.get("chat_history", [])
+
+    existing = get_thread_summary(user_id, thread_uuid)
+    prior_summary_text = existing["summary_text"] if existing else ""
+
+    if not should_compact(chat_history):
+        log_node(
+            thread_id=thread_id,
+            node_name="manage_thread_summary",
+            inputs={"chat_history_count": len(chat_history)},
+            outputs={"compacted": False, "thread_summary": prior_summary_text},
+        )
+        return {"thread_summary": prior_summary_text}
+
+    new_summary, trimmed_history = compact_thread(
+        user_id=user_id,
+        thread_id=thread_uuid,
+        chat_history=chat_history,
+        prior_summary=prior_summary_text,
+    )
+
+    log_node(
+        thread_id=thread_id,
+        node_name="manage_thread_summary",
+        inputs={"chat_history_count": len(chat_history)},
+        outputs={
+            "compacted": True,
+            "thread_summary": new_summary,
+            "trimmed_chat_history_count": len(trimmed_history),
+        },
+    )
+    return {"thread_summary": new_summary, "chat_history": {"__replace__": True, "value": trimmed_history}}
+
+
+def manage_cross_thread_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
+    """Gives a thread ambient awareness of the user's OTHER threads.
+
+    Two steps:
+    1. Idle-sweep: summarize any OTHER threads (never this one) that have
+       gone quiet and have content not yet reflected in their thread_summary.
+       This is what populates thread_summaries for short threads that never
+       trip the token-based mid-conversation trigger -- without this step,
+       cross-thread recall has nothing to surface until a thread happens to
+       be long enough to blow the token budget, which most short chats never
+       do. This thread's own live chat_history is never touched here.
+    2. Pulls active thread summaries (excluding this thread) plus the rolling
+       digest, folding the oldest active summaries into the digest if they
+       exceed the cross-thread token budget.
+    """
+    thread_id = state.get("thread_id", "default")  # composite, for logging only
+    thread_uuid = state.get("thread_uuid") or thread_id  # raw UUID, for DB exclusion filter
+    user_id = _user_id_from_config(config)
+
+    stale_summarized_count = summarize_stale_threads(user_id, exclude_thread_id=thread_uuid)
+
+    context = build_cross_thread_context(user_id, exclude_thread_id=thread_uuid)
+
+    log_node(
+        thread_id=thread_id,
+        node_name="manage_cross_thread_memory",
+        inputs={"user_id": user_id},
+        outputs={
+            "stale_threads_summarized": stale_summarized_count,
+            "active_thread_summaries_count": len(context["active_thread_summaries"]),
+            "digest_present": context["memory_digest"] is not None,
+        },
+    )
+    return {
+        "active_thread_summaries": context["active_thread_summaries"],
+        "memory_digest": context["memory_digest"],
+    }
 
 
 def build_memory_context_node(state: NextMateState) -> NextMateState:
@@ -237,6 +328,21 @@ def build_memory_context_node(state: NextMateState) -> NextMateState:
 
         memory_context = "\n".join(lines)
 
+    thread_summary = state.get("thread_summary", "")
+    if thread_summary:
+        memory_context += f"\n\nEarlier in this conversation (summarized):\n{thread_summary}"
+
+    memory_digest = state.get("memory_digest")
+    if memory_digest and memory_digest.get("digest_text"):
+        memory_context += f"\n\nLong-term memory (older conversations, condensed):\n{memory_digest['digest_text']}"
+
+    active_thread_summaries = state.get("active_thread_summaries", [])
+    if active_thread_summaries:
+        cross_lines = ["\nRecent conversations from other threads:"]
+        for row in active_thread_summaries:
+            cross_lines.append(f"- ({row['updated_at']}) {row['summary_text']}")
+        memory_context += "\n" + "\n".join(cross_lines)
+
     stored_loops = state.get("stored_loops", [])
     if stored_loops:
         loop_lines = ["\nPreviously identified patterns:"]
@@ -258,7 +364,7 @@ def build_memory_context_node(state: NextMateState) -> NextMateState:
 
 
 def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
-    llm = get_chat_model()
+    llm = get_fast_chat_model()
     thread_id = state.get("thread_id", "default")
     user_id = _user_id_from_config(config)
     user_input = state.get("user_input", "")
@@ -274,14 +380,42 @@ def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateS
         )
         return {"detected_loops": ""}
 
-    # Get cross-thread entries for analysis
+    settings = get_settings()
+
+    # Full set — used for FREE, deterministic cross-thread validation later.
+    # This is intentionally NOT what gets shown to the LLM (see below). Bumping
+    # this ceiling doesn't cost tokens since validation is pure Python matching.
     cross_thread_entries = _get_cross_thread_memory_entries(user_id, thread_id)
-    
+
+    # What the LLM actually sees: a small, relevance + temporal-spread sample,
+    # not a raw recency slice — preserves the "spans multiple days/threads"
+    # signal LOOP_DETECTION_SYSTEM_PROMPT needs, at a fraction of the tokens.
+    prompt_cross_thread_entries = _select_prompt_cross_thread_entries(
+        cross_thread_entries,
+        entries,
+        stored_loops,
+        max_entries=settings.detect_loops_cross_thread_prompt_limit,
+    )
+
     content = build_loop_detection_prompt(
         user_input=user_input,
         memory_entries=entries,
-        cross_thread_entries=cross_thread_entries,
+        cross_thread_entries=prompt_cross_thread_entries,
     )
+
+    # Hard safety net: if the trimmed prompt is still too large (e.g. unusually
+    # long belief/trigger text), progressively drop lowest-priority cross-thread
+    # entries rather than let Groq 413 the whole turn.
+    prompt_token_count = estimate_tokens(content)
+    while prompt_token_count > settings.detect_loops_max_prompt_tokens and prompt_cross_thread_entries:
+        prompt_cross_thread_entries = prompt_cross_thread_entries[:-1]
+        content = build_loop_detection_prompt(
+            user_input=user_input,
+            memory_entries=entries,
+            cross_thread_entries=prompt_cross_thread_entries,
+        )
+        prompt_token_count = estimate_tokens(content)
+
     raw, usage = invoke_with_logging(
         llm,
         [
@@ -298,7 +432,7 @@ def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateS
         log_node(
             thread_id=thread_id,
             node_name="detect_loops",
-            inputs={"user_input": user_input, "memory_entries_count": len(entries), "cross_thread_entries_count": len(cross_thread_entries), "prompt": content},
+            inputs={"user_input": user_input, "memory_entries_count": len(entries), "cross_thread_entries_count": len(cross_thread_entries), "prompt_cross_thread_entries_count": len(prompt_cross_thread_entries), "prompt": content},
             outputs={"detected_loops": "(none found)", "raw_llm_response": raw},
         )
         return {"detected_loops": "", "response_mode": "", "loop_info": []}
@@ -317,7 +451,9 @@ def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateS
         core_belief = loop.get("core_belief", "")
         trigger = loop.get("trigger", "")
         
-        # Apply cross-thread validation - only show loop alerts if pattern matches across threads
+        # Apply cross-thread validation against the FULL fetched set (not the
+        # prompt-limited sample) - only show loop alerts if pattern matches
+        # across threads
         is_valid, validated_matches, confidence = _validate_cross_thread_loop_recurrence(
             core_belief, trigger, entries, cross_thread_entries
         )
@@ -437,7 +573,7 @@ def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateS
 
 
 def detect_explicit_advice_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
-    llm = get_chat_model()
+    llm = get_fast_chat_model()
     thread_id = state.get("thread_id", "default")
     user_input = str(state.get("user_input", ""))
 
@@ -583,7 +719,7 @@ def choose_response_mode_node(state: NextMateState) -> NextMateState:
         return {"response_mode": existing_mode, "response_mode_history": [existing_mode]}
 
     if stored_loops and user_input and not chat_history:
-        llm = get_chat_model()
+        llm = get_fast_chat_model()
         resurface_prompt = build_loop_resurface_check_prompt(user_input, stored_loops)
         resurface_raw, resurface_usage = invoke_with_logging(
             llm,
@@ -644,7 +780,7 @@ def choose_response_mode_node(state: NextMateState) -> NextMateState:
         history_context = "No previous messages in this thread yet."
 
     debug_history = [msg.get("content", "") for msg in recent_history[-3:]]
-    llm = get_chat_model()
+    llm = get_fast_chat_model()
     content = build_mode_selection_prompt(
         user_input=user_input,
         memory_context=memory_context,
