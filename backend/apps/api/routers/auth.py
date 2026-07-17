@@ -9,8 +9,12 @@ from apps.api.services.auth_service import (
     create_session,
     create_user,
     delete_session,
+    request_password_reset_otp,
     request_signup_otp,
+    resend_password_reset_otp,
     resend_signup_otp,
+    reset_password,
+    verify_password_reset_otp,
     verify_signup_otp,
 )
 
@@ -96,3 +100,50 @@ def logout(current_user: User = Depends(get_current_user), payload: dict[str, An
 @router.get("/me")
 def me(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     return {"user": _user_payload(current_user)}
+
+
+# --- forgot password ------------------------------------------------
+
+@router.post("/password-reset/request-otp")
+def password_reset_request_otp(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    email = str(payload.get("email", "")).strip()
+    try:
+        request_password_reset_otp(email=email)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # Always the same response, whether or not the email is registered —
+    # the service layer already declines to reveal that.
+    return {"message": "If that email is registered, a code has been sent"}
+
+
+@router.post("/password-reset/resend-otp")
+def password_reset_resend_otp(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    email = str(payload.get("email", "")).strip()
+    try:
+        resend_password_reset_otp(email=email)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"message": "Code resent"}
+
+
+@router.post("/password-reset/verify-otp")
+def password_reset_verify_otp(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    email = str(payload.get("email", "")).strip()
+    otp = str(payload.get("otp", "")).strip()
+    try:
+        verify_password_reset_otp(email=email, otp=otp)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"message": "Code verified"}
+
+
+@router.post("/password-reset/reset")
+def password_reset_reset(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    email = str(payload.get("email", "")).strip()
+    otp = str(payload.get("otp", "")).strip()
+    new_password = str(payload.get("new_password", ""))
+    try:
+        reset_password(email=email, otp=otp, new_password=new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"message": "Password updated"}

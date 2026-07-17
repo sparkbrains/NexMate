@@ -18,6 +18,11 @@ OTP_TTL_MINUTES = int(os.getenv("SIGNUP_OTP_TTL_MINUTES", "10"))
 OTP_RESEND_COOLDOWN_SECONDS = int(os.getenv("SIGNUP_OTP_RESEND_COOLDOWN_SECONDS", "60"))
 OTP_MAX_ATTEMPTS = int(os.getenv("SIGNUP_OTP_MAX_ATTEMPTS", "5"))
 
+RESET_OTP_LENGTH = 6
+RESET_OTP_TTL_MINUTES = int(os.getenv("RESET_OTP_TTL_MINUTES", "10"))
+RESET_OTP_RESEND_COOLDOWN_SECONDS = int(os.getenv("RESET_OTP_RESEND_COOLDOWN_SECONDS", "60"))
+RESET_OTP_MAX_ATTEMPTS = int(os.getenv("RESET_OTP_MAX_ATTEMPTS", "5"))
+
 
 @dataclass(frozen=True)
 class User:
@@ -164,8 +169,8 @@ def delete_session(token: str) -> None:
 # signups live in their own table (see db.py) with a hashed OTP and a
 # hashed password, and expire on their own even if never verified.
 
-def _generate_otp() -> str:
-    return "".join(secrets.choice("0123456789") for _ in range(OTP_LENGTH))
+def _generate_otp(length: int = OTP_LENGTH) -> str:
+    return "".join(secrets.choice("0123456789") for _ in range(length))
 
 
 def _send_otp_email(to_email: str, code: str) -> None:
@@ -331,6 +336,214 @@ def verify_signup_otp(email: str, otp: str) -> User:
         email=cleaned_email,
         created_at=user_row["created_at"].isoformat(),
     )
+
+
+# --- forgot password flow -----------------------------------------------
+#
+# Three steps: request_password_reset_otp() emails a code to an existing
+# user; verify_password_reset_otp() checks the code and marks the pending
+# row "verified" (but does NOT touch the password); reset_password()
+# re-checks the code and the verified flag before actually updating the
+# password, so a stale/replayed request can't slip through after the
+# code has expired or been superseded by a newer one. All of the user's
+# existing sessions are invalidated once the password is changed.
+
+def _send_password_reset_email(to_email: str, code: str) -> None:
+    host = os.getenv("SMTP_HOST")
+    if not host:
+        raise EnvironmentError("SMTP_HOST environment variable is required for sending OTP emails.")
+    port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER")
+    if not smtp_user:
+        raise EnvironmentError("SMTP_USER environment variable is required for sending OTP emails.")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    if not smtp_password:
+        raise EnvironmentError("SMTP_PASSWORD environment variable is required for sending OTP emails.")
+    sender = os.getenv("SMTP_FROM", smtp_user)
+
+    msg = MIMEText(
+        f"Your Nextmate password reset code is {code}.\n\n"
+        f"It expires in {RESET_OTP_TTL_MINUTES} minutes. If you didn't request this, "
+        f"you can safely ignore this email — your password will not be changed."
+    )
+    msg["Subject"] = "Reset your Nextmate password"
+    msg["From"] = sender
+    msg["To"] = to_email
+
+    with smtplib.SMTP(host, port) as server:
+        server.starttls()
+        server.login(smtp_user, smtp_password)
+        server.sendmail(sender, [to_email], msg.as_string())
+
+
+def request_password_reset_otp(email: str) -> None:
+    cleaned_email = email.strip().lower()
+    if not cleaned_email or "@" not in cleaned_email:
+        raise ValueError("Invalid email")
+
+    now = _utc_now()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM users WHERE email = %s", (cleaned_email,))
+            if not cur.fetchone():
+                # Don't reveal whether the email is registered.
+                return
+
+            cur.execute(
+                "SELECT last_sent_at FROM password_resets WHERE email = %s",
+                (cleaned_email,),
+            )
+            row = cur.fetchone()
+            if row and row["last_sent_at"] + timedelta(seconds=RESET_OTP_RESEND_COOLDOWN_SECONDS) > now:
+                raise ValueError("Please wait before requesting another code")
+
+            code = _generate_otp(RESET_OTP_LENGTH)
+            otp_hash = _encode_password(code)
+            expires_at = now + timedelta(minutes=RESET_OTP_TTL_MINUTES)
+
+            cur.execute(
+                """
+                INSERT INTO password_resets (email, otp_hash, attempts, verified, expires_at, last_sent_at)
+                VALUES (%s, %s, 0, FALSE, %s, %s)
+                ON CONFLICT (email) DO UPDATE SET
+                    otp_hash = EXCLUDED.otp_hash,
+                    attempts = 0,
+                    verified = FALSE,
+                    expires_at = EXCLUDED.expires_at,
+                    last_sent_at = EXCLUDED.last_sent_at
+                """,
+                (cleaned_email, otp_hash, expires_at, now),
+            )
+        conn.commit()
+
+    _send_password_reset_email(cleaned_email, code)
+
+
+def resend_password_reset_otp(email: str) -> None:
+    cleaned_email = email.strip().lower()
+    now = _utc_now()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT last_sent_at FROM password_resets WHERE email = %s",
+                (cleaned_email,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("No pending reset for this email. Start again")
+
+            if row["last_sent_at"] + timedelta(seconds=RESET_OTP_RESEND_COOLDOWN_SECONDS) > now:
+                raise ValueError("Please wait before requesting another code")
+
+            code = _generate_otp(RESET_OTP_LENGTH)
+            otp_hash = _encode_password(code)
+            expires_at = now + timedelta(minutes=RESET_OTP_TTL_MINUTES)
+
+            cur.execute(
+                """
+                UPDATE password_resets
+                SET otp_hash = %s, attempts = 0, verified = FALSE, expires_at = %s, last_sent_at = %s
+                WHERE email = %s
+                """,
+                (otp_hash, expires_at, now, cleaned_email),
+            )
+        conn.commit()
+
+    _send_password_reset_email(cleaned_email, code)
+
+
+def verify_password_reset_otp(email: str, otp: str) -> None:
+    """Checks the code and marks this reset as verified. The password is
+    not changed here — the caller should now prompt for a new password
+    and call reset_password()."""
+    cleaned_email = email.strip().lower()
+    now = _utc_now()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT otp_hash, attempts, expires_at FROM password_resets WHERE email = %s",
+                (cleaned_email,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("No pending reset for this email. Start again")
+
+            if row["expires_at"] < now:
+                cur.execute("DELETE FROM password_resets WHERE email = %s", (cleaned_email,))
+                conn.commit()
+                raise ValueError("That code expired. Request a new one")
+
+            if row["attempts"] >= RESET_OTP_MAX_ATTEMPTS:
+                cur.execute("DELETE FROM password_resets WHERE email = %s", (cleaned_email,))
+                conn.commit()
+                raise ValueError("Too many attempts. Request a new code")
+
+            if not _verify_password(otp, str(row["otp_hash"])):
+                cur.execute(
+                    "UPDATE password_resets SET attempts = attempts + 1 WHERE email = %s",
+                    (cleaned_email,),
+                )
+                conn.commit()
+                raise ValueError("That code didn't match")
+
+            cur.execute(
+                "UPDATE password_resets SET verified = TRUE WHERE email = %s",
+                (cleaned_email,),
+            )
+        conn.commit()
+
+
+def reset_password(email: str, otp: str, new_password: str) -> None:
+    """Final step: re-checks the OTP and the verified flag, then updates
+    the user's password and invalidates all existing sessions for that
+    user."""
+    cleaned_email = email.strip().lower()
+    if len(new_password) < 6:
+        raise ValueError("Password must be at least 6 characters")
+
+    now = _utc_now()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT otp_hash, verified, expires_at FROM password_resets WHERE email = %s",
+                (cleaned_email,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("No pending reset for this email. Start again")
+
+            if row["expires_at"] < now:
+                cur.execute("DELETE FROM password_resets WHERE email = %s", (cleaned_email,))
+                conn.commit()
+                raise ValueError("That code expired. Request a new one")
+
+            if not row["verified"]:
+                raise ValueError("Verify your code before setting a new password")
+
+            if not _verify_password(otp, str(row["otp_hash"])):
+                # Code was rotated/superseded between verify and reset.
+                raise ValueError("That code didn't match. Start again")
+
+            cur.execute("SELECT id FROM users WHERE email = %s", (cleaned_email,))
+            user_row = cur.fetchone()
+            if not user_row:
+                cur.execute("DELETE FROM password_resets WHERE email = %s", (cleaned_email,))
+                conn.commit()
+                raise ValueError("Account not found")
+
+            new_hash = _encode_password(new_password)
+            cur.execute(
+                "UPDATE users SET password_hash = %s WHERE email = %s",
+                (new_hash, cleaned_email),
+            )
+            cur.execute("DELETE FROM password_resets WHERE email = %s", (cleaned_email,))
+            # Invalidate existing sessions so old logins/devices are logged out.
+            cur.execute("DELETE FROM sessions WHERE user_id = %s", (user_row["id"],))
+        conn.commit()
 
 
 def _parse_dummy_users(raw: str) -> list[tuple[str, str]]:

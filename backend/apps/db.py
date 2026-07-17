@@ -256,7 +256,19 @@ def init_postgres() -> None:
     )
     """
 )
-            # Create index on loop_id after ensuring column exists
+            cur.execute(
+    """
+    CREATE TABLE IF NOT EXISTS password_resets (
+        email TEXT PRIMARY KEY REFERENCES users(email) ON DELETE CASCADE,
+        otp_hash TEXT NOT NULL,
+        attempts INT NOT NULL DEFAULT 0,
+        verified BOOLEAN NOT NULL DEFAULT FALSE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        last_sent_at TIMESTAMPTZ NOT NULL
+    )
+    """
+)
+            
             try:
                 cur.execute(
                     """
@@ -265,4 +277,4 @@ def init_postgres() -> None:
                     """
                 )
             except Exception:
-                pass  # Ignore if column doesn't exist yet
+                pass

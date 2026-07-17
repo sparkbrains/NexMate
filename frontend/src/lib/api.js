@@ -133,6 +133,49 @@ export async function logout() {
   }
 }
 
+// --- forgot password ------------------------------------------------
+//
+// Step 1: request a code be emailed to an existing account. The backend
+// doesn't reveal whether the email is registered, so this resolves the
+// same way either way.
+export async function requestPasswordResetOtp(email) {
+  return request('/api/auth/password-reset/request-otp', {
+    method: 'POST',
+    body: { email },
+    auth: false,
+  });
+}
+
+// Ask the backend to send a fresh code for the same pending reset.
+export async function resendPasswordResetOtp(email) {
+  return request('/api/auth/password-reset/resend-otp', {
+    method: 'POST',
+    body: { email },
+    auth: false,
+  });
+}
+
+// Step 2: verify the code. This does NOT change the password — it just
+// marks the reset as verified so the caller can prompt for a new one.
+export async function verifyPasswordResetOtp(email, otp) {
+  return request('/api/auth/password-reset/verify-otp', {
+    method: 'POST',
+    body: { email, otp },
+    auth: false,
+  });
+}
+
+// Step 3: re-checks the code and sets the new password. No session is
+// returned — the backend invalidates existing sessions, so the user
+// signs in fresh afterward.
+export async function resetPassword(email, otp, newPassword) {
+  return request('/api/auth/password-reset/reset', {
+    method: 'POST',
+    body: { email, otp, new_password: newPassword },
+    auth: false,
+  });
+}
+
 export function listThreads() {
   return request('/api/threads');
 }
