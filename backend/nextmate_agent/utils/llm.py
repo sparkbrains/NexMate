@@ -8,7 +8,7 @@ import pathlib
 from datetime import datetime
 from line_profiler import LineProfiler
 from langchain_groq import ChatGroq
-from nextmate_agent.utils.config import get_settings
+from .config import get_settings
 from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
@@ -137,6 +137,11 @@ def get_chat_model() -> ChatGroq:
         model=settings.generation_model,
         api_key=api_key,
         temperature=0.3,
+        # Some models (e.g. qwen3.6 series) are reasoning models that emit a
+        # <think>...</think> block before the actual answer. "hidden" tells
+        # Groq to strip reasoning tokens server-side so response.content is
+        # just the final answer -- harmless no-op for non-reasoning models.
+
     )
     _cached_model_name = settings.generation_model
     return _cached_chat_model
@@ -160,13 +165,29 @@ def get_fast_chat_model() -> ChatGroq:
         model=settings.fast_model,
         api_key=api_key,
         temperature=0.2,
+        # Same reasoning-format safeguard as get_chat_model -- important here
+        # too since a reasoning model leaking <think> tags into a
+        # classification/JSON-parsing node would break parse_json_object
+        # outright, not just look ugly.
+
     )
     _cached_fast_model_name = settings.fast_model
     return _cached_fast_model
 
 
+import re as _re
+_THINK_BLOCK_RE_LLM = _re.compile(r"<think>.*?</think>", _re.DOTALL | _re.IGNORECASE)
+
+
 def parse_json_object(text: str) -> dict:
     raw = (text or "").strip()
+
+    # Defensive strip in case a reasoning model's <think> block leaked
+    # through -- do this BEFORE the brace-matching fallback below, since a
+    # think block discussing JSON schema could itself contain { or } and
+    # confuse the naive find/rfind approach.
+    if "<think>" in raw.lower():
+        raw = _THINK_BLOCK_RE_LLM.sub("", raw).strip()
 
     if raw.startswith("```"):
         lines = raw.splitlines()

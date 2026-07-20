@@ -66,6 +66,14 @@ def init_postgres() -> None:
             )
             cur.execute(
                 """
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '',
+                ADD COLUMN IF NOT EXISTS age INT,
+                ADD COLUMN IF NOT EXISTS subscription_tier TEXT NOT NULL DEFAULT 'paid'
+                """
+            )
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS sessions (
                     token TEXT PRIMARY KEY,
                     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -252,10 +260,19 @@ def init_postgres() -> None:
         otp_hash TEXT NOT NULL,
         attempts INT NOT NULL DEFAULT 0,
         expires_at TIMESTAMPTZ NOT NULL,
-        last_sent_at TIMESTAMPTZ NOT NULL
+        last_sent_at TIMESTAMPTZ NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        age INT
     )
     """
 )
+            cur.execute(
+                """
+                ALTER TABLE pending_signups
+                ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '',
+                ADD COLUMN IF NOT EXISTS age INT
+                """
+            )
             cur.execute(
     """
     CREATE TABLE IF NOT EXISTS password_resets (
@@ -269,6 +286,7 @@ def init_postgres() -> None:
     """
 )
             
+            # Create index on loop_id after ensuring column exists
             try:
                 cur.execute(
                     """
@@ -277,4 +295,4 @@ def init_postgres() -> None:
                     """
                 )
             except Exception:
-                pass
+                pass  # Ignore if column doesn't exist yet

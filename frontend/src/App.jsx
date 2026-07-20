@@ -7,6 +7,7 @@ import { InsightsScreen } from './components/nextmate/DataScreens';
 
 import { JournalScreen } from './components/nextmate/JournalScreen';
 import { AuthGate } from './components/nextmate/AuthGate';
+import { ProfilePage } from './components/nextmate/ProfilePage';
 import { clearSession, getToken, getUser, listThreads } from './lib/api';
 import { AppContext } from './context';
 
@@ -103,6 +104,8 @@ export default function App() {
     );
   } else if (route === 'insights') {
     screen = <InsightsScreen />;
+  } else if (route === 'profile') {
+    screen = <ProfilePage onLogout={onLogout} />;
   } else {
     screen = (
       <TodayScreen
