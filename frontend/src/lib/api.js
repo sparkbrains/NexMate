@@ -72,10 +72,10 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
   return data;
 }
 
-export async function signup(email, password) {
+export async function signup(email, password, name, age) {
   const data = await request('/api/auth/signup', {
     method: 'POST',
-    body: { email, password },
+    body: { email, password, name, age },
     auth: false,
   });
   setSession(data.token, data.user);
@@ -83,12 +83,12 @@ export async function signup(email, password) {
 }
 
 // Step 1 of OTP signup: request a code be emailed to the address. No
-// account exists yet — the backend holds a pending signup until it's
-// verified.
-export async function signupRequestOtp(email, password) {
+// account exists yet — the backend holds a pending signup (including
+// name/age) until it's verified.
+export async function signupRequestOtp(email, password, name, age) {
   return request('/api/auth/signup/request-otp', {
     method: 'POST',
-    body: { email, password },
+    body: { email, password, name, age },
     auth: false,
   });
 }
@@ -122,6 +122,10 @@ export async function login(email, password) {
   });
   setSession(data.token, data.user);
   return data;
+}
+
+export function getMe() {
+  return request('/api/auth/me');
 }
 
 export async function logout() {
@@ -174,6 +178,31 @@ export async function resetPassword(email, otp, newPassword) {
     body: { email, otp, new_password: newPassword },
     auth: false,
   });
+}
+
+// --- logged-in profile actions --------------------------------------
+//
+// Both of these invalidate the current session on success (password
+// change logs everyone out for safety; account deletion obviously
+// does too) — the caller should clearSession() and route back to
+// AuthGate afterward.
+
+export async function changePassword(currentPassword, newPassword) {
+  const data = await request('/api/auth/change-password', {
+    method: 'POST',
+    body: { current_password: currentPassword, new_password: newPassword },
+  });
+  clearSession();
+  return data;
+}
+
+export async function deleteAccount(password) {
+  const data = await request('/api/auth/account', {
+    method: 'DELETE',
+    body: { password },
+  });
+  clearSession();
+  return data;
 }
 
 export function listThreads() {

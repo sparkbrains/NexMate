@@ -30,7 +30,7 @@ class Settings:
 
 
 def get_settings() -> Settings:
-    api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("GROQ_API_KEY")
+    api_key = os.getenv("MISTRAL_API_KEY")
 
     return Settings(
         llm_api_key=api_key,
