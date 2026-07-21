@@ -224,4 +224,5 @@ backend/data/memory/*.sqlite-shm
 backend/data/memory/*.db
 
 # Log files
-data/logs/
+backend/data/logs/*
+
