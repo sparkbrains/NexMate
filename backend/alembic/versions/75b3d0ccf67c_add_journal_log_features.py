@@ -19,22 +19,6 @@ depends_on = None
 
 def upgrade() -> None:
     op.execute(
-        """
-        CREATE TABLE IF NOT EXISTS journal_logs (
-            id BIGSERIAL PRIMARY KEY,
-            user_id BIGINT NOT NULL,
-            book_id BIGINT,
-            entry_date DATE NOT NULL DEFAULT CURRENT_DATE,
-            mood_emoji TEXT NOT NULL DEFAULT '',
-            mood_label TEXT NOT NULL DEFAULT '',
-            body TEXT NOT NULL DEFAULT '',
-            translated TEXT NOT NULL DEFAULT '',
-            created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        )
-        """
-    )
-    op.execute(
         "ALTER TABLE journal_logs ADD COLUMN IF NOT EXISTS core_theme TEXT NOT NULL DEFAULT ''"
     )
     op.execute(
