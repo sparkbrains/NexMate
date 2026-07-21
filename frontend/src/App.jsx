@@ -4,10 +4,9 @@ import { TodayScreen } from './components/nextmate/TodayScreen';
 import { ChatScreen } from './components/nextmate/ChatScreen';
 import { LoopsScreen } from './components/nextmate/LoopsScreen';
 import { InsightsScreen } from './components/nextmate/DataScreens';
-
 import { JournalScreen } from './components/nextmate/JournalScreen';
 import { AuthGate } from './components/nextmate/AuthGate';
-import { clearSession, getToken, getUser, listThreads } from './lib/api';
+import { clearSession, deleteThread, getMe, getToken, getUser, listThreads, logout as apiLogout } from './lib/api';
 import { AppContext } from './context';
 
 const newThreadId = () =>
@@ -20,19 +19,29 @@ export default function App() {
   const [threadId, setThreadId] = useState(null);
   const [chatParams, setChatParams] = useState(null);
 
-  // Theme state
+  // Validate token on mount
+  useEffect(() => {
+    if (!getToken()) return;
+    getMe()
+      .then((data) => setUser(data.user))
+      .catch(() => { clearSession(); setUser(null); });
+  }, []);
+
+  // Theme state — auth screen always light; restore saved theme after login
   const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('nextmate_theme');
-    return saved === 'light' ? 'light' : 'dark';
+    const saved = localStorage.getItem('nextmate_theme') || 'light';
+    return saved;
   });
 
   // Mobile sidebar open state
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('nextmate_theme', theme);
-  }, [theme]);
+    // Force light mode on auth screen, apply saved theme when logged in
+    const active = user ? theme : 'light';
+    document.documentElement.setAttribute('data-theme', active);
+    if (user) localStorage.setItem('nextmate_theme', theme);
+  }, [theme, user]);
 
   // Close sidebar drawer on route change
   const navigateTo = (r) => {
@@ -63,8 +72,16 @@ export default function App() {
     openThread(newThreadId(), null);
   };
 
-  const onLogout = () => {
-    clearSession();
+  const onDeleteThread = async (id) => {
+    try {
+      await deleteThread(id);
+      if (threadId === id) { setThreadId(null); setChatParams(null); navigateTo('today'); }
+      refreshThreads();
+    } catch { /* ignore */ }
+  };
+
+  const onLogout = async () => {
+    try { await apiLogout(); } catch { clearSession(); }
     setUser(null);
     setThreads([]);
     setThreadId(null);
@@ -88,7 +105,7 @@ export default function App() {
       />
     );
   } else if (route === 'journal') {
-    screen = <JournalScreen />;
+    screen = <JournalScreen user={user} />;
   } else if (route === 'loops') {
     screen = (
       <LoopsScreen
@@ -129,6 +146,7 @@ export default function App() {
           activeThreadId={threadId}
           onSelectThread={openThread}
           onNewThread={beginReflection}
+          onDeleteThread={onDeleteThread}
           user={user}
           onLogout={onLogout}
         />

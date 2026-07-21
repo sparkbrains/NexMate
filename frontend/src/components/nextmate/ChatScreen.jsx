@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
 import { useChatSocket } from '../../hooks/useChatSocket';
-import { getThreadMessages, listLoops } from '../../lib/api';
+import { getThreadMessages, listLoops, chatSocketUrl } from '../../lib/api';
+
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 
 const Msg = ({ from, text, meta, quoted, choices, className }) => {
   const containerStyle = {
@@ -404,7 +406,7 @@ export const ChatScreen = ({
 
       try {
         const token = localStorage.getItem('nextmate.token');
-        const response = await fetch('http://127.0.0.1:8010/api/transcribe', {
+        const response = await fetch(`${API_BASE_URL}/api/transcribe`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,

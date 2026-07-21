@@ -8,7 +8,10 @@ import {
   getJournalStreak,
   listJournalBooks,
   listJournalEntries,
+  translateJournalEntry,
+  updateJournalEntry,
 } from '../../lib/api';
+import WelcomeBookImg from '../../assets/ic_welcome_book.png';
 
 const MOODS = [
   { emoji: '😄', label: 'great' },
@@ -34,18 +37,33 @@ const todayISO = () => {
 
 const moodFor = (label) => MOODS.find((m) => m.label === label);
 
-const Entry = ({ entry, onDelete }) => {
+const Entry = ({ entry, onDelete, onEdit }) => {
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editBody, setEditBody] = useState(entry.body);
+  const [saving, setSaving] = useState(false);
   const time = entry.created_at
     ? new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '';
+
+  const handleSaveEdit = async () => {
+    if (!editBody.trim()) return;
+    setSaving(true);
+    try {
+      await onEdit(entry.id, { body: editBody });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="nm-entry">
       <div className="nm-entry-mark">
         <span className="nm-entry-emoji">{entry.mood_emoji || '·'}</span>
         {entry.mood_label && <span className="nm-entry-mood">{entry.mood_label}</span>}
       </div>
-      <div>
+      <div style={{ flex: 1 }}>
         <div className="nm-entry-time">
           <span>{time}</span>
           <span className="nm-entry-del">
@@ -55,13 +73,39 @@ const Entry = ({ entry, onDelete }) => {
                 <button className="nm-btn accent" style={{ fontSize: 10, padding: '2px 8px', marginLeft: 4 }} onClick={() => onDelete(entry.id)}>Delete</button>
               </>
             ) : (
-              <button className="nm-btn ghost" title="Delete entry" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
-                <Icon name="trash" size={11} />
-              </button>
+              <>
+                <button className="nm-btn ghost" title="Edit entry" style={{ padding: 4, marginRight: 2 }} onClick={() => { setEditing(!editing); setEditBody(entry.body); }}>
+                  <Icon name="sparkle" size={11} />
+                </button>
+                <button className="nm-btn ghost" title="Delete entry" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
+                  <Icon name="trash" size={11} />
+                </button>
+              </>
             )}
           </span>
         </div>
-        <div className="nm-entry-body">{entry.body}</div>
+        {editing ? (
+          <div style={{ marginTop: 6 }}>
+            <textarea
+              value={editBody}
+              onChange={(e) => setEditBody(e.target.value)}
+              rows={4}
+              className="nm-paper"
+              style={{ fontSize: 13, marginBottom: 8 }}
+            />
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button className="nm-btn primary" style={{ fontSize: 11 }} onClick={handleSaveEdit} disabled={saving || !editBody.trim()}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+              <button className="nm-btn ghost" style={{ fontSize: 11 }} onClick={() => setEditing(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="nm-entry-body">{entry.body}</div>
+        )}
+        {entry.translated && (
+          <div className="nm-meta" style={{ marginTop: 6, fontStyle: 'italic', color: 'var(--ink-3)' }}>{entry.translated}</div>
+        )}
       </div>
     </div>
   );
@@ -147,7 +191,7 @@ const StreakBlock = ({ streak }) => {
   );
 };
 
-export const JournalScreen = () => {
+export const JournalScreen = ({ user }) => {
   const [books, setBooks] = useState([]);
   const [activeBookId, setActiveBookId] = useState(null);
   const [entries, setEntries] = useState([]);
@@ -160,6 +204,8 @@ export const JournalScreen = () => {
   const [moodLabel, setMoodLabel] = useState('');
   const [entryDate, setEntryDate] = useState(todayISO());
   const [saving, setSaving] = useState(false);
+  const [translating, setTranslating] = useState(false);
+  const [translated, setTranslated] = useState('');
   const [allowLoopDetection, setAllowLoopDetection] = useState(true);
 
   const [showNewBook, setShowNewBook] = useState(false);
@@ -231,18 +277,46 @@ export const JournalScreen = () => {
         mood_emoji: selectedMood?.emoji || '',
         mood_label: selectedMood?.label || '',
         entry_date: entryDate || todayISO(),
+        translated,
         auto_translate: false,
         book_id: activeBookId,
         allow_loop_detection: allowLoopDetection,
       });
       setBody('');
       setMoodLabel('');
+      setTranslated('');
       setEntryDate(todayISO());
       await Promise.all([fetchEntries(activeBookId), fetchBooks(activeBookId), fetchStreak()]);
     } catch (e) {
       setError(e.message || 'Failed to save');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTranslate = async () => {
+    if (!body.trim()) return;
+    setTranslating(true);
+    try {
+      const data = await translateJournalEntry({
+        body,
+        mood_emoji: selectedMood?.emoji || '',
+        mood_label: selectedMood?.label || '',
+      });
+      setTranslated(data.translated || '');
+    } catch (e) {
+      setError(e.message || 'Translation failed');
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  const handleEditEntry = async (id, fields) => {
+    try {
+      await updateJournalEntry(id, fields);
+      await fetchEntries(activeBookId);
+    } catch (e) {
+      setError(e.message || 'Failed to update');
     }
   };
 
@@ -282,6 +356,7 @@ export const JournalScreen = () => {
     }
   };
 
+  const displayName = user?.email ? user.email.split('@')[0].replace(/^\w/, (c) => c.toUpperCase()) : 'Girish';
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
@@ -293,70 +368,76 @@ export const JournalScreen = () => {
           <span className="sep">/</span> {dateLabel}
         </>
       } />
-
-      <div className="nm-journal">
-        {/* Bookshelf */}
-        <aside className="nm-journal-shelf">
-          <div className="nm-journal-shelf-head">
-            <div className="nm-eyebrow">A library of</div>
-            <h2>your <em>thoughts</em>.</h2>
+      <div className="nm-journal-container">
+        <div className="nm-journal-welcome">
+          <div className="nm-journal-welcome-text">
+            <h3>Welcome back, {displayName}!</h3>
+            <p>Your daily journal is a space for clarity,<br></br> growth and self reflection.</p>
           </div>
+          <img src={WelcomeBookImg} alt='welcome'/>
+        </div>
+
+        <div className="nm-journal">
+          {/* Bookshelf */}
+          <aside className="nm-journal-shelf">
 
           <StreakBlock streak={streak} />
 
-          <div className="nm-journal-shelf-list" style={{ marginTop: 8 }}>
-            {loadingBooks && <div className="nm-meta" style={{ padding: 14 }}>Loading…</div>}
-            {!loadingBooks && books.map((b) => (
-              <BookRow
-                key={b.id}
-                book={b}
-                active={b.id === activeBookId}
-                onClick={() => setActiveBookId(b.id)}
-                onDelete={handleDeleteBook}
-              />
-            ))}
-          </div>
-
-          <div className="nm-journal-shelf-add">
-            {showNewBook ? (
-              <div className="nm-book-new">
-                <input
-                  autoFocus
-                  type="text"
-                  value={newBookName}
-                  onChange={(e) => setNewBookName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleCreateBook();
-                    if (e.key === 'Escape') { setShowNewBook(false); setNewBookName(''); }
-                  }}
-                  placeholder="travel · anxious · gratitude"
+          <div className="nm-card">
+            <div className="nm-journal-shelf-list" style={{ marginTop: 8 }}>
+              {loadingBooks && <div className="nm-meta" style={{ padding: 14 }}>Loading…</div>}
+              {!loadingBooks && books.map((b) => (
+                <BookRow
+                  key={b.id}
+                  book={b}
+                  active={b.id === activeBookId}
+                  onClick={() => setActiveBookId(b.id)}
+                  onDelete={handleDeleteBook}
                 />
-                <div className="nm-book-swatches">
-                  {BOOK_COLORS.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setNewBookColor(c)}
-                      className={'nm-book-swatch' + (newBookColor === c ? ' selected' : '')}
-                      style={{ background: c }}
-                      aria-label="Pick color"
-                    />
-                  ))}
+              ))}
+            </div>
+
+            <div className="nm-journal-shelf-add">
+              {showNewBook ? (
+                <div className="nm-book-new">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newBookName}
+                    onChange={(e) => setNewBookName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleCreateBook();
+                      if (e.key === 'Escape') { setShowNewBook(false); setNewBookName(''); }
+                    }}
+                    placeholder="travel · anxious · gratitude"
+                  />
+                  <div className="nm-book-swatches">
+                    {BOOK_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setNewBookColor(c)}
+                        className={'nm-book-swatch' + (newBookColor === c ? ' selected' : '')}
+                        style={{ background: c }}
+                        aria-label="Pick color"
+                      />
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="nm-btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={handleCreateBook} disabled={!newBookName.trim()}>
+                      Begin book
+                    </button>
+                    <button className="nm-btn ghost" onClick={() => { setShowNewBook(false); setNewBookName(''); }}>
+                      Cancel
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: 6 }}>
-                  <button className="nm-btn primary" style={{ flex: 1, justifyContent: 'center' }} onClick={handleCreateBook} disabled={!newBookName.trim()}>
-                    Begin book
-                  </button>
-                  <button className="nm-btn ghost" onClick={() => { setShowNewBook(false); setNewBookName(''); }}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button className="nm-btn" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setShowNewBook(true)}>
-                <Icon name="plus" size={12} /> New book
-              </button>
-            )}
+              ) : (
+                <button className="nm-btn" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setShowNewBook(true)}>
+                  <Icon name="plus" size={12} /> New book
+                </button>
+              )}
+            </div>
           </div>
         </aside>
 
@@ -431,6 +512,22 @@ export const JournalScreen = () => {
                     rows={6}
                     className="nm-paper"
                   />
+                  <div style={{ display: 'flex', gap: 6, marginTop: 8, marginBottom: 14 }}>
+                    <button
+                      type="button"
+                      className="nm-btn ghost"
+                      style={{ fontSize: 11 }}
+                      onClick={handleTranslate}
+                      disabled={!body.trim() || translating}
+                    >
+                      {translating ? 'Translating…' : 'Translate / Reflect'}
+                    </button>
+                  </div>
+                  {translated && (
+                    <div className="nm-meta" style={{ marginBottom: 14, fontStyle: 'italic', color: 'var(--ink-3)', lineHeight: 1.5 }}>
+                      {translated}
+                    </div>
+                  )}
 
                   <div className="nm-compose-step" style={{ marginTop: 22 }}>04 · Options</div>
                   <div style={{ marginBottom: 22 }}>
@@ -443,7 +540,7 @@ export const JournalScreen = () => {
                         />
                         <span className="nm-switch-slider"></span>
                       </span>
-                      Allow NextMate to analyze this entry for behavioral loops
+                      Allow NexMate to analyze this entry for behavioral loops
                     </label>
                   </div>
 
@@ -493,7 +590,7 @@ export const JournalScreen = () => {
                             </div>
                           </div>
                           {items.map((e) => (
-                            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} />
+                            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} onEdit={handleEditEntry} />
                           ))}
                         </div>
                       );
@@ -504,6 +601,7 @@ export const JournalScreen = () => {
             )}
           </div>
         </main>
+      </div>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import threading
 import atexit
 import time
 import pathlib
+import itertools
 from datetime import datetime
 from line_profiler import LineProfiler
 from langchain_groq import ChatGroq
@@ -84,85 +85,51 @@ def log_token_usage(node_name: str, usage_metadata: dict, thread_id: str = "unkn
     logger.info(f"Token usage - {node_name}: {total_tokens} tokens (prompt: {prompt_tokens}, completion: {completion_tokens})")
 
 
+def _load_groq_keys() -> list[str]:
+    """Load all Groq API keys from GROQ_API_KEYS (comma-separated) or GROQ_API_KEY."""
+    raw = os.getenv("GROQ_API_KEYS") or os.getenv("GROQ_API_KEY", "")
+    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    return keys
+
+
+_groq_key_cycle: itertools.cycle | None = None
+_groq_key_lock = threading.Lock()
+
+
 def _resolve_groq_api_key() -> str:
-    """Shared API key resolution for both the generation and fast chat models.
-    Checks env var first, falls back to reading .env directly (matches prior
-    behavior in get_chat_model so nothing regresses for existing setups)."""
-    api_key = os.getenv("GROQ_API_KEY")
-    if not api_key or not api_key.strip():
-        from pathlib import Path
-        try:
-            base_dir = Path(__file__).resolve().parents[2]
-            env_path = base_dir / ".env"
-            if env_path.exists():
-                with open(env_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        if line.strip().startswith("GROQ_API_KEY="):
-                            val = line.split("=", 1)[1].strip()
-                            if val.startswith(('"', "'")) and val.endswith(('"', "'")):
-                                val = val[1:-1]
-                            if val:
-                                api_key = val
-                                break
-        except Exception as e:
-            logger.error(f"Failed to read GROQ_API_KEY from .env: {e}")
+    """Returns the next Groq API key in round-robin order.
+    Supports GROQ_API_KEYS (comma-separated) or single GROQ_API_KEY."""
+    global _groq_key_cycle
+    with _groq_key_lock:
+        if _groq_key_cycle is None:
+            keys = _load_groq_keys()
+            if not keys:
+                raise ValueError("No Groq API keys found. Set GROQ_API_KEYS or GROQ_API_KEY in .env")
+            _groq_key_cycle = itertools.cycle(keys)
+    return next(_groq_key_cycle)
 
-    if not api_key or not api_key.strip():
-        raise ValueError("GROQ_API_KEY is missing or empty in environment configuration")
-
-    return api_key
-
-
-_cached_chat_model: ChatGroq | None = None
-_cached_model_name: str | None = None
-
-_cached_fast_model: ChatGroq | None = None
-_cached_fast_model_name: str | None = None
 
 
 def get_chat_model() -> ChatGroq:
-    """Generation-quality model (GENERATION_MODEL, e.g. Llama 4 Scout).
-    Use ONLY for user-facing reply generation (generate_reply_node) — this is
-    the highest-quality/most expensive model and shares its own TPM budget on
-    the Groq free tier, so it should not be spent on classification/routing
-    calls that don't need that quality."""
-    global _cached_chat_model, _cached_model_name
+    """Generation-quality model (GENERATION_MODEL). Returns a new instance per
+    call so each request rotates to the next Groq API key."""
     settings = get_settings()
-
-    if _cached_chat_model is not None and _cached_model_name == settings.generation_model:
-        return _cached_chat_model
-
-    api_key = _resolve_groq_api_key()
-    _cached_chat_model = ChatGroq(
+    return ChatGroq(
         model=settings.generation_model,
-        api_key=api_key,
+        api_key=_resolve_groq_api_key(),
         temperature=0.3,
     )
-    _cached_model_name = settings.generation_model
-    return _cached_chat_model
 
 
 def get_fast_chat_model() -> ChatGroq:
-    """Cheap/fast model (FAST_MODEL, default llama-3.1-8b-instant).
-    Use for classification, routing, extraction, and summarization nodes:
-    choose_response_mode, detect_loops, detect_explicit_advice, summarize_turn,
-    and thread compaction. On Groq's free tier each model has its own
-    independent rate-limit bucket, so routing these calls here means they
-    don't compete with generate_reply for the same 6,000 TPM cap."""
-    global _cached_fast_model, _cached_fast_model_name
+    """Cheap/fast model (FAST_MODEL). Returns a new instance per call so each
+    request rotates to the next Groq API key."""
     settings = get_settings()
-
-    if _cached_fast_model is not None and _cached_fast_model_name == settings.fast_model:
-        return _cached_fast_model
-
-    api_key = _resolve_groq_api_key()
-    _cached_fast_model = ChatGroq(
+    return ChatGroq(
         model=settings.fast_model,
-        api_key=api_key,
+        api_key=_resolve_groq_api_key(),
         temperature=0.2,
     )
-    _cached_fast_model_name = settings.fast_model
-    return _cached_fast_model
 
 
 def parse_json_object(text: str) -> dict:

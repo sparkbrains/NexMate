@@ -7,13 +7,6 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 5173,
-    watch: {
-      // Required for file-change detection through Docker volumes on Windows
-      usePolling: true,
-      interval: 1000,
-    },
-    hmr: {
-      clientPort: 5173,
-    },
+    hmr: false,
   },
 });

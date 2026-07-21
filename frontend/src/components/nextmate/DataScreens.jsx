@@ -429,3 +429,107 @@ export const InsightsScreen = () => {
     </div>
   );
 };
+
+const WStat = ({ label, value, delta, good }) => (
+  <div style={{ borderLeft: '2px solid var(--rule)', paddingLeft: 16 }}>
+    <div className="nm-eyebrow" style={{ marginBottom: 8 }}>{label}</div>
+    <div className="nm-numeral sm">{value}</div>
+    {delta && <div className="nm-meta" style={{ marginTop: 6, color: good ? 'var(--teal)' : 'var(--ink-4)' }}>{delta} vs last</div>}
+  </div>
+);
+
+export const WeeklyScreen = () => {
+  const [insights, setInsights] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDashboardInsights(7)
+      .then((d) => { if (!cancelled) setInsights(d.insights); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const week = insights?.week;
+  const days = week?.days || [];
+  const stats = week?.stats || {};
+  const prev = week?.previous_stats || {};
+  const intensityDelta = fmtDelta(stats.avg_intensity, prev.avg_intensity);
+  const topTriggers = insights?.top_triggers || [];
+
+  return (
+    <div className="nm-main">
+      <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Weekly report</b></>}>
+        <button className="nm-btn accent" onClick={() => window.print()}><Icon name="download" size={12} /> PDF</button>
+      </TopBar>
+      <div className="nm-content">
+        <div style={{ maxWidth: 760, margin: '0 auto' }} className="nm-fade-up">
+          <header className="nm-hero">
+            <div>
+              <div className="nm-eyebrow" style={{ marginBottom: 12 }}>
+                {(() => {
+                  const today = new Date();
+                  const start = new Date(today); start.setDate(today.getDate() - 6);
+                  const fmt = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                  return `Week of ${fmt(start)} – ${fmt(today)}`;
+                })()}
+              </div>
+              <h1 className="nm-h1">
+                {loading ? 'Drawing the week…' : (stats.entries ? <>Your week, <em>so far</em>.</> : <>A blank week —<br /><em>still time</em>.</>)}
+              </h1>
+            </div>
+          </header>
+
+          <div className="nm-grid-4 nm-stagger" style={{ marginBottom: 36 }}>
+            <WStat label="Threads" value={stats.threads ?? 0} delta={prev.threads != null ? `${(stats.threads ?? 0) - (prev.threads ?? 0) >= 0 ? '+' : ''}${(stats.threads ?? 0) - (prev.threads ?? 0)}` : null} good={(stats.threads ?? 0) >= (prev.threads ?? 0)} />
+            <WStat label="Avg intensity" value={stats.avg_intensity ?? '—'} delta={intensityDelta != null ? (intensityDelta > 0 ? `+${intensityDelta}` : `${intensityDelta}`) : null} good={intensityDelta != null && intensityDelta < 0} />
+            <WStat label="Active loops" value={insights?.loops?.active ?? 0} />
+            <WStat label="New patterns" value={insights?.loops?.new_in_window ?? 0} />
+          </div>
+
+          <section style={{ marginBottom: 36 }} className="nm-fade-up">
+            <div className="nm-eyebrow" style={{ marginBottom: 6 }}>01 · Emotional trend</div>
+            <h2 className="nm-h2" style={{ marginBottom: 14 }}>Day-by-day intensity</h2>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {days.map((d) => (
+                <div key={d.day} style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{
+                    height: 80,
+                    background: d.dominant_mood ? moodColor(d.dominant_mood) : 'transparent',
+                    border: d.dominant_mood ? 'none' : '1px dashed var(--rule)',
+                    opacity: d.avg_intensity ? 0.35 + (d.avg_intensity / 10) * 0.6 : 0.5,
+                    borderRadius: 2,
+                    position: 'relative',
+                  }}>
+                    {d.avg_intensity != null && (
+                      <div style={{ position: 'absolute', bottom: 6, left: 0, right: 0, fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--ink)' }}>{d.avg_intensity}</div>
+                    )}
+                  </div>
+                  <div className="nm-meta" style={{ marginTop: 6 }}>{d.weekday}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-2)' }}>{d.dominant_mood || '—'}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={{ marginBottom: 36 }} className="nm-fade-up">
+            <div className="nm-eyebrow" style={{ marginBottom: 6 }}>02 · Triggers</div>
+            <h2 className="nm-h2" style={{ marginBottom: 14 }}>{topTriggers[0] ? `${topTriggers[0].trigger} leads the week.` : 'No triggers yet.'}</h2>
+            {topTriggers.length === 0 && <div className="nm-meta">No triggers detected this window.</div>}
+            {topTriggers.map((t, i) => (
+              <div key={t.trigger} style={{ display: 'grid', gridTemplateColumns: '20px 100px 1fr 50px', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: i === topTriggers.length - 1 ? 'none' : '1px dashed var(--rule)' }}>
+                <span className="nm-meta">{String(i + 1).padStart(2, '0')}</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: 16 }}>{t.trigger}</span>
+                <div style={{ height: 4, background: 'var(--rule-soft)', overflow: 'hidden' }}>
+                  <div style={{ width: `${t.pct}%`, height: '100%', background: 'var(--accent)' }} />
+                </div>
+                <span className="nm-meta" style={{ textAlign: 'right' }}>{t.count}</span>
+              </div>
+            ))}
+          </section>
+        </div>
+      </div>
+    </div>
+  );
+};

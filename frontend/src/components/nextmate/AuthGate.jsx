@@ -285,7 +285,7 @@ export function AuthGate({ onAuth }) {
       <section className="nm-auth-hero">
         <header className="nm-auth-mast nm-reveal" data-d="1">
           <BrandMark />
-          <div className="nm-brand-name">next<em>mate</em></div>
+          <div className="nm-brand-name">Nex<em>Mate</em></div>
         </header>
 
         <div>
@@ -665,7 +665,7 @@ export function AuthGate({ onAuth }) {
 function prettyError(msg) {
   if (!msg) return null;
   if (msg.includes('Invalid credentials')) return 'That combination doesn’t match anything here.';
-  if (msg.toLowerCase().includes('fetch')) return 'Couldn’t reach the server. Is it running?';
+  if (/fetch|network|failed to fetch|networkerror|cors/i.test(msg)) return "Couldn't reach the server. Is it running?";
   try {
     const parsed = JSON.parse(msg);
     if (parsed?.detail) return parsed.detail;

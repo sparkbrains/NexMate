@@ -1,5 +1,6 @@
 import { useContext } from 'react';
 import { AppContext } from '../../context';
+import LogoIco from '../../assets/ic_logo.svg';
 
 export const Icon = ({ name, size = 14, style }) => {
   const P = {
@@ -60,29 +61,23 @@ const fmtWhen = (iso) => {
   return `${Math.floor(days / 7)}w`;
 };
 
-export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onNewThread, user, onLogout }) => {
+
+export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onNewThread, onDeleteThread, user, onLogout }) => {
   const { sidebarOpen, setSidebarOpen } = useContext(AppContext);
 
   return (
     <>
-      {/* Mobile backdrop shadow when menu drawer is active */}
       {sidebarOpen && (
-        <div 
-          onClick={() => setSidebarOpen(false)} 
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 45 }} 
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 45 }}
         />
       )}
-      
+
       <aside className={"nm-side" + (sidebarOpen ? " open" : "")}>
-        <div className="nm-brand">
-          <div className="nm-brand-mark"><BrandMark /></div>
-          <div className="nm-brand-name">next<em>mate</em></div>
-          {/* Close button inside sidebar on mobile */}
-          <button 
-            className="nm-btn ghost nm-menu-btn" 
-            style={{ marginLeft: 'auto', padding: 4 }} 
-            onClick={() => setSidebarOpen(false)}
-          >
+        <div className="nm-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 12 }}>
+          <img src={LogoIco} alt="Nextmate" height={30} className="nm-logo" />
+          <button className="nm-btn ghost nm-menu-btn" style={{ padding: 4 }} onClick={() => setSidebarOpen(false)}>
             <Icon name="close" size={16} />
           </button>
         </div>
@@ -97,7 +92,6 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
         <NavItem icon="loops" label="Loops" k="loops" active={active} onNav={onNav} />
         <NavItem icon="insights" label="Insights" k="insights" active={active} onNav={onNav} />
 
-
         <div className="nm-nav-section">Threads · {threads.length}</div>
         <div className="nm-threads">
           {threads.length === 0 && (
@@ -109,13 +103,25 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
               <div
                 key={t.thread_id}
                 className={"nm-thread" + (isActive ? " active" : "")}
-                onClick={() => {
-                  onSelectThread && onSelectThread(t.thread_id);
-                  setSidebarOpen(false);
-                }}
+                style={{ display: 'flex', alignItems: 'center', gap: 4 }}
               >
-                <div className="nm-thread-title">{t.title || 'Untitled'}</div>
-                <div className="nm-thread-meta">{fmtWhen(t.updated_at)}</div>
+                <div
+                  style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+                  onClick={() => { onSelectThread && onSelectThread(t.thread_id); setSidebarOpen(false); }}
+                >
+                  <div className="nm-thread-title">{t.title || 'Untitled'}</div>
+                  <div className="nm-thread-meta">{fmtWhen(t.updated_at)}</div>
+                </div>
+                {onDeleteThread && (
+                  <button
+                    className="nm-btn ghost"
+                    style={{ padding: 3, flexShrink: 0, opacity: 0.5 }}
+                    title="Delete thread"
+                    onClick={(e) => { e.stopPropagation(); onDeleteThread(t.thread_id); }}
+                  >
+                    <Icon name="trash" size={11} />
+                  </button>
+                )}
               </div>
             );
           })}
@@ -135,12 +141,11 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
 };
 
 export const TopBar = ({ crumb, children }) => {
-  const { theme, setTheme, setSidebarOpen } = useContext(AppContext);
+  const { setSidebarOpen, theme, setTheme } = useContext(AppContext);
 
   return (
     <div className="nm-topbar">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {/* Hamburger Menu Toggle Button (visible on mobile viewports) */}
         <button 
           className="nm-btn ghost nm-menu-btn" 
           onClick={() => setSidebarOpen(true)}
@@ -154,14 +159,13 @@ export const TopBar = ({ crumb, children }) => {
       
       <div className="nm-top-actions">
         {children}
-        {/* Global Dark/Light Theme Toggle Button */}
-        <button 
-          className="nm-btn ghost" 
+        <button
+          className="nm-btn ghost"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
-          style={{ padding: 8, borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          style={{ padding: 6 }}
         >
-          <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
+          <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
         </button>
       </div>
     </div>

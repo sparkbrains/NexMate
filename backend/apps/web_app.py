@@ -17,7 +17,7 @@ from apps.api.routers.loops import router as loops_router
 from apps.api.routers.ws import router as ws_router
 from apps.api.services.auth_service import init_auth_db, seed_dummy_users_from_env
 app = FastAPI(title="NextMate Web")
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in allowed_origins if origin.strip()],
@@ -48,4 +48,4 @@ def startup() -> None:
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("apps.web_app:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("apps.web_app:app", host="0.0.0.0", port=8000, reload=False)

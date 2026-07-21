@@ -247,6 +247,28 @@ export function deleteJournalEntry(id) {
   return request(`/api/journal/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+export function updateJournalEntry(id, fields) {
+  return request(`/api/journal/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: fields,
+  });
+}
+
+export function getJournalEntry(id) {
+  return request(`/api/journal/${encodeURIComponent(id)}`);
+}
+
+export function translateJournalEntry({ body, mood_emoji = '', mood_label = '' }) {
+  return request('/api/journal/translate', {
+    method: 'POST',
+    body: { body, mood_emoji, mood_label },
+  });
+}
+
+export function getMe() {
+  return request('/api/auth/me');
+}
+
 export function chatSocketUrl(threadId) {
   const httpBase = API_BASE_URL;
   const wsBase = httpBase.replace(/^http/i, (m) => (m.toLowerCase() === 'https' ? 'wss' : 'ws'));
