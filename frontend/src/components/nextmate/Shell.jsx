@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { AppContext } from '../../context';
 
 export const Icon = ({ name, size = 14, style }) => {
@@ -10,6 +10,7 @@ export const Icon = ({ name, size = 14, style }) => {
     weekly: <><rect x="2" y="3" width="12" height="11" rx="1" /><path d="M2 6h12M5 2v3M11 2v3" /></>,
     book: <><path d="M3 2h7a2 2 0 012 2v10H5a2 2 0 01-2-2V2z" /><path d="M3 2v10M6 5h4M6 8h4" /></>,
     trash: <><path d="M3 4h10M6 4V2h4v2M5 4l1 10h4l1-10" /></>,
+    edit: <><path d="M2 14l1.5-4.5L11 2l3 3-6.5 6.5H2z" /></>,
     patterns: <><circle cx="5" cy="5" r="2" /><circle cx="11" cy="5" r="2" /><circle cx="5" cy="11" r="2" /><circle cx="11" cy="11" r="2" /></>,
     plus: <><path d="M8 3v10M3 8h10" /></>,
     search: <><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></>,
@@ -63,6 +64,11 @@ const fmtWhen = (iso) => {
 
 export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onNewThread, user, onLogout }) => {
   const { sidebarOpen, setSidebarOpen } = useContext(AppContext);
+  const [threadTab, setThreadTab] = useState('regular'); // 'regular' | 'reflecting'
+
+  const regularThreads = threads.filter(t => !t.loop_id);
+  const reflectingThreads = threads.filter(t => t.loop_id);
+  const activeThreads = threadTab === 'reflecting' ? reflectingThreads : regularThreads;
 
   return (
     <>
@@ -100,11 +106,31 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
 
 
         <div className="nm-nav-section">Threads · {threads.length}</div>
+
+        <div className="nm-thread-tabs">
+          <button
+            className={"nm-thread-tab" + (threadTab === 'regular' ? " active" : "")}
+            onClick={() => setThreadTab('regular')}
+          >
+            Threads
+            {regularThreads.length > 0 && <span className="nm-nav-count">{regularThreads.length}</span>}
+          </button>
+          <button
+            className={"nm-thread-tab" + (threadTab === 'reflecting' ? " active" : "")}
+            onClick={() => setThreadTab('reflecting')}
+          >
+            Reflecting on
+            {reflectingThreads.length > 0 && <span className="nm-nav-count">{reflectingThreads.length}</span>}
+          </button>
+        </div>
+
         <div className="nm-threads">
-          {threads.length === 0 && (
-            <div className="nm-meta" style={{ padding: '8px 12px' }}>No threads yet.</div>
+          {activeThreads.length === 0 && (
+            <div className="nm-meta" style={{ padding: '8px 12px' }}>
+              {threadTab === 'reflecting' ? 'No reflections yet.' : 'No threads yet.'}
+            </div>
           )}
-          {threads.map(t => {
+          {activeThreads.map(t => {
             const isActive = t.thread_id === activeThreadId && active === 'chat';
             return (
               <div
@@ -115,7 +141,11 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
                   setSidebarOpen(false);
                 }}
               >
-                <div className="nm-thread-title">{t.title || 'Untitled'}</div>
+                <div className="nm-thread-title">
+                  {threadTab === 'reflecting'
+                    ? (t.title || 'Untitled').replace(/^Reflecting on:\s*/, '')
+                    : (t.title || 'Untitled')}
+                </div>
                 <div className="nm-thread-meta">{fmtWhen(t.updated_at)}</div>
               </div>
             );

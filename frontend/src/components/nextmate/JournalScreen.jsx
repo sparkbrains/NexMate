@@ -8,6 +8,7 @@ import {
   getJournalStreak,
   listJournalBooks,
   listJournalEntries,
+  updateJournalEntry,
 } from '../../lib/api';
 
 const MOODS = [
@@ -34,11 +35,77 @@ const todayISO = () => {
 
 const moodFor = (label) => MOODS.find((m) => m.label === label);
 
-const Entry = ({ entry, onDelete }) => {
+const Entry = ({ entry, onDelete, onUpdate }) => {
   const [confirming, setConfirming] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editBody, setEditBody] = useState(entry.body);
+  const [editMood, setEditMood] = useState(entry.mood_label);
+  const [saving, setSaving] = useState(false);
+
   const time = entry.created_at
     ? new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '';
+
+  const startEdit = () => {
+    setEditBody(entry.body);
+    setEditMood(entry.mood_label);
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditing(false);
+  };
+
+  const saveEdit = async () => {
+    const trimmed = editBody.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    try {
+      const selectedMood = moodFor(editMood);
+      await onUpdate(entry.id, {
+        body: trimmed,
+        mood_emoji: selectedMood?.emoji || '',
+        mood_label: selectedMood?.label || '',
+      });
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="nm-entry nm-entry-editing">
+        <div className="nm-mood-strip" style={{ marginBottom: 12 }}>
+          {MOODS.map((m) => (
+            <button
+              key={m.label}
+              type="button"
+              onClick={() => setEditMood(m.label === editMood ? '' : m.label)}
+              className={'nm-mood' + (m.label === editMood ? ' active' : '')}
+            >
+              <span className="nm-mood-emoji">{m.emoji}</span>
+              <span>{m.label}</span>
+            </button>
+          ))}
+        </div>
+        <textarea
+          autoFocus
+          value={editBody}
+          onChange={(e) => setEditBody(e.target.value)}
+          rows={4}
+          className="nm-paper"
+        />
+        <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
+          <button className="nm-btn ghost" onClick={cancelEdit} disabled={saving}>Cancel</button>
+          <button className="nm-btn primary" onClick={saveEdit} disabled={!editBody.trim() || saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="nm-entry">
       <div className="nm-entry-mark">
@@ -55,9 +122,14 @@ const Entry = ({ entry, onDelete }) => {
                 <button className="nm-btn accent" style={{ fontSize: 10, padding: '2px 8px', marginLeft: 4 }} onClick={() => onDelete(entry.id)}>Delete</button>
               </>
             ) : (
-              <button className="nm-btn ghost" title="Delete entry" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
-                <Icon name="trash" size={11} />
-              </button>
+              <>
+                <button className="nm-btn ghost" title="Edit entry" style={{ padding: 4 }} onClick={startEdit}>
+                  <Icon name="edit" size={11} />
+                </button>
+                <button className="nm-btn ghost" title="Delete entry" style={{ padding: 4, marginLeft: 2 }} onClick={() => setConfirming(true)}>
+                  <Icon name="trash" size={11} />
+                </button>
+              </>
             )}
           </span>
         </div>
@@ -254,6 +326,17 @@ export const JournalScreen = () => {
       fetchStreak();
     } catch (e) {
       setError(e.message || 'Failed to delete');
+    }
+  };
+
+  const handleUpdateEntry = async (id, payload) => {
+    try {
+      const data = await updateJournalEntry(id, payload);
+      const updated = data.entry;
+      setEntries((prev) => prev.map((e) => (e.id === id ? updated : e)));
+    } catch (e) {
+      setError(e.message || 'Failed to update entry');
+      throw e; // let Entry's saveEdit know it failed, so it doesn't exit edit mode
     }
   };
 
@@ -493,7 +576,7 @@ export const JournalScreen = () => {
                             </div>
                           </div>
                           {items.map((e) => (
-                            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} />
+                            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} onUpdate={handleUpdateEntry} />
                           ))}
                         </div>
                       );

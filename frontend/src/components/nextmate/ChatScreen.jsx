@@ -443,9 +443,12 @@ export const ChatScreen = ({
           return updated;
         });
 
+        // Voice input now fills the draft instead of auto-sending, so the
+        // person can review/edit the transcript and use the Send button
+        // (or Enter) the same way they would for typed text.
         const fullText = `${voiceBaseRef.current}${transcript ? ` ${transcript}` : ''}`.trim();
-        if (fullText && send(fullText)) {
-          setDraft('');
+        if (fullText) {
+          setDraft(fullText);
         }
       } catch (error) {
         console.error('Transcription error:', error);
@@ -509,6 +512,8 @@ export const ChatScreen = ({
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, streaming]);
+
+  const canSend = Boolean(draft.trim()) && Boolean(threadId) && !streaming && status === 'open';
 
   const submit = () => {
     const text = draft.trim();
@@ -683,6 +688,7 @@ export const ChatScreen = ({
             alignItems: 'flex-end',
           }}
         >
+          {/* 1. Audio input — shown first, fills the draft below rather than auto-sending */}
           <button
             className="nm-btn"
             onClick={toggleVoice}
@@ -721,6 +727,8 @@ export const ChatScreen = ({
               />
             )}
           </button>
+
+          {/* 2. Text draft — typed directly, or filled in by the transcript above */}
           <textarea
             className="nm-textarea"
             placeholder={threadId ? 'Stay with the thought, or send a new one…' : 'Start a new reflection from the sidebar.'}
@@ -729,8 +737,26 @@ export const ChatScreen = ({
             onKeyDown={onKey}
             rows={1}
             disabled={!threadId}
-            style={{ minHeight: 42, maxHeight: 140, padding: '10px 14px', fontSize: 15 }}
+            style={{ minHeight: 42, maxHeight: 140, padding: '10px 14px', fontSize: 15, flex: 1 }}
           />
+
+          {/* 3. Send — the explicit action, alongside Enter-to-send */}
+          <button
+            className="nm-btn primary"
+            onClick={submit}
+            disabled={!canSend}
+            title="Send message"
+            style={{
+              padding: '10px 16px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              flexShrink: 0,
+            }}
+          >
+            Send
+            <Icon name="arrow" size={13} />
+          </button>
         </div>
 
         {!recording && voiceError && (
