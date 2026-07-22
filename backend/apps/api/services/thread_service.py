@@ -5,6 +5,7 @@ from typing import Any
 from apps.db import get_connection, utc_now
 from nextmate_agent.agent import delete_thread_checkpoints
 from nextmate_agent.utils.llm import get_chat_model, invoke_with_logging
+from apps.api.services.loop_service import remove_thread_from_loops
 
 
 def normalize_thread_id(thread_id: str) -> str:
@@ -385,7 +386,21 @@ def delete_thread_everywhere(user_id: int, thread_id: str) -> dict[str, Any]:
                 (user_id, thread_id),
             )
             removed_summaries = cur.rowcount if cur.rowcount > 0 else 0
+            # NOTE: previously missing -- without this, the thread's row in
+            # `threads` survived deletion, so list_threads() (which unions
+            # thread_map with message-derived IDs) would keep showing the
+            # "deleted" thread in the sidebar with 0 messages.
+            cur.execute(
+                "DELETE FROM threads WHERE user_id = %s AND thread_id = %s",
+                (user_id, thread_id),
+            )
+            removed_thread_row = cur.rowcount > 0
         conn.commit()
+
+    # Strip this thread's evidence out of any loop it contributed to, and
+    # revoke loops that no longer meet the original detection bar once
+    # that evidence is gone.
+    loop_cleanup = remove_thread_from_loops(user_id, thread_id)
 
     delete_thread_checkpoints(user_id, thread_id)
     return {
@@ -393,5 +408,8 @@ def delete_thread_everywhere(user_id: int, thread_id: str) -> dict[str, Any]:
         "thread_id": thread_id,
         "removed_messages": removed_messages,
         "removed_summaries": removed_summaries,
+        "removed_thread_row": removed_thread_row,
         "removed_checkpoints": True,
+        "loops_updated": loop_cleanup["updated"],
+        "loops_deleted": loop_cleanup["deleted"],
     }

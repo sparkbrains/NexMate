@@ -278,23 +278,6 @@ def _loops_match(loops_a: dict[str, Any], loops_b: dict[str, Any]) -> bool:
     return belief_match and trigger_match
 
 
-# =============================================================================
-# REPLACE the existing _get_cross_thread_memory_entries function in
-# loop_service.py with this version.
-#
-# Changes from the original:
-# - Drops user_input/assistant_reply/next_focus from the SELECT -- nothing in
-#   loop_service.py's matching/validation functions reads them, so this is a
-#   free size reduction with zero quality impact.
-# - LIMIT raised 100 -> 150. Safe to raise because, after this change, this
-#   function's output is used ONLY for the free deterministic Python
-#   validation path (_validate_cross_thread_loop_recurrence) -- the LLM-facing
-#   prompt now gets a separately-capped subset via
-#   _select_prompt_cross_thread_entries, so a larger validation pool costs
-#   zero extra tokens and improves persistence-detection accuracy.
-# =============================================================================
-
-
 def _get_cross_thread_memory_entries(user_id: int, current_thread_id: str) -> list[dict[str, Any]]:
     """
     Retrieve memory entries for a user across all threads except the current
@@ -335,12 +318,6 @@ def _get_cross_thread_memory_entries(user_id: int, current_thread_id: str) -> li
                 })
 
     return cross_thread_entries
-
-# =============================================================================
-# APPEND THIS FUNCTION TO loop_service.py
-# (place it near _get_cross_thread_memory_entries -- no new imports needed,
-# it only uses stdlib and things loop_service.py already imports)
-# =============================================================================
 
 
 def _select_prompt_cross_thread_entries(
@@ -894,6 +871,115 @@ def _save_merged_loop_info(
                 )
 
     return thread_loops
+
+
+def remove_thread_from_loops(user_id: int, thread_id: str) -> dict[str, Any]:
+    """Strips a deleted thread's matched entries out of every loop that
+    referenced it, then re-checks each affected loop against the same bar
+    used at detection time (_validate_cross_thread_loop_recurrence: at
+    least 2 distinct threads AND at least 3 total matches AND >=1 day
+    span). Loops that no longer clear that bar are deleted outright;
+    loops that still clear it are updated in place with the smaller
+    matched_entries list and recomputed span/detection_count.
+
+    Note: `detection_dates` has no per-entry thread association in the
+    schema, so it can't be precisely filtered the way matched_entries
+    can. To keep the loop's reported strength/occurrences consistent
+    with what's actually still backing it, detection_count is set to
+    len(remaining matched_entries) rather than trusting the old
+    detection_dates length, which may now overcount.
+
+    Called from thread_service.delete_thread_everywhere as part of
+    thread deletion. Safe to call even if the thread never contributed
+    to any loop -- affected loops are found by scanning matched_entries,
+    so unrelated loops are left untouched.
+
+    Returns {"updated": [...loop_ids...], "deleted": [...loop_ids...]}.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT loop_id, matched_entries, last_detected_at
+                FROM loops
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            )
+            rows = cur.fetchall()
+
+    updated: list[str] = []
+    deleted: list[str] = []
+    now = datetime.now(timezone.utc)
+
+    with get_connection(autocommit=True) as conn:
+        with conn.cursor() as cur:
+            for row in rows:
+                matched_entries = row.get("matched_entries") or []
+                if not isinstance(matched_entries, list):
+                    continue
+
+                had_thread = any(
+                    isinstance(e, dict) and str(e.get("thread_id") or "") == str(thread_id)
+                    for e in matched_entries
+                )
+                if not had_thread:
+                    continue  # this loop wasn't touched by the deleted thread
+
+                remaining = [
+                    e for e in matched_entries
+                    if not (isinstance(e, dict) and str(e.get("thread_id") or "") == str(thread_id))
+                ]
+
+                remaining_thread_ids = {
+                    str(e.get("thread_id")) for e in remaining
+                    if isinstance(e, dict) and e.get("thread_id")
+                }
+
+                still_valid = len(remaining_thread_ids) >= 2 and len(remaining) >= 3
+                if still_valid:
+                    dates = [e.get("date", "") for e in remaining if isinstance(e, dict) and e.get("date")]
+                    parsed_dates = []
+                    for d in dates:
+                        try:
+                            parsed_dates.append(datetime.fromisoformat(str(d).replace("Z", "+00:00")))
+                        except Exception:
+                            continue
+                    if len(parsed_dates) >= 2:
+                        parsed_dates.sort()
+                        span_days = (parsed_dates[-1] - parsed_dates[0]).days
+                        still_valid = span_days >= 1
+                    else:
+                        still_valid = False
+
+                loop_id = row["loop_id"]
+
+                if not still_valid:
+                    cur.execute(
+                        "DELETE FROM loops WHERE loop_id = %s AND user_id = %s",
+                        (loop_id, user_id),
+                    )
+                    deleted.append(str(loop_id))
+                    continue
+
+                default_last = row.get("last_detected_at") or now
+                first_dt, last_dt = _calculate_loop_span_dates(remaining, default_last)
+                detection_count = len(remaining)
+
+                cur.execute(
+                    """
+                    UPDATE loops
+                    SET matched_entries = %s::jsonb,
+                        detection_count = %s,
+                        first_detected_at = %s,
+                        last_detected_at = %s
+                    WHERE loop_id = %s AND user_id = %s
+                    """,
+                    (Jsonb(remaining), detection_count, first_dt, last_dt, loop_id, user_id),
+                )
+                updated.append(str(loop_id))
+
+    return {"updated": updated, "deleted": deleted}
 
 
 def reflect_on_loop(user_id: int, loop_id: str) -> dict[str, Any]:

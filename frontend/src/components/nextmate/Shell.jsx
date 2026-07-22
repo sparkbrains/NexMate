@@ -44,6 +44,46 @@ export const BrandMark = () => (
   </svg>
 );
 
+// Shared "are you sure?" modal, used for anything destructive (thread
+// deletion, journal entry deletion, etc). Renders nothing when closed.
+export const ConfirmDialog = ({ open, title, body, confirmLabel = 'Delete', cancelLabel = 'Cancel', onConfirm, onCancel }) => {
+  if (!open) return null;
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.55)',
+        zIndex: 300,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        className="nm-card"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 360, width: '100%', padding: 24 }}
+      >
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, marginBottom: body ? 8 : 20 }}>
+          {title}
+        </div>
+        {body && (
+          <div className="nm-body" style={{ marginBottom: 22 }}>
+            {body}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="nm-btn ghost" onClick={onCancel}>{cancelLabel}</button>
+          <button className="nm-btn accent" onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const NavItem = ({ icon, label, k, active, onNav, count }) => (
   <button className={"nm-nav-item" + (active === k ? " active" : "")} onClick={() => onNav && onNav(k)}>
     <span className="nm-nav-ic"><Icon name={icon} /></span>
@@ -62,12 +102,18 @@ const fmtWhen = (iso) => {
   return `${Math.floor(days / 7)}w`;
 };
 
-export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onNewThread, user, onLogout }) => {
+export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onDeleteThread, onNewThread, user, onLogout }) => {
   const { sidebarOpen, setSidebarOpen } = useContext(AppContext);
   const [threadTab, setThreadTab] = useState('regular'); // 'regular' | 'reflecting'
+  const [pendingDeleteThread, setPendingDeleteThread] = useState(null);
 
-  const regularThreads = threads.filter(t => !t.loop_id);
-  const reflectingThreads = threads.filter(t => t.loop_id);
+  // A thread counts as "reflecting" if it has a loop_id, or — as a
+  // fallback for cases where loop_id doesn't come back from the API —
+  // if its title carries the "Reflecting on: ..." prefix used for
+  // loop-reflection threads.
+  const isReflecting = (t) => Boolean(t.loop_id) || /^Reflecting on:/i.test(t.title || '');
+  const regularThreads = threads.filter(t => !isReflecting(t));
+  const reflectingThreads = threads.filter(isReflecting);
   const activeThreads = threadTab === 'reflecting' ? reflectingThreads : regularThreads;
 
   return (
@@ -140,13 +186,29 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
                   onSelectThread && onSelectThread(t.thread_id);
                   setSidebarOpen(false);
                 }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
               >
-                <div className="nm-thread-title">
-                  {threadTab === 'reflecting'
-                    ? (t.title || 'Untitled').replace(/^Reflecting on:\s*/, '')
-                    : (t.title || 'Untitled')}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="nm-thread-title">
+                    {threadTab === 'reflecting'
+                      ? (t.title || 'Untitled').replace(/^Reflecting on:\s*/, '')
+                      : (t.title || 'Untitled')}
+                  </div>
+                  <div className="nm-thread-meta">{fmtWhen(t.updated_at)}</div>
                 </div>
-                <div className="nm-thread-meta">{fmtWhen(t.updated_at)}</div>
+                {onDeleteThread && (
+                  <button
+                    className="nm-btn ghost"
+                    title="Delete thread"
+                    style={{ padding: 4, flexShrink: 0 }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPendingDeleteThread(t);
+                    }}
+                  >
+                    <Icon name="trash" size={11} />
+                  </button>
+                )}
               </div>
             );
           })}
@@ -185,6 +247,23 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
           </button> */}
         </div>
       </aside>
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteThread)}
+        title="Delete this thread?"
+        body={
+          pendingDeleteThread
+            ? <>This removes every message in "{pendingDeleteThread.title || 'Untitled'}" and can't be undone. If it contributed to a detected pattern, that pattern will be updated or removed too.</>
+            : null
+        }
+        confirmLabel="Delete thread"
+        onCancel={() => setPendingDeleteThread(null)}
+        onConfirm={() => {
+          const t = pendingDeleteThread;
+          setPendingDeleteThread(null);
+          if (t) onDeleteThread && onDeleteThread(t.thread_id);
+        }}
+      />
     </>
   );
 };

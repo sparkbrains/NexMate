@@ -8,7 +8,7 @@ import { InsightsScreen } from './components/nextmate/DataScreens';
 import { JournalScreen } from './components/nextmate/JournalScreen';
 import { AuthGate } from './components/nextmate/AuthGate';
 import { ProfilePage } from './components/nextmate/ProfilePage';
-import { clearSession, getToken, getUser, listThreads } from './lib/api';
+import { clearSession, deleteThread as deleteThreadApi, getToken, getUser, listThreads } from './lib/api';
 import { AppContext } from './context';
 
 const newThreadId = () =>
@@ -34,6 +34,16 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('nextmate_theme', theme);
   }, [theme]);
+
+  // Initialize from URL query param (e.g., ?thread=abc123)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tid = params.get('thread');
+    if (tid) {
+      setThreadId(tid);
+      setRoute('chat');
+    }
+  }, []);
 
   // Close sidebar drawer on route change
   const navigateTo = (r) => {
@@ -63,6 +73,24 @@ export default function App() {
   const beginReflection = () => {
     openThread(newThreadId(), null);
   };
+
+  // Deletes a thread on the backend, removes it from local state, and —
+  // if the thread that was just deleted happens to be the one currently
+  // open in the chat screen — kicks the user back to Today so they're
+  // not left staring at a chat for a thread that no longer exists.
+  const deleteThread = useCallback(async (id) => {
+    try {
+      await deleteThreadApi(id);
+      setThreads((prev) => prev.filter((t) => t.thread_id !== id));
+      if (threadId === id) {
+        setThreadId(null);
+        setChatParams(null);
+        navigateTo('today');
+      }
+    } catch {
+      /* ignore — could surface a toast here if desired */
+    }
+  }, [threadId]);
 
   const onLogout = () => {
     clearSession();
@@ -131,6 +159,7 @@ export default function App() {
           threads={threads}
           activeThreadId={threadId}
           onSelectThread={openThread}
+          onDeleteThread={deleteThread}
           onNewThread={beginReflection}
           user={user}
           onLogout={onLogout}

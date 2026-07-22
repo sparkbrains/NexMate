@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Icon, TopBar } from './Shell';
+import { Icon, TopBar, ConfirmDialog } from './Shell';
 import {
   createJournalBook,
   createJournalEntry,
@@ -116,25 +116,28 @@ const Entry = ({ entry, onDelete, onUpdate }) => {
         <div className="nm-entry-time">
           <span>{time}</span>
           <span className="nm-entry-del">
-            {confirming ? (
-              <>
-                <button className="nm-btn ghost" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => setConfirming(false)}>Cancel</button>
-                <button className="nm-btn accent" style={{ fontSize: 10, padding: '2px 8px', marginLeft: 4 }} onClick={() => onDelete(entry.id)}>Delete</button>
-              </>
-            ) : (
-              <>
-                <button className="nm-btn ghost" title="Edit entry" style={{ padding: 4 }} onClick={startEdit}>
-                  <Icon name="edit" size={11} />
-                </button>
-                <button className="nm-btn ghost" title="Delete entry" style={{ padding: 4, marginLeft: 2 }} onClick={() => setConfirming(true)}>
-                  <Icon name="trash" size={11} />
-                </button>
-              </>
-            )}
+            <button className="nm-btn ghost" title="Edit entry" style={{ padding: 4 }} onClick={startEdit}>
+              <Icon name="edit" size={11} />
+            </button>
+            <button className="nm-btn ghost" title="Delete entry" style={{ padding: 4, marginLeft: 2 }} onClick={() => setConfirming(true)}>
+              <Icon name="trash" size={11} />
+            </button>
           </span>
         </div>
         <div className="nm-entry-body">{entry.body}</div>
       </div>
+
+      <ConfirmDialog
+        open={confirming}
+        title="Delete this entry?"
+        body="This removes the entry for good and can't be undone."
+        confirmLabel="Delete entry"
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => {
+          setConfirming(false);
+          onDelete(entry.id);
+        }}
+      />
     </div>
   );
 };
@@ -143,7 +146,7 @@ const BookRow = ({ book, active, onClick, onDelete }) => {
   const [confirming, setConfirming] = useState(false);
   return (
     <div
-      className={'nm-book-row' + (active ? ' active' : '') + (confirming ? ' confirming' : '')}
+      className={'nm-book-row' + (active ? ' active' : '')}
       onClick={onClick}
     >
       <div className="nm-book-spine" style={{ background: book.color || 'var(--accent)' }} />
@@ -154,17 +157,22 @@ const BookRow = ({ book, active, onClick, onDelete }) => {
         </div>
       </div>
       <div className="nm-book-actions" onClick={(e) => e.stopPropagation()}>
-        {confirming ? (
-          <span style={{ display: 'flex', gap: 4 }}>
-            <button className="nm-btn ghost" style={{ fontSize: 9, padding: '2px 6px' }} onClick={() => setConfirming(false)}>×</button>
-            <button className="nm-btn accent" style={{ fontSize: 9, padding: '2px 6px' }} onClick={() => onDelete(book.id)}>del</button>
-          </span>
-        ) : (
-          <button className="nm-btn ghost" title="Delete book" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
-            <Icon name="trash" size={11} />
-          </button>
-        )}
+        <button className="nm-btn ghost" title="Delete book" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
+          <Icon name="trash" size={11} />
+        </button>
       </div>
+
+      <ConfirmDialog
+        open={confirming}
+        title="Delete this book?"
+        body={<>This deletes "{book.name}" and every entry inside it. This can't be undone.</>}
+        confirmLabel="Delete book"
+        onCancel={(e) => { e?.stopPropagation?.(); setConfirming(false); }}
+        onConfirm={() => {
+          setConfirming(false);
+          onDelete(book.id);
+        }}
+      />
     </div>
   );
 };
