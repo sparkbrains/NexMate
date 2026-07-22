@@ -7,7 +7,7 @@ import { InsightsScreen } from './components/nextmate/DataScreens';
 import { JournalScreen } from './components/nextmate/JournalScreen';
 import { AuthGate } from './components/nextmate/AuthGate';
 import { ProfilePage } from './components/nextmate/ProfilePage';
-import { clearSession, deleteThread, getMe, getToken, getUser, listThreads, logout as apiLogout } from './lib/api';
+import { clearSession, deleteThread as deleteThreadApi, getMe, getToken, getUser, listThreads, logout as apiLogout } from './lib/api';
 import { AppContext } from './context';
 
 const newThreadId = () =>
@@ -44,6 +44,16 @@ export default function App() {
     if (user) localStorage.setItem('nextmate_theme', theme);
   }, [theme, user]);
 
+  // Initialize from URL query param (e.g., ?thread=abc123)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tid = params.get('thread');
+    if (tid) {
+      setThreadId(tid);
+      setRoute('chat');
+    }
+  }, []);
+
   // Close sidebar drawer on route change
   const navigateTo = (r) => {
     setRoute(r);
@@ -73,13 +83,13 @@ export default function App() {
     openThread(newThreadId(), null);
   };
 
-  const onDeleteThread = async (id) => {
+  const onDeleteThread = useCallback(async (id) => {
     try {
-      await deleteThread(id);
+      await deleteThreadApi(id);
+      setThreads((prev) => prev.filter((t) => t.thread_id !== id));
       if (threadId === id) { setThreadId(null); setChatParams(null); navigateTo('today'); }
-      refreshThreads();
     } catch { /* ignore */ }
-  };
+  }, [threadId]);
 
   const onLogout = async () => {
     try { await apiLogout(); } catch { clearSession(); }

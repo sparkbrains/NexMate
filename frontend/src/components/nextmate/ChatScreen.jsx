@@ -521,6 +521,8 @@ export const ChatScreen = ({
     el.style.height = Math.min(el.scrollHeight, 160) + 'px';
   }, [draft]);
 
+  const canSend = Boolean(draft.trim()) && Boolean(threadId) && !streaming && status === 'open';
+
   const submit = () => {
     const text = draft.trim();
     if (!text || streaming || status !== 'open') return;

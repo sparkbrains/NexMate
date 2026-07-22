@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { useContext, useState } from 'react';
 import { AppContext } from '../../context';
 import LogoIco from '../../assets/ic_logo.svg';
 
@@ -11,6 +11,7 @@ export const Icon = ({ name, size = 14, style }) => {
     weekly: <><rect x="2" y="3" width="12" height="11" rx="1" /><path d="M2 6h12M5 2v3M11 2v3" /></>,
     book: <><path d="M3 2h7a2 2 0 012 2v10H5a2 2 0 01-2-2V2z" /><path d="M3 2v10M6 5h4M6 8h4" /></>,
     trash: <><path d="M3 4h10M6 4V2h4v2M5 4l1 10h4l1-10" /></>,
+    edit: <><path d="M2 14l1.5-4.5L11 2l3 3-6.5 6.5H2z" /></>,
     patterns: <><circle cx="5" cy="5" r="2" /><circle cx="11" cy="5" r="2" /><circle cx="5" cy="11" r="2" /><circle cx="11" cy="11" r="2" /></>,
     plus: <><path d="M8 3v10M3 8h10" /></>,
     search: <><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" /></>,
@@ -45,6 +46,46 @@ export const BrandMark = () => (
   </svg>
 );
 
+// Shared "are you sure?" modal, used for anything destructive (thread
+// deletion, journal entry deletion, etc). Renders nothing when closed.
+export const ConfirmDialog = ({ open, title, body, confirmLabel = 'Delete', cancelLabel = 'Cancel', onConfirm, onCancel }) => {
+  if (!open) return null;
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.55)',
+        zIndex: 300,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        className="nm-card"
+        onClick={(e) => e.stopPropagation()}
+        style={{ maxWidth: 360, width: '100%', padding: 24 }}
+      >
+        <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, marginBottom: body ? 8 : 20 }}>
+          {title}
+        </div>
+        {body && (
+          <div className="nm-body" style={{ marginBottom: 22 }}>
+            {body}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="nm-btn ghost" onClick={onCancel}>{cancelLabel}</button>
+          <button className="nm-btn accent" onClick={onConfirm}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const NavItem = ({ icon, label, k, active, onNav, count }) => (
   <button className={"nm-nav-item" + (active === k ? " active" : "")} onClick={() => onNav && onNav(k)}>
     <span className="nm-nav-ic"><Icon name={icon} /></span>
@@ -63,9 +104,31 @@ const fmtWhen = (iso) => {
   return `${Math.floor(days / 7)}w`;
 };
 
-
 export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onNewThread, onDeleteThread, user, onLogout }) => {
   const { sidebarOpen, setSidebarOpen } = useContext(AppContext);
+  const [threadTab, setThreadTab] = useState('regular'); // 'regular' | 'reflecting' | 'daily'
+  const [pendingDeleteThread, setPendingDeleteThread] = useState(null);
+
+  // A thread counts as "reflecting" if it has a loop_id, or — as a
+  // fallback for cases where loop_id doesn't come back from the API —
+  // if its title carries the "Reflecting on: ..." prefix used for
+  // loop-reflection threads.
+  const isReflecting = (t) => Boolean(t.loop_id) || /^Reflecting on:/i.test(t.title || '');
+  // A thread counts as an answered "Daily Question" thread if it's tagged
+  // with a daily_question_id from the threads table. The title-prefix
+  // fallback only matters for threads created before this column existed
+  // (or before they'd accumulated 4+ messages) — new threads are tagged
+  // reliably via daily_question_id itself.
+  const isDailyQuestion = (t) => Boolean(t.daily_question_id) || /^Daily Question:/i.test(t.title || '');
+
+  const dailyThreads = threads.filter(isDailyQuestion);
+  const reflectingThreads = threads.filter(t => !isDailyQuestion(t) && isReflecting(t));
+  const regularThreads = threads.filter(t => !isDailyQuestion(t) && !isReflecting(t));
+
+  const activeThreads =
+    threadTab === 'reflecting' ? reflectingThreads :
+    threadTab === 'daily' ? dailyThreads :
+    regularThreads;
 
   return (
     <>
@@ -95,11 +158,42 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
         <NavItem icon="insights" label="Insights" k="insights" active={active} onNav={onNav} />
 
         <div className="nm-nav-section">Threads · {threads.length}</div>
+
+        <div className="nm-thread-tabs">
+          <button
+            className={"nm-thread-tab" + (threadTab === 'regular' ? " active" : "")}
+            onClick={() => setThreadTab('regular')}
+          >
+            Threads
+            {regularThreads.length > 0 && <span className="nm-nav-count">{regularThreads.length}</span>}
+          </button>
+          <button
+            className={"nm-thread-tab" + (threadTab === 'reflecting' ? " active" : "")}
+            onClick={() => setThreadTab('reflecting')}
+          >
+            Reflecting on
+            {reflectingThreads.length > 0 && <span className="nm-nav-count">{reflectingThreads.length}</span>}
+          </button>
+          <button
+            className={"nm-thread-tab" + (threadTab === 'daily' ? " active" : "")}
+            onClick={() => setThreadTab('daily')}
+          >
+            Daily Questions
+            {dailyThreads.length > 0 && <span className="nm-nav-count">{dailyThreads.length}</span>}
+          </button>
+        </div>
+
         <div className="nm-threads">
-          {threads.length === 0 && (
-            <div className="nm-meta" style={{ padding: '8px 12px' }}>No threads yet.</div>
+          {activeThreads.length === 0 && (
+            <div className="nm-meta" style={{ padding: '8px 12px' }}>
+              {threadTab === 'reflecting'
+                ? 'No reflections yet.'
+                : threadTab === 'daily'
+                ? 'No answered daily questions yet.'
+                : 'No threads yet.'}
+            </div>
           )}
-          {threads.map(t => {
+          {activeThreads.map(t => {
             const isActive = t.thread_id === activeThreadId && active === 'chat';
             return (
               <div
@@ -111,7 +205,11 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
                   style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
                   onClick={() => { onSelectThread && onSelectThread(t.thread_id); setSidebarOpen(false); }}
                 >
-                  <div className="nm-thread-title">{t.title || 'Untitled'}</div>
+                  <div className="nm-thread-title">
+                    {threadTab === 'reflecting'
+                      ? (t.title || 'Untitled').replace(/^Reflecting on:\s*/, '')
+                      : (t.title || 'Untitled')}
+                  </div>
                   <div className="nm-thread-meta">{fmtWhen(t.updated_at)}</div>
                 </div>
                 {onDeleteThread && (
@@ -119,7 +217,10 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
                     className="nm-btn ghost"
                     style={{ padding: 3, flexShrink: 0, opacity: 0.5 }}
                     title="Delete thread"
-                    onClick={(e) => { e.stopPropagation(); onDeleteThread(t.thread_id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPendingDeleteThread(t);
+                    }}
                   >
                     <Icon name="trash" size={11} />
                   </button>
@@ -162,6 +263,23 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
           </button>
         </div>
       </aside>
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteThread)}
+        title="Delete this thread?"
+        body={
+          pendingDeleteThread
+            ? <>This removes every message in "{pendingDeleteThread.title || 'Untitled'}" and can't be undone. If it contributed to a detected pattern, that pattern will be updated or removed too.</>
+            : null
+        }
+        confirmLabel="Delete thread"
+        onCancel={() => setPendingDeleteThread(null)}
+        onConfirm={() => {
+          const t = pendingDeleteThread;
+          setPendingDeleteThread(null);
+          if (t) onDeleteThread && onDeleteThread(t.thread_id);
+        }}
+      />
     </>
   );
 };

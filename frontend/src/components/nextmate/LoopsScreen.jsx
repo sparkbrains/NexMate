@@ -169,11 +169,11 @@ export const LoopsScreen = ({ onNav }) => {
     try {
       const result = await reflectOnLoop(detail.loop_id);
       if (result && result.thread_id) {
-        onNav && onNav('chat', { 
-          threadId: result.thread_id, 
-          threadTitle: result.title,
-          initialMessage: result.opening_message 
-        });
+        // Open reflection thread in a new browser tab
+        const url = new URL(window.location.href);
+        url.searchParams.set('thread', result.thread_id);
+        window.open(url.toString(), '_blank');
+        // Optionally keep the current view unchanged or navigate elsewhere
       }
     } catch (e) {
       setError(e.message || 'Failed to create reflection thread');

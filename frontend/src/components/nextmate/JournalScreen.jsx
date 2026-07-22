@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Icon, TopBar } from './Shell';
+import { Icon, TopBar, ConfirmDialog } from './Shell';
 import {
   createJournalBook,
   createJournalEntry,
@@ -36,7 +36,7 @@ const todayISO = () => {
 
 const moodFor = (label) => MOODS.find((m) => m.label === label);
 
-const Entry = ({ entry, onDelete, onEdit }) => {
+const Entry = ({ entry, onDelete, onUpdate }) => {
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(entry.body);
@@ -51,12 +51,13 @@ const Entry = ({ entry, onDelete, onEdit }) => {
     if (!content.trim()) return;
     setSaving(true);
     try {
-      await onEdit(entry.id, { body: content });
+      await onUpdate(entry.id, { body: content });
       setEditing(false);
     } finally {
       setSaving(false);
     }
   };
+
 
   return (
     <div className="nm-entry">
@@ -68,21 +69,12 @@ const Entry = ({ entry, onDelete, onEdit }) => {
         <div className="nm-entry-time">
           <span>{time}</span>
           <span className="nm-entry-del">
-            {confirming ? (
-              <>
-                <button className="nm-btn ghost" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => setConfirming(false)}>Cancel</button>
-                <button className="nm-btn accent" style={{ fontSize: 10, padding: '2px 8px', marginLeft: 4 }} onClick={() => onDelete(entry.id)}>Delete</button>
-              </>
-            ) : (
-              <>
-                <button className="nm-btn ghost" title="Edit entry" style={{ padding: 4, marginRight: 2 }} onClick={() => { setEditing(!editing); setEditBody(entry.body); }}>
-                  <Icon name="sparkle" size={11} />
-                </button>
-                <button className="nm-btn ghost" title="Delete entry" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
-                  <Icon name="trash" size={11} />
-                </button>
-              </>
-            )}
+            <button className="nm-btn ghost" title="Edit entry" style={{ padding: 4, marginRight: 2 }} onClick={() => { setEditing(!editing); setEditBody(entry.body); }}>
+              <Icon name="edit" size={11} />
+            </button>
+            <button className="nm-btn ghost" title="Delete entry" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
+              <Icon name="trash" size={11} />
+            </button>
           </span>
         </div>
         {editing ? (
@@ -109,6 +101,18 @@ const Entry = ({ entry, onDelete, onEdit }) => {
           <div className="nm-meta" style={{ marginTop: 6, fontStyle: 'italic', color: 'var(--ink-3)' }}>{entry.translated}</div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirming}
+        title="Delete this entry?"
+        body="This removes the entry for good and can't be undone."
+        confirmLabel="Delete entry"
+        onCancel={() => setConfirming(false)}
+        onConfirm={() => {
+          setConfirming(false);
+          onDelete(entry.id);
+        }}
+      />
     </div>
   );
 };
@@ -117,7 +121,7 @@ const BookRow = ({ book, active, onClick, onDelete }) => {
   const [confirming, setConfirming] = useState(false);
   return (
     <div
-      className={'nm-book-row' + (active ? ' active' : '') + (confirming ? ' confirming' : '')}
+      className={'nm-book-row' + (active ? ' active' : '')}
       onClick={onClick}
     >
       <div className="nm-book-spine" style={{ background: book.color || 'var(--accent)' }} />
@@ -128,17 +132,22 @@ const BookRow = ({ book, active, onClick, onDelete }) => {
         </div>
       </div>
       <div className="nm-book-actions" onClick={(e) => e.stopPropagation()}>
-        {confirming ? (
-          <span style={{ display: 'flex', gap: 4 }}>
-            <button className="nm-btn ghost" style={{ fontSize: 9, padding: '2px 6px' }} onClick={() => setConfirming(false)}>×</button>
-            <button className="nm-btn accent" style={{ fontSize: 9, padding: '2px 6px' }} onClick={() => onDelete(book.id)}>del</button>
-          </span>
-        ) : (
-          <button className="nm-btn ghost" title="Delete book" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
-            <Icon name="trash" size={11} />
-          </button>
-        )}
+        <button className="nm-btn ghost" title="Delete book" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
+          <Icon name="trash" size={11} />
+        </button>
       </div>
+
+      <ConfirmDialog
+        open={confirming}
+        title="Delete this book?"
+        body={<>This deletes "{book.name}" and every entry inside it. This can't be undone.</>}
+        confirmLabel="Delete book"
+        onCancel={(e) => { e?.stopPropagation?.(); setConfirming(false); }}
+        onConfirm={() => {
+          setConfirming(false);
+          onDelete(book.id);
+        }}
+      />
     </div>
   );
 };
@@ -312,6 +321,17 @@ export const JournalScreen = ({ user }) => {
       fetchStreak();
     } catch (e) {
       setError(e.message || 'Failed to delete');
+    }
+  };
+
+  const handleUpdateEntry = async (id, payload) => {
+    try {
+      const data = await updateJournalEntry(id, payload);
+      const updated = data.entry;
+      setEntries((prev) => prev.map((e) => (e.id === id ? updated : e)));
+    } catch (e) {
+      setError(e.message || 'Failed to update entry');
+      throw e; // let Entry's saveEdit know it failed, so it doesn't exit edit mode
     }
   };
 
@@ -652,7 +672,7 @@ export const JournalScreen = ({ user }) => {
                             </div>
                           </div>
                           {items.map((e) => (
-                            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} onEdit={handleEditEntry} />
+                            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} onUpdate={handleUpdateEntry} />
                           ))}
                         </div>
                       );
