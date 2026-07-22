@@ -40,16 +40,18 @@ const Entry = ({ entry, onDelete, onEdit }) => {
   const [confirming, setConfirming] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editBody, setEditBody] = useState(entry.body);
+  const editRef = useRef(null);
   const [saving, setSaving] = useState(false);
   const time = entry.created_at
     ? new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '';
 
   const handleSaveEdit = async () => {
-    if (!editBody.trim()) return;
+    const content = editRef.current?.innerHTML || editBody;
+    if (!content.trim()) return;
     setSaving(true);
     try {
-      await onEdit(entry.id, { body: editBody });
+      await onEdit(entry.id, { body: content });
       setEditing(false);
     } finally {
       setSaving(false);
@@ -85,12 +87,13 @@ const Entry = ({ entry, onDelete, onEdit }) => {
         </div>
         {editing ? (
           <div style={{ marginTop: 6 }}>
-            <textarea
-              value={editBody}
-              onChange={(e) => setEditBody(e.target.value)}
-              rows={4}
-              className="nm-paper"
-              style={{ fontSize: 13, marginBottom: 8 }}
+            <div
+              ref={editRef}
+              contentEditable
+              suppressContentEditableWarning
+              onInput={(e) => setEditBody(e.currentTarget.innerText)}
+              dangerouslySetInnerHTML={{ __html: editBody }}
+              style={{ fontSize: 13, marginBottom: 8, border: '1px solid var(--rule)', borderRadius: 4, padding: '8px 10px', minHeight: 80, outline: 'none', fontFamily: 'var(--font-serif)' }}
             />
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="nm-btn primary" style={{ fontSize: 11 }} onClick={handleSaveEdit} disabled={saving || !editBody.trim()}>
@@ -100,7 +103,7 @@ const Entry = ({ entry, onDelete, onEdit }) => {
             </div>
           </div>
         ) : (
-          <div className="nm-entry-body">{entry.body}</div>
+          <div className="nm-entry-body" dangerouslySetInnerHTML={{ __html: entry.body }} />
         )}
         {entry.translated && (
           <div className="nm-meta" style={{ marginTop: 6, fontStyle: 'italic', color: 'var(--ink-3)' }}>{entry.translated}</div>
@@ -270,8 +273,7 @@ export const JournalScreen = ({ user }) => {
     if (!body.trim() || !activeBookId) return;
     setSaving(true);
     try {
-      const html = editorRef.current?.innerHTML || '';
-      const plainBody = editorRef.current?.innerText || body;
+      const plainBody = editorRef.current?.innerHTML || body;
       await createJournalEntry({
         body: plainBody,
         mood_emoji: selectedMood?.emoji || '',
@@ -520,10 +522,36 @@ export const JournalScreen = ({ user }) => {
                         </button>
                       ))}
                       <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
-                      <button type="button" onMouseDown={(e) => { e.preventDefault(); document.execCommand('insertUnorderedList'); }}
-                        className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>• List</button>
-                      <button type="button" onMouseDown={(e) => { e.preventDefault(); document.execCommand('insertOrderedList'); }}
-                        className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>1. List</button>
+                      <button type="button" onMouseDown={(e) => {
+                        e.preventDefault();
+                        const ed = editorRef.current;
+                        if (!ed) return;
+                        ed.focus();
+                        const sel = window.getSelection();
+                        const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
+                        const li = document.createElement('li');
+                        li.innerHTML = '\u200b';
+                        const ul = document.createElement('ul');
+                        ul.appendChild(li);
+                        if (range) { range.deleteContents(); range.insertNode(ul); range.setStart(li, 1); range.collapse(true); sel.removeAllRanges(); sel.addRange(range); }
+                        else ed.appendChild(ul);
+                        setBody(ed.innerText);
+                      }} className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>• List</button>
+                      <button type="button" onMouseDown={(e) => {
+                        e.preventDefault();
+                        const ed = editorRef.current;
+                        if (!ed) return;
+                        ed.focus();
+                        const sel = window.getSelection();
+                        const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
+                        const li = document.createElement('li');
+                        li.innerHTML = '\u200b';
+                        const ol = document.createElement('ol');
+                        ol.appendChild(li);
+                        if (range) { range.deleteContents(); range.insertNode(ol); range.setStart(li, 1); range.collapse(true); sel.removeAllRanges(); sel.addRange(range); }
+                        else ed.appendChild(ol);
+                        setBody(ed.innerText);
+                      }} className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>1. List</button>
                       <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
                       <select onMouseDown={(e) => e.stopPropagation()}
                         onChange={(e) => { document.execCommand('fontSize', false, e.target.value); e.target.value = ''; }}

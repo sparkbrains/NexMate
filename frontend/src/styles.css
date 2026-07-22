@@ -1321,8 +1321,44 @@ body {
   font-size: 15.5px;
   line-height: 1.65;
   color: var(--ink);
-  white-space: pre-wrap;
   font-feature-settings: "liga", "dlig";
+}
+.nm-entry-body ul {
+  list-style-type: disc;
+  list-style-position: outside;
+  margin: 6px 0;
+  padding-left: 22px;
+  overflow: visible;
+}
+.nm-entry-body ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+  margin: 6px 0;
+  padding-left: 22px;
+  overflow: visible;
+}
+.nm-entry-body li {
+  display: list-item;
+  margin-bottom: 3px;
+}
+
+[contenteditable] ul {
+  list-style-type: disc;
+  list-style-position: outside;
+  margin: 6px 0;
+  padding-left: 22px;
+  overflow: visible;
+}
+[contenteditable] ol {
+  list-style-type: decimal;
+  list-style-position: outside;
+  margin: 6px 0;
+  padding-left: 22px;
+  overflow: visible;
+}
+[contenteditable] li {
+  display: list-item;
+  margin-bottom: 3px;
 }
 .nm-entry-time {
   font-family: var(--font-mono);

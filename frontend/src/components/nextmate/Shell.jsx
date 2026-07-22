@@ -26,6 +26,7 @@ export const Icon = ({ name, size = 14, style }) => {
     'chevron-right': <><path d="M6 12l4-4-4-4" /></>,
     menu: <><path d="M2 4h12M2 8h12M2 12h12" /></>,
     sun: <><circle cx="8" cy="8" r="3" /><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4" /></>,
+    moon: <><path d="M13 9.5A5.5 5.5 0 016.5 3a5.5 5.5 0 100 11A5.5 5.5 0 0013 9.5z" /></>,
     logout: <><rect x="2" y="4" width="9" height="10" rx="1" /><path d="M10 10l4-2-4-2M7 8h7" /></>,
     user: <><circle cx="8" cy="5.5" r="2.5" /><path d="M2.8 14a5.2 5.2 0 0110.4 0" /></>,
   };
@@ -188,7 +189,7 @@ export const TopBar = ({ crumb, children }) => {
           className="nm-btn ghost"
           onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
           title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          style={{ padding: 6 }}
+          style={{ padding: 6, color: 'var(--ink)' }}
         >
           <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
         </button>

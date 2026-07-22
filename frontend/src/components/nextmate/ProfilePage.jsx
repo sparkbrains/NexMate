@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getUser, getMe, changePassword, deleteAccount } from '../../lib/api';
+import { getUser, getMe } from '../../lib/api';
 import { Icon, TopBar } from './Shell';
 
 function capitalize(s) {
@@ -26,48 +26,6 @@ export function ProfilePage({ onLogout }) {
   const [user, setUser] = useState(() => getUser());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
-
-  const [showChangePassword, setShowChangePassword] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [cpErr, setCpErr] = useState(null);
-  const [cpLoading, setCpLoading] = useState(false);
-
-  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
-  const [deletePassword, setDeletePassword] = useState('');
-  const [delErr, setDelErr] = useState(null);
-  const [delLoading, setDelLoading] = useState(false);
-
-  async function handleChangePassword(e) {
-    e.preventDefault();
-    setCpErr(null);
-    setCpLoading(true);
-    try {
-      await changePassword(currentPassword, newPassword);
-      onLogout();
-    } catch (error) {
-      setCpErr(error.message || 'Failed to change password');
-    } finally {
-      setCpLoading(false);
-    }
-  }
-
-  async function handleDeleteAccount(e) {
-    e.preventDefault();
-    if (!window.confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
-      return;
-    }
-    setDelErr(null);
-    setDelLoading(true);
-    try {
-      await deleteAccount(deletePassword);
-      onLogout();
-    } catch (error) {
-      setDelErr(error.message || 'Failed to delete account');
-    } finally {
-      setDelLoading(false);
-    }
-  }
 
   useEffect(() => {
     let cancelled = false;
@@ -148,78 +106,22 @@ export function ProfilePage({ onLogout }) {
           </div>
 
           <div className="nm-card soft" style={{ padding: '20px 24px', marginBottom: 24 }}>
-            {!showChangePassword ? (
-              <button
-                className="nm-btn"
-                onClick={() => setShowChangePassword(true)}
-                style={{ width: '100%', justifyContent: 'flex-start', marginBottom: 12, padding: '10px 12px' }}
-              >
-                <Icon name="settings" size={14} /> Change Password
-              </button>
-            ) : (
-              <form onSubmit={handleChangePassword} style={{ marginBottom: 20 }}>
-                <div style={{ marginBottom: 12, fontWeight: 500 }}>Change Password</div>
-                {cpErr && <div className="nm-meta" style={{ color: 'var(--accent)', marginBottom: 8 }}>{cpErr}</div>}
-                <input
-                  className="nm-input"
-                  type="password"
-                  placeholder="Current Password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  required
-                  style={{ marginBottom: 8, width: '100%', boxSizing: 'border-box' }}
-                />
-                <input
-                  className="nm-input"
-                  type="password"
-                  placeholder="New Password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  required
-                  style={{ marginBottom: 12, width: '100%', boxSizing: 'border-box' }}
-                />
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="nm-btn primary" type="submit" disabled={cpLoading}>
-                    {cpLoading ? 'Saving...' : 'Save'}
-                  </button>
-                  <button className="nm-btn" type="button" onClick={() => setShowChangePassword(false)}>
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {!showDeleteAccount ? (
-              <button
-                className="nm-btn"
-                onClick={() => setShowDeleteAccount(true)}
-                style={{ width: '100%', justifyContent: 'flex-start', color: 'var(--accent)', padding: '10px 12px' }}
-              >
-                <Icon name="trash" size={14} /> Delete Account
-              </button>
-            ) : (
-              <form onSubmit={handleDeleteAccount} style={{ marginTop: 12 }}>
-                <div style={{ marginBottom: 12, fontWeight: 500, color: 'var(--accent)' }}>Delete Account</div>
-                {delErr && <div className="nm-meta" style={{ color: 'var(--accent)', marginBottom: 8 }}>{delErr}</div>}
-                <input
-                  className="nm-input"
-                  type="password"
-                  placeholder="Confirm Password"
-                  value={deletePassword}
-                  onChange={(e) => setDeletePassword(e.target.value)}
-                  required
-                  style={{ marginBottom: 12, width: '100%', boxSizing: 'border-box' }}
-                />
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="nm-btn" type="submit" disabled={delLoading} style={{ color: 'var(--accent)' }}>
-                    {delLoading ? 'Deleting...' : 'Confirm Delete'}
-                  </button>
-                  <button className="nm-btn" type="button" onClick={() => setShowDeleteAccount(false)}>
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            )}
+            <button
+              className="nm-btn"
+              disabled
+              title="Coming soon"
+              style={{ width: '100%', justifyContent: 'flex-start', marginBottom: 12, padding: '10px 12px', opacity: 0.45, cursor: 'not-allowed' }}
+            >
+              <Icon name="settings" size={14} /> Change Password
+            </button>
+            <button
+              className="nm-btn"
+              disabled
+              title="Coming soon"
+              style={{ width: '100%', justifyContent: 'flex-start', color: 'var(--accent)', padding: '10px 12px', opacity: 0.45, cursor: 'not-allowed' }}
+            >
+              <Icon name="trash" size={14} /> Delete Account
+            </button>
           </div>
 
           <button
