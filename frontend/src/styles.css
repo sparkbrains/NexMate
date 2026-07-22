@@ -344,9 +344,11 @@ body {
   color: #fff;
   border-color: transparent;
   box-shadow: 0 8px 18px -12px rgba(37, 99, 235, 0.65);
-  width: 100%;
   border-radius: 10px;
   font-size: 14px;
+}
+.begin-btn.nm-btn.accent {
+  width: 100%;
 }
 .begin-btn {
   height: 50px;
@@ -1222,6 +1224,12 @@ body {
 .nm-paper::placeholder {
   color: var(--ink-4);
   font-style: italic;
+}
+[contenteditable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--ink-4);
+  font-style: italic;
+  pointer-events: none;
 }
 
 .nm-compose-foot {

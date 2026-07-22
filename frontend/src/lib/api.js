@@ -85,10 +85,10 @@ export async function signup(email, password, name, age) {
 // Step 1 of OTP signup: request a code be emailed to the address. No
 // account exists yet — the backend holds a pending signup (including
 // name/age) until it's verified.
-export async function signupRequestOtp(email, password, name, age) {
+export async function signupRequestOtp(email, password) {
   return request('/api/auth/signup/request-otp', {
     method: 'POST',
-    body: { email, password, name, age },
+    body: { email, password },
     auth: false,
   });
 }
@@ -292,10 +292,6 @@ export function translateJournalEntry({ body, mood_emoji = '', mood_label = '' }
     method: 'POST',
     body: { body, mood_emoji, mood_label },
   });
-}
-
-export function getMe() {
-  return request('/api/auth/me');
 }
 
 export function chatSocketUrl(threadId) {

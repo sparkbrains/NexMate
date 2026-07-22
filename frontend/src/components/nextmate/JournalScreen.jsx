@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, TopBar } from './Shell';
 import {
   createJournalBook,
@@ -8,7 +8,6 @@ import {
   getJournalStreak,
   listJournalBooks,
   listJournalEntries,
-  translateJournalEntry,
   updateJournalEntry,
 } from '../../lib/api';
 import WelcomeBookImg from '../../assets/ic_welcome_book.png';
@@ -204,9 +203,8 @@ export const JournalScreen = ({ user }) => {
   const [moodLabel, setMoodLabel] = useState('');
   const [entryDate, setEntryDate] = useState(todayISO());
   const [saving, setSaving] = useState(false);
-  const [translating, setTranslating] = useState(false);
-  const [translated, setTranslated] = useState('');
   const [allowLoopDetection, setAllowLoopDetection] = useState(true);
+  const editorRef = useRef(null);
 
   const [showNewBook, setShowNewBook] = useState(false);
   const [newBookName, setNewBookName] = useState('');
@@ -272,42 +270,26 @@ export const JournalScreen = ({ user }) => {
     if (!body.trim() || !activeBookId) return;
     setSaving(true);
     try {
+      const html = editorRef.current?.innerHTML || '';
+      const plainBody = editorRef.current?.innerText || body;
       await createJournalEntry({
-        body,
+        body: plainBody,
         mood_emoji: selectedMood?.emoji || '',
         mood_label: selectedMood?.label || '',
         entry_date: entryDate || todayISO(),
-        translated,
         auto_translate: false,
         book_id: activeBookId,
         allow_loop_detection: allowLoopDetection,
       });
       setBody('');
+      if (editorRef.current) editorRef.current.innerHTML = '';
       setMoodLabel('');
-      setTranslated('');
       setEntryDate(todayISO());
       await Promise.all([fetchEntries(activeBookId), fetchBooks(activeBookId), fetchStreak()]);
     } catch (e) {
       setError(e.message || 'Failed to save');
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleTranslate = async () => {
-    if (!body.trim()) return;
-    setTranslating(true);
-    try {
-      const data = await translateJournalEntry({
-        body,
-        mood_emoji: selectedMood?.emoji || '',
-        mood_label: selectedMood?.label || '',
-      });
-      setTranslated(data.translated || '');
-    } catch (e) {
-      setError(e.message || 'Translation failed');
-    } finally {
-      setTranslating(false);
     }
   };
 
@@ -468,7 +450,8 @@ export const JournalScreen = ({ user }) => {
 
                 {/* Compose */}
                 <div className="nm-compose">
-                  <div className="nm-compose-step">01 · Date</div>
+                  {/* Date */}
+                  <div className="nm-compose-step">Date</div>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 22 }}>
                     <input
                       type="date"
@@ -478,66 +461,117 @@ export const JournalScreen = ({ user }) => {
                       className="nm-date-input"
                     />
                     {entryDate !== todayISO() && (
-                      <button
-                        type="button"
-                        className="nm-btn ghost"
+                      <button type="button" className="nm-btn ghost"
                         style={{ fontSize: 10.5, letterSpacing: '0.1em', textTransform: 'uppercase' }}
-                        onClick={() => setEntryDate(todayISO())}
-                      >
+                        onClick={() => setEntryDate(todayISO())}>
                         ← today
                       </button>
                     )}
                   </div>
 
-                  <div className="nm-compose-step">02 · Mood</div>
+                  {/* Mood */}
+                  <div className="nm-compose-step">Mood</div>
                   <div className="nm-mood-strip" style={{ marginBottom: 22 }}>
                     {MOODS.map((m) => (
-                      <button
-                        key={m.label}
-                        type="button"
+                      <button key={m.label} type="button"
                         onClick={() => setMoodLabel(m.label === moodLabel ? '' : m.label)}
-                        className={'nm-mood' + (m.label === moodLabel ? ' active' : '')}
-                      >
+                        className={'nm-mood' + (m.label === moodLabel ? ' active' : '')}>
                         <span className="nm-mood-emoji">{m.emoji}</span>
                         <span>{m.label}</span>
                       </button>
                     ))}
                   </div>
 
-                  <div className="nm-compose-step">03 · The page</div>
-                  <textarea
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder={`Today, in your ${activeBook.name.toLowerCase()} book…`}
-                    rows={6}
-                    className="nm-paper"
-                  />
-                  <div style={{ display: 'flex', gap: 6, marginTop: 8, marginBottom: 14 }}>
-                    <button
-                      type="button"
-                      className="nm-btn ghost"
-                      style={{ fontSize: 11 }}
-                      onClick={handleTranslate}
-                      disabled={!body.trim() || translating}
-                    >
-                      {translating ? 'Translating…' : 'Translate / Reflect'}
-                    </button>
-                  </div>
-                  {translated && (
-                    <div className="nm-meta" style={{ marginBottom: 14, fontStyle: 'italic', color: 'var(--ink-3)', lineHeight: 1.5 }}>
-                      {translated}
+                  {/* Rich text editor */}
+                  <div className="nm-compose-step">The page</div>
+                  <div style={{
+                    border: '1px solid var(--rule)',
+                    borderRadius: 6,
+                    overflow: 'hidden',
+                    marginBottom: 4,
+                  }}>
+                    {/* Toolbar */}
+                    <div style={{
+                      display: 'flex', flexWrap: 'wrap', gap: 2, padding: '6px 8px',
+                      borderBottom: '1px solid var(--rule)', background: 'var(--surface)',
+                    }}>
+                      {[
+                        { cmd: 'bold', label: <b>B</b> },
+                        { cmd: 'italic', label: <i>I</i> },
+                        { cmd: 'underline', label: <u>U</u> },
+                        { cmd: 'strikeThrough', label: <s>S</s> },
+                      ].map(({ cmd, label }) => (
+                        <button key={cmd} type="button" onMouseDown={(e) => { e.preventDefault(); document.execCommand(cmd); }}
+                          className="nm-btn ghost"
+                          style={{ padding: '2px 7px', fontSize: 13, minWidth: 28 }}>
+                          {label}
+                        </button>
+                      ))}
+                      <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
+                      {[
+                        { cmd: 'justifyLeft', label: '⬛▭▭' },
+                        { cmd: 'justifyCenter', label: '▭⬛▭' },
+                        { cmd: 'justifyRight', label: '▭▭⬛' },
+                      ].map(({ cmd, label }) => (
+                        <button key={cmd} type="button" onMouseDown={(e) => { e.preventDefault(); document.execCommand(cmd); }}
+                          className="nm-btn ghost"
+                          style={{ padding: '2px 7px', fontSize: 10 }}>
+                          {label}
+                        </button>
+                      ))}
+                      <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
+                      <button type="button" onMouseDown={(e) => { e.preventDefault(); document.execCommand('insertUnorderedList'); }}
+                        className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>• List</button>
+                      <button type="button" onMouseDown={(e) => { e.preventDefault(); document.execCommand('insertOrderedList'); }}
+                        className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>1. List</button>
+                      <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
+                      <select onMouseDown={(e) => e.stopPropagation()}
+                        onChange={(e) => { document.execCommand('fontSize', false, e.target.value); e.target.value = ''; }}
+                        defaultValue=""
+                        style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer' }}>
+                        <option value="" disabled>Size</option>
+                        <option value="1">Small</option>
+                        <option value="3">Normal</option>
+                        <option value="5">Large</option>
+                        <option value="7">Huge</option>
+                      </select>
+                      <select onMouseDown={(e) => e.stopPropagation()}
+                        onChange={(e) => { document.execCommand('fontName', false, e.target.value); e.target.value = ''; }}
+                        defaultValue=""
+                        style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer', maxWidth: 110 }}>
+                        <option value="" disabled>Font</option>
+                        <option value="Georgia">Georgia</option>
+                        <option value="Arial">Arial</option>
+                        <option value="'Courier New'">Courier</option>
+                        <option value="'Times New Roman'">Times</option>
+                        <option value="Verdana">Verdana</option>
+                      </select>
                     </div>
-                  )}
+                    {/* Editable area */}
+                    <div
+                      ref={editorRef}
+                      contentEditable
+                      suppressContentEditableWarning
+                      onInput={(e) => setBody(e.currentTarget.innerText)}
+                      data-placeholder={`Today, in your ${activeBook.name.toLowerCase()} book…`}
+                      style={{
+                        minHeight: 160,
+                        padding: '14px 18px',
+                        fontFamily: 'var(--font-serif)',
+                        fontSize: 16,
+                        lineHeight: '28px',
+                        color: 'var(--ink)',
+                        outline: 'none',
+                        background: '#e5d7fd80',
+                      }}
+                    />
+                  </div>
 
-                  <div className="nm-compose-step" style={{ marginTop: 22 }}>04 · Options</div>
-                  <div style={{ marginBottom: 22 }}>
+                  {/* Options */}
+                  <div style={{ marginBottom: 22, marginTop: 16 }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--ink-2)', cursor: 'pointer' }}>
                       <span className="nm-switch">
-                        <input 
-                          type="checkbox" 
-                          checked={allowLoopDetection} 
-                          onChange={(e) => setAllowLoopDetection(e.target.checked)} 
-                        />
+                        <input type="checkbox" checked={allowLoopDetection} onChange={(e) => setAllowLoopDetection(e.target.checked)} />
                         <span className="nm-switch-slider"></span>
                       </span>
                       Allow NexMate to analyze this entry for behavioral loops

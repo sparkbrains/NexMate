@@ -26,7 +26,7 @@ export const Icon = ({ name, size = 14, style }) => {
     'chevron-right': <><path d="M6 12l4-4-4-4" /></>,
     menu: <><path d="M2 4h12M2 8h12M2 12h12" /></>,
     sun: <><circle cx="8" cy="8" r="3" /><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4" /></>,
-    moon: <><path d="M12 9A5 5 0 115 2a7 7 0 007 7z" /></>,
+    logout: <><rect x="2" y="4" width="9" height="10" rx="1" /><path d="M10 10l4-2-4-2M7 8h7" /></>,
     user: <><circle cx="8" cy="5.5" r="2.5" /><path d="M2.8 14a5.2 5.2 0 0110.4 0" /></>,
   };
   return (
@@ -151,14 +151,14 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
             <div className="nm-side-footer-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || user?.email || 'Signed out'}</div>
             <div className="nm-side-footer-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name ? user?.email : 'signed in'}</div>
           </div>
-          {/* <button
+          <button
             className="nm-btn ghost"
             onClick={(e) => { e.stopPropagation(); onLogout && onLogout(); }}
             title="Sign out"
-            style={{ padding: 4 }}
+            style={{ padding: 4, flexShrink: 0 }}
           >
-            <Icon name="close" size={13} />
-          </button> */}
+            <Icon name="logout" size={14} />
+          </button>
         </div>
       </aside>
     </>

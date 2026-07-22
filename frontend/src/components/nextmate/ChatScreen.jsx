@@ -156,6 +156,7 @@ export const ChatScreen = ({
   const [audioSupported, setAudioSupported] = useState(false);
   const [voiceRecording, setVoiceRecording] = useState(null);
   const [currentVoiceLog, setCurrentVoiceLog] = useState(null);
+  const [transcribing, setTranscribing] = useState(false);
   const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(false);
   const [voiceGender, setVoiceGender] = useState('female'); // 'female' | 'male' | 'custom'
   const [availableVoices, setAvailableVoices] = useState([]);
@@ -170,6 +171,7 @@ export const ChatScreen = ({
   const voiceInterimRef = useRef('');
   const scrollRef = useRef(null);
   const unspokenTextRef = useRef('');
+  const textareaRef = useRef(null);
 
 
   const { messages, streaming, status, error, send, loadHistory } = useChatSocket(threadId, {
@@ -393,6 +395,8 @@ export const ChatScreen = ({
 
     recorder.onstop = async () => {
       const blob = new Blob(mediaChunks, { type: 'audio/webm' });
+      setTranscribing(true);
+
       blobToDataURL(blob).then((audioDataUrl) => {
         const entry = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -408,9 +412,7 @@ export const ChatScreen = ({
         const token = localStorage.getItem('nextmate.token');
         const response = await fetch(`${API_BASE_URL}/api/transcribe`, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
           body: blob,
         });
 
@@ -423,8 +425,7 @@ export const ChatScreen = ({
         }
 
         if (!response.ok) {
-          const errorMessage = data?.detail || responseText || 'Transcription failed';
-          throw new Error(errorMessage);
+          throw new Error(data?.detail || responseText || 'Transcription failed');
         }
 
         if (!data || typeof data !== 'object') {
@@ -445,13 +446,14 @@ export const ChatScreen = ({
           return updated;
         });
 
-        const fullText = `${voiceBaseRef.current}${transcript ? ` ${transcript}` : ''}`.trim();
-        if (fullText && send(fullText)) {
-          setDraft('');
-        }
-      } catch (error) {
-        console.error('Transcription error:', error);
-        setVoiceError(`Transcription error: ${error?.message || 'Unknown error'}`);
+        const base = voiceBaseRef.current;
+        const fullText = base ? `${base} ${transcript}` : transcript;
+        setDraft(fullText);
+      } catch (err) {
+        console.error('Transcription error:', err);
+        setVoiceError(`Transcription error: ${err?.message || 'Unknown error'}`);
+      } finally {
+        setTranscribing(false);
       }
     };
 
@@ -512,6 +514,13 @@ export const ChatScreen = ({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, streaming]);
 
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }, [draft]);
+
   const submit = () => {
     const text = draft.trim();
     if (!text || streaming || status !== 'open') return;
@@ -552,60 +561,153 @@ export const ChatScreen = ({
           <span className="nm-dot" />
           {status === 'open' ? 'live' : status}
         </span>
-
-        {/* Side panel toggle */}
-        
       </TopBar>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '28px 40px' }}>
-          <div style={{ maxWidth: 680, margin: '0 auto' }}>
-            <div className="nm-eyebrow" style={{ textAlign: 'center', marginBottom: 24, position: 'relative' }}>
-              <span
-                style={{
-                  background: 'var(--surface)',
-                  padding: '0 14px',
-                  position: 'relative',
-                  zIndex: 1,
-                }}
-              >
-                {threadId ? 'Conversation' : 'No thread selected'}
-              </span>
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: 0,
-                  right: 0,
-                  borderTop: '1px dashed var(--rule)',
-                }}
-              />
+
+        {/* Chat column: scroll area + input stacked */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, justifyContent: messages.length === 0 ? 'center' : undefined }}>
+          {messages.length > 0 && (
+            <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '28px 40px 28px' }}>
+              <div style={{ maxWidth: 680, margin: '0 auto' }}>
+                <div className="nm-eyebrow" style={{ textAlign: 'center', marginBottom: 24, position: 'relative' }}>
+                  <span style={{ background: 'var(--surface)', padding: '0 14px', position: 'relative', zIndex: 1 }}>
+                    {threadId ? 'Conversation' : 'No thread selected'}
+                  </span>
+                  <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px dashed var(--rule)' }} />
+                </div>
+                {messages.map((m, i) => (
+                  <Msg key={i} {...m} className="nm-msg" />
+                ))}
+                {streaming && (
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '16px 0', color: 'var(--ink-4)' }}>
+                    <ThinkingDots />
+                    <span className="nm-meta">Nextmate is reflecting…</span>
+                  </div>
+                )}
+                {error && (
+                  <div className="nm-body" style={{ color: 'var(--accent)', fontSize: 12 }}>{error}</div>
+                )}
+              </div>
             </div>
-            {messages.map((m, i) => (
-              <Msg key={i} {...m} className="nm-msg" />
-            ))}
-            {streaming && (
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  alignItems: 'center',
-                  margin: '16px 0',
-                  color: 'var(--ink-4)',
-                }}
-              >
-                <ThinkingDots />
-                <span className="nm-meta">Nextmate is reflecting…</span>
+          )}
+
+          {/* Input — sits at the bottom of the chat column only, never touches the side panel */}
+          <div style={{ padding: '12px 40px 20px', flexShrink: 0 }}>
+            <div style={{ maxWidth: 680, margin: '0 auto' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-end',
+                border: '1px solid var(--rule)',
+                borderRadius: 14,
+                background: 'var(--surface-2)',
+                padding: '6px 8px',
+                gap: 6,
+              }}>
+                <button
+                  className="nm-btn ghost"
+                  onClick={toggleVoice}
+                  disabled={!threadId || streaming || status !== 'open' || !speechSupported || !audioSupported}
+                  title={recording ? 'Stop recording' : 'Voice input'}
+                  style={{
+                    padding: 7,
+                    flexShrink: 0,
+                    alignSelf: 'flex-end',
+                    borderRadius: 8,
+                    background: recording ? 'var(--accent)' : 'transparent',
+                    color: recording ? '#fff' : 'var(--ink-3)',
+                    animation: recording ? 'nm-pulse 1.2s infinite' : undefined,
+                  }}
+                >
+                  <Icon name="mic" size={16} />
+                </button>
+
+                <textarea
+                  ref={textareaRef}
+                  placeholder={
+                    transcribing ? 'Transcribing…' :
+                    recording ? 'Listening…' :
+                    threadId ? 'Stay with the thought…' :
+                    'Start a new reflection from the sidebar.'
+                  }
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={onKey}
+                  rows={1}
+                  disabled={!threadId}
+                  style={{
+                    flex: 1,
+                    height: 36,
+                    maxHeight: 160,
+                    padding: '8px 4px',
+                    fontSize: 15,
+                    fontFamily: 'var(--font-serif)',
+                    color: 'var(--ink)',
+                    border: 'none',
+                    background: 'transparent',
+                    resize: 'none',
+                    outline: 'none',
+                    boxShadow: 'none',
+                    overflowY: 'auto',
+                    lineHeight: 1.5,
+                  }}
+                />
+
+                <button
+                  className="nm-btn accent"
+                  onClick={submit}
+                  disabled={!draft.trim() || streaming || status !== 'open'}
+                  style={{ padding: 7, flexShrink: 0, alignSelf: 'flex-end', borderRadius: 8 }}
+                  title="Send"
+                >
+                  <Icon name="arrow" size={16} />
+                </button>
               </div>
-            )}
-            {error && (
-              <div className="nm-body" style={{ color: 'var(--accent)', fontSize: 12 }}>
-                {error}
+
+              {voiceError && (
+                <div className="nm-meta" style={{ marginTop: 6, color: 'var(--accent)' }}>{voiceError}</div>
+              )}
+
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+                <label className="nm-meta" style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={voiceOutputEnabled} onChange={(e) => setVoiceOutputEnabled(e.target.checked)} style={{ margin: 0 }} />
+                  Say it out loud
+                </label>
+                {voiceOutputEnabled && (
+                  <label className="nm-meta" style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                    Voice:
+                    <select
+                      value={voiceGender}
+                      onChange={(e) => { setVoiceGender(e.target.value); if (e.target.value !== 'custom') setSelectedVoiceName(''); }}
+                      style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer' }}
+                    >
+                      <option value="female">Female</option>
+                      <option value="male">Male</option>
+                      <option value="custom">Custom…</option>
+                    </select>
+                  </label>
+                )}
+                {voiceOutputEnabled && voiceGender === 'custom' && availableVoices.length > 0 && (
+                  <label className="nm-meta" style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                    Pick voice:
+                    <select
+                      value={selectedVoiceName}
+                      onChange={(e) => setSelectedVoiceName(e.target.value)}
+                      style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', maxWidth: 200, cursor: 'pointer' }}
+                    >
+                      <option value="">— choose —</option>
+                      {availableVoices.map((v) => (
+                        <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
 
+        {/* Side panel */}
         <div
           className={`nm-side-panel${showSidePanel ? '' : ' collapsed'}`}
           style={{
@@ -617,28 +719,14 @@ export const ChatScreen = ({
             overflowY: 'auto',
           }}
         >
-          <div className="nm-eyebrow" style={{ marginBottom: 12 }}>
-            Active patterns
-          </div>
+          <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Active patterns</div>
 
           {topLoop ? (
             <div className="nm-card" style={{ padding: 12, marginBottom: 16 }}>
-              <div
-                style={{ display: 'flex', gap: 10, alignItems: 'center' }}
-                title={topLoop.core_belief || topLoop.name}
-              >
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }} title={topLoop.core_belief || topLoop.name}>
                 <LoopRing strength={topLoop.strength} size={36} showLabel={false} />
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontSize: 13,
-                      fontStyle: 'italic',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     "{topLoop.core_belief || topLoop.name}"
                   </div>
                   <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 2 }}>
@@ -647,217 +735,25 @@ export const ChatScreen = ({
                 </div>
               </div>
               {activeLoops.length > 1 && (
-                <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 8 }}>
-                  +{activeLoops.length - 1} more active
-                </div>
+                <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 8 }}>+{activeLoops.length - 1} more active</div>
               )}
             </div>
           ) : (
             <div className="nm-card" style={{ padding: 12, marginBottom: 16 }}>
-              <div className="nm-meta" style={{ lineHeight: 1.5 }}>
-                No active loops yet. Patterns name themselves once they recur.
-              </div>
+              <div className="nm-meta" style={{ lineHeight: 1.5 }}>No active loops yet. Patterns name themselves once they recur.</div>
             </div>
           )}
 
           <div className="nm-hr dotted" />
-          <div className="nm-eyebrow" style={{ marginBottom: 10 }}>
-            This thread
-          </div>
+          <div className="nm-eyebrow" style={{ marginBottom: 10 }}>This thread</div>
           <StatLine label="Messages" value={messages.length} />
           <StatLine label="Connection" value={status} teal={status === 'open'} />
           <StatLine label="Active loops" value={activeLoops.length} />
-
           <div className="nm-hr dotted" />
           <div className="nm-meta" style={{ lineHeight: 1.5, color: 'var(--ink-4)' }}>
-            Nextmate doesn't provide clinical advice. Safety screens run on every message.
+            Nextmate doesn’t provide clinical advice. Safety screens run on every message.
           </div>
         </div>
-      </div>
-
-      <div style={{ borderTop: '1px solid var(--rule)', padding: '14px 40px', background: 'var(--surface)' }}>
-        <div
-          style={{
-            maxWidth: 680,
-            margin: '0 auto',
-            display: 'flex',
-            gap: 8,
-            alignItems: 'flex-end',
-          }}
-        >
-          <button
-            className="nm-btn"
-            onClick={toggleVoice}
-            disabled={
-              !threadId || streaming || status !== 'open' || !speechSupported || !audioSupported
-            }
-            title={
-              recording
-                ? 'Stop voice input'
-                : !audioSupported
-                ? 'Audio recording is not supported'
-                : speechSupported
-                ? 'Start voice input'
-                : 'Voice not supported'
-            }
-            style={{
-              padding: 8,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              background: recording ? 'var(--accent)' : undefined,
-              color: recording ? '#fff' : undefined,
-              animation: recording ? 'nm-pulse 1.2s infinite' : undefined,
-            }}
-          >
-            <Icon name="mic" />
-            {recording && (
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: '#fff',
-                  animation: 'nm-blink 1.2s infinite ease-in-out',
-                }}
-              />
-            )}
-          </button>
-          <textarea
-            className="nm-textarea"
-            placeholder={threadId ? 'Stay with the thought, or send a new one…' : 'Start a new reflection from the sidebar.'}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={onKey}
-            rows={1}
-            disabled={!threadId}
-            style={{ minHeight: 42, maxHeight: 140, padding: '10px 14px', fontSize: 15 }}
-          />
-        </div>
-
-        {!recording && voiceError && (
-          <div className="nm-meta" style={{ marginTop: 10, marginLeft: 6, color: 'var(--accent)' }}>
-            {voiceError}
-          </div>
-        )}
-        {voiceDebug && (
-          <div className="nm-meta" style={{ marginTop: 10, marginLeft: 6, color: 'var(--ink-4)' }}>
-            Voice debug: {voiceDebug}
-          </div>
-        )}
-        {voiceRecording && (
-          <div style={{ marginTop: 14, marginLeft: 6, width: '100%', display: 'grid', gap: 10 }}>
-            <div className="nm-eyebrow">Latest voice recording</div>
-            <audio controls src={voiceRecording.audioDataUrl} style={{ width: '100%' }} />
-            <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
-              <strong>Transcript:</strong>{' '}
-              {voiceRecording.transcript || 'No transcript detected'}
-            </div>
-          </div>
-        )}
-
-        {/* Voice output controls */}
-        {!recording && (
-          <div style={{ marginTop: 10, marginLeft: 6, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-            {/* Enable toggle */}
-            <label
-              className="nm-meta"
-              style={{
-                fontSize: 11.5,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                cursor: 'pointer',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={voiceOutputEnabled}
-                onChange={(e) => setVoiceOutputEnabled(e.target.checked)}
-                style={{ margin: 0 }}
-              />
-              SAY IT OUT LOUD !!
-            </label>
-
-            {/* Voice gender / picker — only shown when voice output is on */}
-            {voiceOutputEnabled && (
-              <>
-                <label
-                  className="nm-meta"
-                  style={{
-                    fontSize: 11.5,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Voice:
-                  <select
-                    value={voiceGender}
-                    onChange={(e) => {
-                      setVoiceGender(e.target.value);
-                      // Reset custom selection when switching away
-                      if (e.target.value !== 'custom') setSelectedVoiceName('');
-                    }}
-                    style={{
-                      fontSize: 11.5,
-                      fontFamily: 'var(--font-mono)',
-                      border: '1px solid var(--rule)',
-                      background: 'var(--surface)',
-                      color: 'var(--ink)',
-                      borderRadius: 4,
-                      padding: '1px 4px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <option value="female">Female</option>
-                    <option value="male">Male</option>
-                    <option value="custom">Custom…</option>
-                  </select>
-                </label>
-
-                {/* Custom voice picker — only shown when "Custom…" is selected */}
-                {voiceGender === 'custom' && availableVoices.length > 0 && (
-                  <label
-                    className="nm-meta"
-                    style={{
-                      fontSize: 11.5,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Pick voice:
-                    <select
-                      value={selectedVoiceName}
-                      onChange={(e) => setSelectedVoiceName(e.target.value)}
-                      style={{
-                        fontSize: 11.5,
-                        fontFamily: 'var(--font-mono)',
-                        border: '1px solid var(--rule)',
-                        background: 'var(--surface)',
-                        color: 'var(--ink)',
-                        borderRadius: 4,
-                        padding: '1px 4px',
-                        maxWidth: 200,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <option value="">— choose —</option>
-                      {availableVoices.map((v) => (
-                        <option key={v.name} value={v.name}>
-                          {v.name} ({v.lang})
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-              </>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
