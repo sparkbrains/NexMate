@@ -197,7 +197,8 @@ def init_postgres() -> None:
                     created_at TIMESTAMPTZ NOT NULL,
                     updated_at TIMESTAMPTZ NOT NULL,
                     loop_id UUID,
-                    last_reflected_at TIMESTAMPTZ
+                    last_reflected_at TIMESTAMPTZ,
+                    daily_question_id BIGINT
                 )
                 """
             )
@@ -252,6 +253,15 @@ def init_postgres() -> None:
                 ADD COLUMN IF NOT EXISTS last_reflected_at TIMESTAMPTZ
                 """
             )
+            # Add daily_question_id column if it doesn't exist (for existing
+            # installations) — tags a thread as having been created to
+            # answer a specific daily question, independent of its title.
+            cur.execute(
+                """
+                ALTER TABLE threads
+                ADD COLUMN IF NOT EXISTS daily_question_id BIGINT
+                """
+            )
             cur.execute(
     """
     CREATE TABLE IF NOT EXISTS pending_signups (
@@ -292,6 +302,17 @@ def init_postgres() -> None:
                     """
                     CREATE INDEX IF NOT EXISTS idx_threads_loop_id
                     ON threads(loop_id)
+                    """
+                )
+            except Exception:
+                pass  # Ignore if column doesn't exist yet
+
+            # Create index on daily_question_id after ensuring column exists
+            try:
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_threads_daily_question_id
+                    ON threads(daily_question_id)
                     """
                 )
             except Exception:
