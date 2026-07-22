@@ -29,30 +29,6 @@ class User:
     id: int
     email: str
     created_at: str
-    name: str = ""
-    age: int | None = None
-    subscription_tier: str = "paid"
-
-
-MIN_AGE = 13
-MAX_AGE = 120
-
-
-def _validate_name(name: str) -> str:
-    cleaned = name.strip()
-    if not cleaned:
-        raise ValueError("Name is required")
-    if len(cleaned) > 200:
-        raise ValueError("Name is too long")
-    return cleaned
-
-
-def _validate_age(age: int) -> int:
-    if not isinstance(age, int) or isinstance(age, bool):
-        raise ValueError("Age must be a whole number")
-    if age < MIN_AGE or age > MAX_AGE:
-        raise ValueError(f"Age must be between {MIN_AGE} and {MAX_AGE}")
-    return age
 
 
 def _utc_now() -> datetime:
@@ -87,14 +63,12 @@ def _verify_password(password: str, encoded: str) -> bool:
     return secrets.compare_digest(actual, expected)
 
 
-def create_user(email: str, password: str, name: str, age: int) -> User:
+def create_user(email: str, password: str) -> User:
     cleaned_email = email.strip().lower()
     if not cleaned_email or "@" not in cleaned_email:
         raise ValueError("Invalid email")
     if len(password) < 6:
         raise ValueError("Password must be at least 6 characters")
-    cleaned_name = _validate_name(name)
-    cleaned_age = _validate_age(age)
 
     created_at = _utc_now()
     password_hash = _encode_password(password)
@@ -106,23 +80,16 @@ def create_user(email: str, password: str, name: str, age: int) -> User:
 
             cur.execute(
                 """
-                INSERT INTO users (email, password_hash, created_at, name, age)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id, created_at, subscription_tier
+                INSERT INTO users (email, password_hash, created_at)
+                VALUES (%s, %s, %s)
+                RETURNING id, created_at
                 """,
-                (cleaned_email, password_hash, created_at, cleaned_name, cleaned_age),
+                (cleaned_email, password_hash, created_at),
             )
             row = cur.fetchone()
         conn.commit()
 
-    return User(
-        id=int(row["id"]),
-        email=cleaned_email,
-        created_at=row["created_at"].isoformat(),
-        name=cleaned_name,
-        age=cleaned_age,
-        subscription_tier=str(row["subscription_tier"]),
-    )
+    return User(id=int(row["id"]), email=cleaned_email, created_at=row["created_at"].isoformat())
 
 
 def authenticate_user(email: str, password: str) -> User | None:
@@ -130,7 +97,7 @@ def authenticate_user(email: str, password: str) -> User | None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, email, password_hash, created_at, name, age, subscription_tier FROM users WHERE email = %s",
+                "SELECT id, email, password_hash, created_at FROM users WHERE email = %s",
                 (cleaned_email,),
             )
             row = cur.fetchone()
@@ -139,14 +106,7 @@ def authenticate_user(email: str, password: str) -> User | None:
         return None
     if not _verify_password(password, str(row["password_hash"])):
         return None
-    return User(
-        id=int(row["id"]),
-        email=str(row["email"]),
-        created_at=row["created_at"].isoformat(),
-        name=str(row.get("name") or ""),
-        age=row.get("age"),
-        subscription_tier=str(row.get("subscription_tier") or "paid"),
-    )
+    return User(id=int(row["id"]), email=str(row["email"]), created_at=row["created_at"].isoformat())
 
 
 def create_session(user_id: int) -> str:
@@ -174,7 +134,7 @@ def get_user_by_token(token: str) -> User | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT u.id, u.email, u.created_at, u.name, u.age, u.subscription_tier, s.expires_at
+                SELECT u.id, u.email, u.created_at, s.expires_at
                 FROM sessions s
                 JOIN users u ON s.user_id = u.id
                 WHERE s.token = %s
@@ -191,14 +151,7 @@ def get_user_by_token(token: str) -> User | None:
                 conn.commit()
                 return None
 
-    return User(
-        id=int(row["id"]),
-        email=str(row["email"]),
-        created_at=row["created_at"].isoformat(),
-        name=str(row.get("name") or ""),
-        age=row.get("age"),
-        subscription_tier=str(row.get("subscription_tier") or "paid"),
-    )
+    return User(id=int(row["id"]), email=str(row["email"]), created_at=row["created_at"].isoformat())
 
 
 def delete_session(token: str) -> None:
@@ -247,14 +200,12 @@ def _send_otp_email(to_email: str, code: str) -> None:
         server.sendmail(sender, [to_email], msg.as_string())
 
 
-def request_signup_otp(email: str, password: str, name: str, age: int) -> None:
+def request_signup_otp(email: str, password: str) -> None:
     cleaned_email = email.strip().lower()
     if not cleaned_email or "@" not in cleaned_email:
         raise ValueError("Invalid email")
     if len(password) < 6:
         raise ValueError("Password must be at least 6 characters")
-    cleaned_name = _validate_name(name)
-    cleaned_age = _validate_age(age)
 
     now = _utc_now()
 
@@ -279,18 +230,16 @@ def request_signup_otp(email: str, password: str, name: str, age: int) -> None:
 
             cur.execute(
                 """
-                INSERT INTO pending_signups (email, password_hash, otp_hash, attempts, expires_at, last_sent_at, name, age)
-                VALUES (%s, %s, %s, 0, %s, %s, %s, %s)
+                INSERT INTO pending_signups (email, password_hash, otp_hash, attempts, expires_at, last_sent_at)
+                VALUES (%s, %s, %s, 0, %s, %s)
                 ON CONFLICT (email) DO UPDATE SET
                     password_hash = EXCLUDED.password_hash,
                     otp_hash = EXCLUDED.otp_hash,
                     attempts = 0,
                     expires_at = EXCLUDED.expires_at,
-                    last_sent_at = EXCLUDED.last_sent_at,
-                    name = EXCLUDED.name,
-                    age = EXCLUDED.age
+                    last_sent_at = EXCLUDED.last_sent_at
                 """,
-                (cleaned_email, password_hash, otp_hash, expires_at, now, cleaned_name, cleaned_age),
+                (cleaned_email, password_hash, otp_hash, expires_at, now),
             )
         conn.commit()
 
@@ -338,7 +287,7 @@ def verify_signup_otp(email: str, otp: str) -> User:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT password_hash, otp_hash, attempts, expires_at, name, age FROM pending_signups WHERE email = %s",
+                "SELECT password_hash, otp_hash, attempts, expires_at FROM pending_signups WHERE email = %s",
                 (cleaned_email,),
             )
             row = cur.fetchone()
@@ -372,11 +321,11 @@ def verify_signup_otp(email: str, otp: str) -> User:
 
             cur.execute(
                 """
-                INSERT INTO users (email, password_hash, created_at, name, age)
-                VALUES (%s, %s, %s, %s, %s)
-                RETURNING id, created_at, subscription_tier
+                INSERT INTO users (email, password_hash, created_at)
+                VALUES (%s, %s, %s)
+                RETURNING id, created_at
                 """,
-                (cleaned_email, str(row["password_hash"]), now, str(row.get("name") or ""), row.get("age")),
+                (cleaned_email, str(row["password_hash"]), now),
             )
             user_row = cur.fetchone()
             cur.execute("DELETE FROM pending_signups WHERE email = %s", (cleaned_email,))
@@ -386,9 +335,6 @@ def verify_signup_otp(email: str, otp: str) -> User:
         id=int(user_row["id"]),
         email=cleaned_email,
         created_at=user_row["created_at"].isoformat(),
-        name=str(row.get("name") or ""),
-        age=row.get("age"),
-        subscription_tier=str(user_row["subscription_tier"]),
     )
 
 
@@ -600,41 +546,6 @@ def reset_password(email: str, otp: str, new_password: str) -> None:
         conn.commit()
 
 
-def change_password(user_id: int, current_password: str, new_password: str) -> None:
-    if len(new_password) < 6:
-        raise ValueError("Password must be at least 6 characters")
-
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,))
-            row = cur.fetchone()
-            if not row:
-                raise ValueError("Account not found")
-            
-            if not _verify_password(current_password, str(row["password_hash"])):
-                raise ValueError("Current password is incorrect")
-
-            new_hash = _encode_password(new_password)
-            cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (new_hash, user_id))
-            cur.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
-        conn.commit()
-
-
-def delete_user(user_id: int, password: str) -> None:
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,))
-            row = cur.fetchone()
-            if not row:
-                raise ValueError("Account not found")
-
-            if not _verify_password(password, str(row["password_hash"])):
-                raise ValueError("Password is incorrect")
-
-            cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
-        conn.commit()
-
-
 def _parse_dummy_users(raw: str) -> list[tuple[str, str]]:
     pairs: list[tuple[str, str]] = []
     for token in raw.split(","):
@@ -661,7 +572,7 @@ def seed_dummy_users(users: Iterable[tuple[str, str]]) -> dict[str, int]:
     skipped = 0
     for email, password in users:
         try:
-            create_user(email=email, password=password, name="Demo User", age=25)
+            create_user(email=email, password=password)
             seeded += 1
         except ValueError:
             skipped += 1

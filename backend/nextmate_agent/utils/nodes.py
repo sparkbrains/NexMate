@@ -10,19 +10,6 @@ from nextmate_agent.utils.config import get_settings
 from nextmate_agent.utils.llm import get_chat_model, parse_json_object, invoke_with_logging, ainvoke_with_logging, profile, get_fast_chat_model
 from nextmate_agent.utils.node_logger import log_node
 from nextmate_agent.utils.tokens import estimate_tokens
-
-_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
-
-
-def _strip_reasoning_tokens(text: str) -> str:
-    """Defensive strip of <think>...</think> blocks some reasoning models
-    (e.g. qwen3.6 series) emit inline. reasoning_format='hidden' on the Groq
-    call should already suppress this server-side -- this is a backstop in
-    case that's ever ignored, changes behavior, or a different reasoning
-    model gets swapped in later without this being top of mind."""
-    if not text or "<think>" not in text.lower():
-        return text
-    return _THINK_BLOCK_RE.sub("", text).strip()
 from nextmate_agent.utils.prompts import (
     CHAT_SYSTEM_PROMPT,
     EXPLICIT_ADVICE_DETECTION_SYSTEM_PROMPT,
@@ -937,7 +924,7 @@ def generate_reply_node(state: NextMateState) -> NextMateState:
         thread_id,
     )
 
-    assistant_reply = _strip_reasoning_tokens((reply or "").strip())
+    assistant_reply = (reply or "").strip()
     log_node(
         thread_id=thread_id,
         node_name="generate_reply",
@@ -970,7 +957,7 @@ def generate_reply_node(state: NextMateState) -> NextMateState:
 
 
 def summarize_turn_node(state: NextMateState) -> NextMateState:
-    llm = get_fast_chat_model()
+    llm = get_chat_model()
     thread_id = state.get("thread_id", "default")
     user_input = state.get("user_input", "")
     assistant_reply = state.get("assistant_reply", "")

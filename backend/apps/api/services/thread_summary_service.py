@@ -134,7 +134,7 @@ def compact_thread(
         ],
         "compact_thread_summary",
         thread_id,
-    )
+    )                                                                     
 
     new_summary = (raw or "").strip()
     if not new_summary or _NO_CONTENT_PATTERN.search(new_summary):
@@ -146,21 +146,6 @@ def compact_thread(
     return new_summary, remaining
 
 
-# thread_messages.thread_id has historically sometimes been written in the
-# composite checkpoint format ("user:1:thread:<uuid>") instead of the raw
-# UUID -- normalize it inline so a malformed row can't crash the whole query,
-# and so composite/clean rows for the same underlying thread get merged
-# under one identity instead of being treated as two different threads.
-_NORMALIZE_THREAD_ID_SQL = """
-    CASE
-        WHEN tm.thread_id ~ '^user:[0-9]+:thread:[0-9a-fA-F-]{36}$'
-            THEN split_part(tm.thread_id, ':', 4)
-        ELSE tm.thread_id
-    END
-"""
-_VALID_UUID_REGEX = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
-
-
 def find_stale_threads(
     user_id: int,
     exclude_thread_id: str | None,
@@ -170,34 +155,24 @@ def find_stale_threads(
     """Find OTHER threads for this user that have gone quiet (no message in
     idle_minutes) and have messages not yet reflected in their thread_summary
     (either no summary exists, or new messages arrived after the last one).
-
-    Tolerant of malformed thread_id values in thread_messages (composite
-    checkpoint strings that leaked in instead of raw UUIDs) -- rows that
-    don't normalize to a valid UUID are silently excluded rather than
-    crashing the query. See the UPDATE cleanup for fixing this at the source.
     """
-    query = f"""
-        WITH normalized AS (
-            SELECT {_NORMALIZE_THREAD_ID_SQL} AS thread_id, tm.created_at
-            FROM thread_messages tm
-            WHERE tm.user_id = %s
-        )
-        SELECT n.thread_id,
-               MAX(n.created_at) AS last_message_at,
+    query = """
+        SELECT tm.thread_id,
+               MAX(tm.created_at) AS last_message_at,
                ts.updated_at AS summary_updated_at
-        FROM normalized n
-        LEFT JOIN thread_summaries ts ON ts.thread_id = n.thread_id::uuid
-        WHERE n.thread_id ~ %s
+        FROM thread_messages tm
+        LEFT JOIN thread_summaries ts ON ts.thread_id = tm.thread_id::uuid
+        WHERE tm.user_id = %s
     """
-    params: list[Any] = [user_id, _VALID_UUID_REGEX]
+    params: list[Any] = [user_id]
     if exclude_thread_id:
-        query += " AND n.thread_id != %s"
+        query += " AND tm.thread_id != %s"
         params.append(exclude_thread_id)
     query += """
-        GROUP BY n.thread_id, ts.updated_at
-        HAVING MAX(n.created_at) < now() - (%s || ' minutes')::interval
-           AND (ts.updated_at IS NULL OR MAX(n.created_at) > ts.updated_at)
-        ORDER BY MAX(n.created_at) ASC
+        GROUP BY tm.thread_id, ts.updated_at
+        HAVING MAX(tm.created_at) < now() - (%s || ' minutes')::interval
+           AND (ts.updated_at IS NULL OR MAX(tm.created_at) > ts.updated_at)
+        ORDER BY MAX(tm.created_at) ASC
         LIMIT %s
     """
     params.extend([str(idle_minutes), max_threads])
@@ -220,26 +195,22 @@ def find_stale_threads(
 def _fetch_unsummarized_messages(
     user_id: int, thread_id: str, since: datetime | None
 ) -> list[dict[str, str]]:
-    # Matches both the clean UUID and, defensively, the composite checkpoint
-    # format ("user:<id>:thread:<uuid>") in case some rows for this thread
-    # were written that way before the cleanup migration/UPDATE ran.
-    composite_id = f"user:{user_id}:thread:{thread_id}"
     if since is not None:
         query = """
             SELECT role, content
             FROM thread_messages
-            WHERE user_id = %s AND thread_id IN (%s, %s) AND created_at > %s
+            WHERE user_id = %s AND thread_id = %s AND created_at > %s
             ORDER BY created_at ASC
         """
-        params = (user_id, thread_id, composite_id, since)
+        params = (user_id, thread_id, since)
     else:
         query = """
             SELECT role, content
             FROM thread_messages
-            WHERE user_id = %s AND thread_id IN (%s, %s)
+            WHERE user_id = %s AND thread_id = %s
             ORDER BY created_at ASC
         """
-        params = (user_id, thread_id, composite_id)
+        params = (user_id, thread_id)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -255,16 +226,7 @@ def summarize_stale_threads(
     idle_minutes: int | None = None,
     max_threads: int | None = None,
 ) -> int:
-    """Opportunistic idle-sweep. Call on every turn for the CURRENTLY active
-    thread -- it summarizes OTHER threads that have gone idle, never the
-    current one. Safe to call every turn: find_stale_threads' HAVING clause
-    means threads already fully summarized simply won't match, so this is a
-    cheap no-op query on most calls. Capped per call (max_threads) so a user
-    with many idle threads doesn't trigger a burst of LLM calls on one turn --
-    remaining stale threads just get picked up on a later call.
 
-    Returns the number of threads actually summarized this call.
-    """
     settings = get_settings()
     if idle_minutes is None:
         idle_minutes = settings.idle_thread_summary_minutes
@@ -278,16 +240,12 @@ def summarize_stale_threads(
     summarized_count = 0
     for entry in stale:
         thread_id = entry["thread_id"]
-        since = entry["summary_updated_at"]  # None if no prior summary
+        since = entry["summary_updated_at"]
 
         new_messages = _fetch_unsummarized_messages(user_id, thread_id, since)
         if not new_messages:
             continue
 
-        # Cheap pre-filter: skip trivially short/filler content without
-        # spending an LLM call. Doesn't mark anything as summarized, so a
-        # thread that later accumulates more content will be re-evaluated
-        # (combined with new messages) on the next sweep.
         combined_chars = sum(len(m.get("content", "")) for m in new_messages)
         if combined_chars < _MIN_SUBSTANTIVE_CHARS:
             continue
@@ -309,9 +267,6 @@ def summarize_stale_threads(
 
         new_summary = (raw or "").strip()
 
-        # Reject empty responses AND valid-but-useless boilerplate ("there's
-        # no conversation to summarize") -- neither should be persisted as if
-        # it were a real summary. Thread stays eligible for a later sweep.
         if not new_summary or _NO_CONTENT_PATTERN.search(new_summary):
             continue
 
