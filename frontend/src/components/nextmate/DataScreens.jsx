@@ -244,77 +244,83 @@ const EmotionMixBars = ({ trend, granularity, emotions }) => {
   const PAD_R = 12;
   const CHART_H = 160;
 
-  const svgW = PAD_L + n * (BAR_W + GAP) - GAP + PAD_R;
+  const svgW = n * (BAR_W + GAP) - GAP + PAD_R;
   const svgH = PAD_T + CHART_H + PAD_B;
-
-  const xOf = i => PAD_L + i * (BAR_W + GAP);
   const tickEvery = n <= 7 ? 1 : n <= 14 ? 2 : n <= 31 ? 4 : 7;
 
-  return (
-    <div style={{ overflowX: 'auto', marginTop: 8, height: 220, border: '1px solid var(--rule)', borderRadius: 4 }}>
-      <svg width={svgW} height={svgH} style={{ display: 'block' }}>
+  const YAXIS_W = PAD_L;
 
-        {/* Y-axis: 0%, 25%, 50%, 75%, 100% */}
+  return (
+    <div style={{ marginTop: 8, height: 220, border: '1px solid var(--rule)', borderRadius: 4, display: 'flex' }}>
+      {/* Fixed Y-axis */}
+      <svg width={YAXIS_W} height={svgH} style={{ flexShrink: 0, display: 'block' }}>
         {[0, 0.25, 0.5, 0.75, 1].map(v => {
           const y = PAD_T + CHART_H - v * CHART_H;
           return (
-            <g key={v}>
-              <line x1={PAD_L} y1={y} x2={svgW - PAD_R} y2={y}
-                stroke="var(--rule)" strokeWidth={v === 0 || v === 1 ? 1 : 0.5}
-                strokeDasharray={v === 0 || v === 1 ? 'none' : '3 3'} />
-              <text x={PAD_L - 5} y={y + 3.5} textAnchor="end"
-                style={{ fontSize: 9, fill: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}>
-                {Math.round(v * 100)}%
-              </text>
-            </g>
+            <text key={v} x={YAXIS_W - 5} y={y + 3.5} textAnchor="end"
+              style={{ fontSize: 9, fill: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}>
+              {Math.round(v * 100)}%
+            </text>
           );
         })}
-
-        {/* Y-axis label */}
         <text transform={`translate(10, ${PAD_T + CHART_H / 2}) rotate(-90)`} textAnchor="middle"
           style={{ fontSize: 9, fill: 'var(--ink-3)', fontFamily: 'var(--font-display)', letterSpacing: '0.05em' }}>
           EMOTION SHARE
         </text>
-
-        {/* Bars */}
-        {trend.map((d, i) => {
-          const total = Object.values(d.moods || {}).reduce((a, b) => a + b, 0);
-          if (!total) {
-            // empty day — faint outline only
-            return (
-              <rect key={i} x={xOf(i)} y={PAD_T} width={BAR_W} height={CHART_H}
-                fill="none" stroke="var(--rule)" strokeWidth={0.5} opacity={0.4} />
-            );
-          }
-          let cumY = PAD_T + CHART_H;
-          return emotions.map((e, ei) => {
-            const count = d.moods?.[e] || 0;
-            if (!count) return null;
-            const segH = (count / total) * CHART_H;
-            cumY -= segH;
-            return (
-              <rect key={e} x={xOf(i)} y={cumY} width={BAR_W} height={segH}
-                fill={EMOTION_PALETTE[ei % EMOTION_PALETTE.length]} opacity={0.88}>
-                <title>{e}: {Math.round((count / total) * 100)}% on {d.day}</title>
-              </rect>
-            );
-          });
-        })}
-
-        {/* X-axis date labels */}
-        {trend.map((d, i) => {
-          if (i % tickEvery !== 0 && i !== n - 1) return null;
-          const label = formatTick(d.day, granularity);
-          return (
-            <text key={i} x={xOf(i) + BAR_W / 2} y={PAD_T - 6}
-              textAnchor="middle"
-              style={{ fontSize: 9, fill: 'var(--ink-3)', fontFamily: 'var(--font-display)' }}>
-              {label}
-            </text>
-          );
-        })}
-
       </svg>
+
+      {/* Scrollable bars */}
+      <div style={{ overflowX: 'auto', flex: 1 }}>
+        <svg width={svgW - YAXIS_W} height={svgH} style={{ display: 'block' }}>
+          {/* Gridlines */}
+          {[0, 0.25, 0.5, 0.75, 1].map(v => {
+            const y = PAD_T + CHART_H - v * CHART_H;
+            return (
+              <line key={v} x1={0} y1={y} x2={svgW - YAXIS_W} y2={y}
+                stroke="var(--rule)" strokeWidth={v === 0 || v === 1 ? 1 : 0.5}
+                strokeDasharray={v === 0 || v === 1 ? 'none' : '3 3'} />
+            );
+          })}
+
+          {/* Bars */}
+          {trend.map((d, i) => {
+            const total = Object.values(d.moods || {}).reduce((a, b) => a + b, 0);
+            const x = i * (BAR_W + GAP);
+            if (!total) {
+              return (
+                <rect key={i} x={x} y={PAD_T} width={BAR_W} height={CHART_H}
+                  fill="none" stroke="var(--rule)" strokeWidth={0.5} opacity={0.4} />
+              );
+            }
+            let cumY = PAD_T + CHART_H;
+            return emotions.map((e, ei) => {
+              const count = d.moods?.[e] || 0;
+              if (!count) return null;
+              const segH = (count / total) * CHART_H;
+              cumY -= segH;
+              return (
+                <rect key={e} x={x} y={cumY} width={BAR_W} height={segH}
+                  fill={EMOTION_PALETTE[ei % EMOTION_PALETTE.length]} opacity={0.88}>
+                  <title>{e}: {Math.round((count / total) * 100)}% on {d.day}</title>
+                </rect>
+              );
+            });
+          })}
+
+          {/* X-axis date labels */}
+          {trend.map((d, i) => {
+            if (i % tickEvery !== 0 && i !== n - 1) return null;
+            const x = i * (BAR_W + GAP);
+            return (
+              <text key={i} x={x + BAR_W / 2} y={PAD_T - 6}
+                textAnchor="middle"
+                style={{ fontSize: 9, fill: 'var(--ink-3)', fontFamily: 'var(--font-display)' }}>
+                {formatTick(d.day, granularity)}
+              </text>
+            );
+          })}
+        </svg>
+      </div>
     </div>
   );
 };
