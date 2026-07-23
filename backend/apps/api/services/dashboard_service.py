@@ -213,6 +213,8 @@ async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]
     intensity_by_day: dict[str, list[int]] = defaultdict(list)
     mood_by_day: dict[str, Counter[str]] = defaultdict(Counter)
 
+    raw_triggers_by_entry: list[tuple[str, str]] = []  # (day_key, cleaned)
+
     for row in in_window:
         mood = str(row.get("mood", "neutral")).strip().lower() or "neutral"
         mood_counter[mood] += 1
@@ -234,10 +236,20 @@ async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]
             cleaned = str(trig).strip().lower()
             if not cleaned:
                 continue
-            triggers_counter[cleaned] += 1
-            if created:
-                day_key = created.date().isoformat()
-                triggers_by_day[day_key][cleaned] += 1
+            raw_triggers_by_entry.append((created.date().isoformat() if created else "", cleaned))
+
+    # Deduplicate plural/singular only when both forms actually exist in the data
+    all_raw = {t for _, t in raw_triggers_by_entry}
+    plural_map = {
+        t: t[:-1] for t in all_raw
+        if t.endswith('s') and len(t) > 3 and t[:-1] in all_raw
+    }
+
+    for day_key, cleaned in raw_triggers_by_entry:
+        canonical = plural_map.get(cleaned, cleaned)
+        triggers_counter[canonical] += 1
+        if day_key:
+            triggers_by_day[day_key][canonical] += 1
 
     total = len(in_window)
 

@@ -117,7 +117,6 @@ const TriggerHeat = ({ heatmap, granularity }) => {
   const shade = (v) => v <= 0 ? 'var(--rule-soft)' : v < 0.34 ? 'var(--loop-light)' : v < 0.67 ? 'var(--loop-medium)' : 'var(--loop-strong)';
   const today = new Date();
 
-  // Show a label every N columns depending on how many cols we have
   const labelEvery = granularity === 'day' ? 4 : granularity === 'week' ? 1 : 7;
 
   const getColDate = (i) => {
@@ -133,27 +132,29 @@ const TriggerHeat = ({ heatmap, granularity }) => {
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', gap: 2, marginLeft: 88, marginBottom: 6 }}>
-        {Array.from({ length: cols }).map((_, i) => {
-          const show = i % labelEvery === 0;
-          return (
-            <div key={i} className="nm-meta" style={{ flex: 1, fontSize: 9, textAlign: 'center', color: show ? 'var(--ink-2)' : 'transparent' }}>
-              {show ? getColDate(i) : '·'}
-            </div>
-          );
-        })}
-      </div>
-      {heatmap.map((row) => (
-        <div key={row.trigger} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-          <div style={{ width: 80, fontSize: 12, textAlign: 'right', fontFamily: 'var(--font-display)' }}>{row.trigger}</div>
-          <div style={{ display: 'flex', gap: 2, flex: 1 }}>
-            {row.intensity.map((v, i) => (
-              <div key={i} style={{ flex: 1, height: 16, background: shade(v) }} />
-            ))}
-          </div>
+    <div style={{ overflowX: 'auto' }}>
+      <div style={{ minWidth: cols * 22 + 96 }}>
+        <div style={{ display: 'flex', gap: 2, marginLeft: 88, marginBottom: 6 }}>
+          {Array.from({ length: cols }).map((_, i) => {
+            const show = i % labelEvery === 0;
+            return (
+              <div key={i} className="nm-meta" style={{ flex: 1, fontSize: 9, textAlign: 'center', color: show ? 'var(--ink-2)' : 'transparent' }}>
+                {show ? getColDate(i) : '·'}
+              </div>
+            );
+          })}
         </div>
-      ))}
+        {heatmap.map((row) => (
+          <div key={row.trigger} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+            <div style={{ width: 80, fontSize: 12, textAlign: 'right', fontFamily: 'var(--font-display)', flexShrink: 0 }}>{row.trigger}</div>
+            <div style={{ display: 'flex', gap: 2, flex: 1 }}>
+              {row.intensity.map((v, i) => (
+                <div key={i} style={{ flex: 1, height: 16, background: shade(v), minWidth: 18 }} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
@@ -217,56 +218,104 @@ const ValenceIntensityLineChart = ({ data }) => {
   );
 };
 
-const EmotionLineChart = ({ trend, granularity }) => {
+const EMOTION_PALETTE = [
+  '#7C9CF5', '#F28C6E', '#6ECFB5', '#C97FE3',
+  '#F2C46E', '#E36F8C', '#6EB5F2', '#A8E36F',
+  '#F5C07C', '#8CE3D4',
+];
+
+/*
+  EmotionMixBars
+  What it shows: how your emotional mix shifted day by day.
+  Each bar = one day. Segments = each emotion's share of that day's total.
+  Empty days render as a faint outline — honest, no fake data.
+  Scrollable for any date range.
+*/
+const EmotionMixBars = ({ trend, granularity, emotions }) => {
   const n = trend?.length || 0;
   if (!n) return <div className="nm-meta" style={{ padding: 30 }}>No emotion data yet.</div>;
+  if (!emotions?.length) return <div className="nm-meta" style={{ padding: 30 }}>No mood data yet.</div>;
 
-  const emotions = Array.from(new Set(trend.flatMap(d => Object.keys(d.moods || {}))));
-  if (!emotions.length) return <div className="nm-meta" style={{ padding: 30 }}>No mood data yet.</div>;
+  const BAR_W = 28;
+  const GAP = 6;
+  const PAD_L = 40;  // y-axis labels
+  const PAD_T = 24;  // date labels
+  const PAD_B = 16;
+  const PAD_R = 12;
+  const CHART_H = 160;
 
-  const w = 600, h = 120, tickH = 18;
-  // Always render across full width — fewer points just means wider spacing
-  const dx = n > 1 ? w / (n - 1) : w;
-  const tickEvery = n <= 7 ? 1 : n <= 14 ? 2 : Math.ceil(n / 8);
+  const svgW = PAD_L + n * (BAR_W + GAP) - GAP + PAD_R;
+  const svgH = PAD_T + CHART_H + PAD_B;
+
+  const xOf = i => PAD_L + i * (BAR_W + GAP);
+  const tickEvery = n <= 7 ? 1 : n <= 14 ? 2 : n <= 31 ? 4 : 7;
 
   return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h + tickH}`} style={{ display: 'block', marginTop: 8 }}>
-      {emotions.map((emotion, ei) => {
-        const pts = trend.map((d, i) => {
-          const total = Object.values(d.moods || {}).reduce((a, b) => a + b, 0) || 1;
-          const val = (d.moods?.[emotion] || 0) / total;
-          return `${i * dx},${h - val * h * 0.88}`;
-        }).join(' ');
-        return (
-          <polyline
-            key={emotion}
-            points={pts}
-            fill="none"
-            stroke={LINE_COLORS[ei % LINE_COLORS.length]}
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        );
-      })}
-      <line x1="0" y1={h} x2={w} y2={h} stroke="var(--rule)" />
-      {trend.map((d, i) => {
-        if (i % tickEvery !== 0 && i !== n - 1) return null;
-        const label = formatTick(d.date || d.label, granularity);
-        if (!label) return null;
-        return (
-          <text
-            key={i}
-            x={i * dx}
-            y={h + tickH - 2}
-            textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}
-            style={{ fontSize: 9, fill: 'var(--ink-3)', fontFamily: 'var(--font-display)' }}
-          >
-            {label}
-          </text>
-        );
-      })}
-    </svg>
+    <div style={{ overflowX: 'auto', marginTop: 8, height: 220, border: '1px solid var(--rule)', borderRadius: 4 }}>
+      <svg width={svgW} height={svgH} style={{ display: 'block' }}>
+
+        {/* Y-axis: 0%, 25%, 50%, 75%, 100% */}
+        {[0, 0.25, 0.5, 0.75, 1].map(v => {
+          const y = PAD_T + CHART_H - v * CHART_H;
+          return (
+            <g key={v}>
+              <line x1={PAD_L} y1={y} x2={svgW - PAD_R} y2={y}
+                stroke="var(--rule)" strokeWidth={v === 0 || v === 1 ? 1 : 0.5}
+                strokeDasharray={v === 0 || v === 1 ? 'none' : '3 3'} />
+              <text x={PAD_L - 5} y={y + 3.5} textAnchor="end"
+                style={{ fontSize: 9, fill: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}>
+                {Math.round(v * 100)}%
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Y-axis label */}
+        <text transform={`translate(10, ${PAD_T + CHART_H / 2}) rotate(-90)`} textAnchor="middle"
+          style={{ fontSize: 9, fill: 'var(--ink-3)', fontFamily: 'var(--font-display)', letterSpacing: '0.05em' }}>
+          EMOTION SHARE
+        </text>
+
+        {/* Bars */}
+        {trend.map((d, i) => {
+          const total = Object.values(d.moods || {}).reduce((a, b) => a + b, 0);
+          if (!total) {
+            // empty day — faint outline only
+            return (
+              <rect key={i} x={xOf(i)} y={PAD_T} width={BAR_W} height={CHART_H}
+                fill="none" stroke="var(--rule)" strokeWidth={0.5} opacity={0.4} />
+            );
+          }
+          let cumY = PAD_T + CHART_H;
+          return emotions.map((e, ei) => {
+            const count = d.moods?.[e] || 0;
+            if (!count) return null;
+            const segH = (count / total) * CHART_H;
+            cumY -= segH;
+            return (
+              <rect key={e} x={xOf(i)} y={cumY} width={BAR_W} height={segH}
+                fill={EMOTION_PALETTE[ei % EMOTION_PALETTE.length]} opacity={0.88}>
+                <title>{e}: {Math.round((count / total) * 100)}% on {d.day}</title>
+              </rect>
+            );
+          });
+        })}
+
+        {/* X-axis date labels */}
+        {trend.map((d, i) => {
+          if (i % tickEvery !== 0 && i !== n - 1) return null;
+          const label = formatTick(d.day, granularity);
+          return (
+            <text key={i} x={xOf(i) + BAR_W / 2} y={PAD_T - 6}
+              textAnchor="middle"
+              style={{ fontSize: 9, fill: 'var(--ink-3)', fontFamily: 'var(--font-display)' }}>
+              {label}
+            </text>
+          );
+        })}
+
+      </svg>
+    </div>
   );
 };
 
@@ -385,18 +434,23 @@ export const InsightsScreen = () => {
 
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 14, marginBottom: 14 }}>
             {/* Emotion Trend card */}
-            <div className="nm-card">
+            <div className="nm-card" style={{ overflow: 'hidden' }}>
               <div style={{ marginBottom: 14 }}>
                 <div className="nm-eyebrow">Emotion Trend · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
                 <div className="nm-h3" style={{ marginTop: 4 }}>
                   {totalEntries === 0 ? 'Start reflecting to see your trend.' : 'Emotions over time'}
                 </div>
-                <EmotionLineChart trend={visibleTrend} granularity={granularity} />
-                <div style={{ display: 'flex', gap: 14, marginTop: 14, flexWrap: 'wrap' }}>
+                <EmotionMixBars
+                  trend={visibleTrend}
+                  granularity={granularity}
+                  emotions={moods.slice(0, 6).map(m => m.mood)}
+                />
+                <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
                   {moods.slice(0, 6).map((m, mi) => (
-                    <div key={m.mood} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
-                      <span style={{ width: 10, height: 10, background: LINE_COLORS[mi % LINE_COLORS.length], borderRadius: 1 }} />
-                      <span>{m.mood}</span><span className="nm-meta">{m.pct}%</span>
+                    <div key={m.mood} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5 }}>
+                      <span style={{ width: 9, height: 9, background: EMOTION_PALETTE[mi % EMOTION_PALETTE.length], borderRadius: 2, flexShrink: 0 }} />
+                      <span>{m.mood}</span>
+                      <span className="nm-meta">{m.pct}%</span>
                     </div>
                   ))}
                 </div>
@@ -404,18 +458,19 @@ export const InsightsScreen = () => {
             </div>
 
             {/* Growth card */}
-            <div className="nm-card soft">
+            <div className="nm-card soft" style={{ display: 'flex', flexDirection: 'column' }}>
               <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Growth · this window vs prior</div>
-              <G label="Conversations" before={growthPrev?.threads} after={growthCur?.threads} good={(growthCur?.threads ?? 0) >= (growthPrev?.threads ?? 0)} />
-              <G label="Avg intensity" before={growthPrev?.avg_intensity} after={growthCur?.avg_intensity} good={intensityDelta != null && intensityDelta < 0} />
-              <G label="Resolved loops" before={0} after={loopsResolved} good={loopsResolved > 0} last />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <G label="Conversations" before={growthPrev?.threads} after={growthCur?.threads} good={(growthCur?.threads ?? 0) >= (growthPrev?.threads ?? 0)} />
+                <G label="Avg intensity" before={growthPrev?.avg_intensity} after={growthCur?.avg_intensity} good={intensityDelta != null && intensityDelta < 0} />
+                <G label="Resolved loops" before={0} after={loopsResolved} good={loopsResolved > 0} last />
+              </div>
             </div>
           </div>
 
           <div className="nm-card" style={{ marginBottom: 14 }}>
             <div style={{ marginBottom: 14 }}>
               <div className="nm-eyebrow">Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
-              <div className="nm-h3" style={{ marginTop: 4 }}>When each trigger showed up</div>
             </div>
             <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />
           </div>
