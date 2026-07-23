@@ -11,3 +11,6 @@ line_profiler
 requests
 faster-whisper
 tiktoken
+mistralai
+google-genai==2.13.0
+cerebras-cloud-sdk

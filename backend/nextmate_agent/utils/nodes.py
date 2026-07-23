@@ -259,23 +259,24 @@ def manage_thread_summary_node(state: NextMateState, config: RunnableConfig) -> 
 def manage_cross_thread_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
     """Gives a thread ambient awareness of the user's OTHER threads.
 
-    Two steps:
-    1. Idle-sweep: summarize any OTHER threads (never this one) that have
-       gone quiet and have content not yet reflected in their thread_summary.
-       This is what populates thread_summaries for short threads that never
-       trip the token-based mid-conversation trigger -- without this step,
-       cross-thread recall has nothing to surface until a thread happens to
-       be long enough to blow the token budget, which most short chats never
-       do. This thread's own live chat_history is never touched here.
-    2. Pulls active thread summaries (excluding this thread) plus the rolling
-       digest, folding the oldest active summaries into the digest if they
-       exceed the cross-thread token budget.
+    Pulls active thread summaries (excluding this thread) plus the rolling
+    digest, folding the oldest active summaries into the digest if they
+    exceed the cross-thread token budget. Pure read -- no LLM calls -- so
+    this stays cheap and synchronous in the reply path.
+
+    NOTE: this used to ALSO run the idle-sweep (summarize_stale_threads),
+    which fires up to settings.max_stale_threads_per_turn LLM calls to
+    summarize OTHER threads that have gone quiet. That's housekeeping for
+    threads the user isn't currently looking at, not something the current
+    reply needs -- it's been moved out of the reply graph entirely and now
+    runs as a fire-and-forget background task from
+    chat_service.generate_assistant_reply, the same way turn-summary
+    persistence already did. See run_idle_thread_sweep() below and
+    chat_service._sweep_stale_threads_background.
     """
     thread_id = state.get("thread_id", "default")  # composite, for logging only
     thread_uuid = state.get("thread_uuid") or thread_id  # raw UUID, for DB exclusion filter
     user_id = _user_id_from_config(config)
-
-    stale_summarized_count = summarize_stale_threads(user_id, exclude_thread_id=thread_uuid)
 
     context = build_cross_thread_context(user_id, exclude_thread_id=thread_uuid)
 
@@ -284,7 +285,6 @@ def manage_cross_thread_memory_node(state: NextMateState, config: RunnableConfig
         node_name="manage_cross_thread_memory",
         inputs={"user_id": user_id},
         outputs={
-            "stale_threads_summarized": stale_summarized_count,
             "active_thread_summaries_count": len(context["active_thread_summaries"]),
             "digest_present": context["memory_digest"] is not None,
         },
@@ -293,6 +293,16 @@ def manage_cross_thread_memory_node(state: NextMateState, config: RunnableConfig
         "active_thread_summaries": context["active_thread_summaries"],
         "memory_digest": context["memory_digest"],
     }
+
+
+def run_idle_thread_sweep(user_id: int, exclude_thread_id: str) -> int:
+    """Thin wrapper around summarize_stale_threads, called from
+    chat_service.py as a background task (asyncio.create_task, same pattern
+    as _persist_summary_background) -- NOT from inside the reply graph
+    anymore. Kept here rather than importing summarize_stale_threads
+    directly in chat_service.py, so this file stays the single place that
+    knows about thread_summary_service's idle-sweep internals."""
+    return summarize_stale_threads(user_id, exclude_thread_id=exclude_thread_id)
 
 
 def build_memory_context_node(state: NextMateState) -> NextMateState:
@@ -886,15 +896,16 @@ def generate_reply_node(state: NextMateState) -> NextMateState:
 
     memory_context = state.get("memory_context", "No prior memory available yet.")
     recent_history = state.get("chat_history", [])[-16:]
-    if recent_history:
-        history_lines: list[str] = []
-        for msg in recent_history:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            history_lines.append(f"{role}: {content}")
-        history_context = "\n".join(history_lines)
-    else:
-        history_context = "No previous messages in this thread yet."
+
+    # NOTE: recent_history is appended natively into `messages` below (the
+    # correct multi-turn format), so it must NOT also be flattened into a
+    # text block and embedded in `content` via build_chat_user_prompt --
+    # that was sending the same conversation history twice in one call
+    # (once as real turns, once as a "DO NOT REPEAT VERBATIM" text dump),
+    # roughly doubling this node's prompt tokens for no benefit. Passing ""
+    # here cleanly omits that section (build_chat_user_prompt only renders
+    # it when history_context is truthy).
+    history_context = ""
 
     debug_history = [msg.get("content", "") for msg in recent_history[-3:]]
     detected_loops = state.get("detected_loops", "")

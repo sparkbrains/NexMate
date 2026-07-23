@@ -30,16 +30,13 @@ class Settings:
 
 
 def get_settings() -> Settings:
-    api_key = os.getenv("MISTRAL_API_KEY")
+    api_key = os.getenv("GOOGLE_API_KEY")
 
     return Settings(
         llm_api_key=api_key,
         generation_model=os.getenv("GENERATION_MODEL"),
-        # Cheap/fast model for classification, routing, extraction, and summarization
-        # nodes. Kept separate from generation_model so these calls draw from Groq's
-        # independent per-model rate-limit bucket instead of competing with
-        # generate_reply for the same TPM budget.
-        fast_model=os.getenv("FAST_MODEL", "llama-3.1-8b-instant"),
+
+        fast_model=os.getenv("FAST_MODEL"),
         app_referer=os.getenv("APP_REFERER", "http://localhost:8000"),
         app_title=os.getenv("APP_TITLE", "nexmate"),
         summary_store_path=os.getenv("SUMMARY_STORE_PATH", "data/memory/summaries.jsonl"),
