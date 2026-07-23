@@ -138,6 +138,7 @@ export default function App() {
       <TodayScreen
         onNav={(r, params) => {
           if (r === 'chat') {
+            refreshThreads();
             params?.threadId ? openThread(params.threadId, params) : beginReflection();
           } else {
             navigateTo(r);

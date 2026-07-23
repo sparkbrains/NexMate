@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getUser, getMe } from '../../lib/api';
+import { getUser, getMe, changePassword, deleteAccount } from '../../lib/api';
 import { Icon, TopBar } from './Shell';
 
 function capitalize(s) {
@@ -26,6 +26,48 @@ export function ProfilePage({ onLogout }) {
   const [user, setUser] = useState(() => getUser());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
+
+  // change-password modal state
+  const [pwModal, setPwModal] = useState(false);
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [pwErr, setPwErr] = useState(null);
+  const [pwLoading, setPwLoading] = useState(false);
+
+  // delete-account modal state
+  const [delModal, setDelModal] = useState(false);
+  const [delPw, setDelPw] = useState('');
+  const [delErr, setDelErr] = useState(null);
+  const [delLoading, setDelLoading] = useState(false);
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    if (newPw !== confirmPw) { setPwErr('New passwords do not match.'); return; }
+    if (newPw.length < 6) { setPwErr('Password must be at least 6 characters.'); return; }
+    setPwLoading(true); setPwErr(null);
+    try {
+      await changePassword(currentPw, newPw);
+      onLogout && onLogout();
+    } catch (e) {
+      setPwErr(e.message || 'Failed to change password.');
+    } finally {
+      setPwLoading(false);
+    }
+  };
+
+  const handleDeleteAccount = async (e) => {
+    e.preventDefault();
+    setDelLoading(true); setDelErr(null);
+    try {
+      await deleteAccount(delPw);
+      onLogout && onLogout();
+    } catch (e) {
+      setDelErr(e.message || 'Failed to delete account.');
+    } finally {
+      setDelLoading(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -105,35 +147,87 @@ export function ProfilePage({ onLogout }) {
             Account Actions
           </div>
 
-          <div className="nm-card soft" style={{ padding: '20px 24px', marginBottom: 24 }}>
+          <div className="nm-card soft" style={{ padding: '16px 24px', marginBottom: 24, display: 'flex', gap: 10 }}>
             <button
-              className="nm-btn"
-              disabled
-              title="Coming soon"
-              style={{ width: '100%', justifyContent: 'flex-start', marginBottom: 12, padding: '10px 12px', opacity: 0.45, cursor: 'not-allowed' }}
+              onClick={() => { setPwModal(true); setPwErr(null); setCurrentPw(''); setNewPw(''); setConfirmPw(''); }}
+              style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '9px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg,#7c6ff7,#5ba4f5)', color: '#fff', fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600, letterSpacing: '0.01em' }}
             >
-              <Icon name="settings" size={14} /> Change Password
+              <Icon name="settings" size={13} /> Change Password
             </button>
             <button
-              className="nm-btn"
-              disabled
-              title="Coming soon"
-              style={{ width: '100%', justifyContent: 'flex-start', color: 'var(--accent)', padding: '10px 12px', opacity: 0.45, cursor: 'not-allowed' }}
+              onClick={() => { setDelModal(true); setDelErr(null); setDelPw(''); }}
+              style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '9px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', background: '#c0392b', color: '#fff', fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600, letterSpacing: '0.01em' }}
             >
-              <Icon name="trash" size={14} /> Delete Account
+              <Icon name="trash" size={13} /> Delete Account
             </button>
           </div>
 
-          <button
-            className="nm-btn"
-            type="button"
-            onClick={onLogout}
-            style={{ justifyContent: 'center', width: '100%', padding: '10px 12px', marginBottom: 20 }}
-          >
-            <Icon name="close" size={13} /> Sign out
-          </button>
+          {/* Change Password Modal */}
+          {pwModal && (
+            <div onClick={() => setPwModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              <div className="nm-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 380, width: '100%', padding: 24 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, marginBottom: 20 }}>Change Password</div>
+                <form onSubmit={handleChangePassword}>
+                  {[['Current password', currentPw, setCurrentPw], ['New password', newPw, setNewPw], ['Confirm new password', confirmPw, setConfirmPw]].map(([label, val, setter]) => (
+                    <div key={label} style={{ marginBottom: 14 }}>
+                      <div className="nm-tag" style={{ marginBottom: 6 }}>{label}</div>
+                      <input
+                        type="password"
+                        value={val}
+                        onChange={e => setter(e.target.value)}
+                        required
+                        style={{ width: '100%', boxSizing: 'border-box', background: 'var(--surface-2, var(--ink-6))', border: '1px solid var(--rule)', borderRadius: 6, color: 'var(--ink)', fontFamily: 'var(--font-display)', fontSize: 14, padding: '8px 10px', outline: 'none' }}
+                      />
+                    </div>
+                  ))}
+                  {pwErr && <div style={{ color: 'var(--accent)', fontSize: 12, marginBottom: 12 }}>{pwErr}</div>}
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button type="button" className="nm-btn ghost" onClick={() => setPwModal(false)}>Cancel</button>
+                    <button type="submit" className="nm-btn accent" disabled={pwLoading}>{pwLoading ? 'Saving…' : 'Save'}</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
-          <div className="nm-meta" style={{ textAlign: 'center' }}>
+          {/* Delete Account Modal */}
+          {delModal && (
+            <div onClick={() => setDelModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              <div className="nm-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 380, width: '100%', padding: 24 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Delete Account</div>
+                <div className="nm-body" style={{ marginBottom: 20 }}>This permanently deletes your account and all data. Enter your password to confirm.</div>
+                <form onSubmit={handleDeleteAccount}>
+                  <div style={{ marginBottom: 14 }}>
+                    <div className="nm-tag" style={{ marginBottom: 6 }}>Password</div>
+                    <input
+                      type="password"
+                      value={delPw}
+                      onChange={e => setDelPw(e.target.value)}
+                      required
+                      style={{ width: '100%', boxSizing: 'border-box', background: 'var(--surface-2, var(--ink-6))', border: '1px solid var(--rule)', borderRadius: 6, color: 'var(--ink)', fontFamily: 'var(--font-display)', fontSize: 14, padding: '8px 10px', outline: 'none' }}
+                    />
+                  </div>
+                  {delErr && <div style={{ color: 'var(--accent)', fontSize: 12, marginBottom: 12 }}>{delErr}</div>}
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button type="button" className="nm-btn ghost" onClick={() => setDelModal(false)}>Cancel</button>
+                    <button type="submit" className="nm-btn" disabled={delLoading} style={{ color: 'var(--accent)' }}>{delLoading ? 'Deleting…' : 'Delete my account'}</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
+            <button
+              type="button"
+              onClick={onLogout}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '9px 22px', borderRadius: 8, border: 'none', cursor: 'pointer', background: '#7c6ff7', color: '#fff', fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 600, letterSpacing: '0.01em' }}
+            >
+              <Icon name="logout" size={13} /> Sign out
+            </button>
+          </div>
+
+          <div style={{ textAlign: 'center', width: '100%', display: 'block', color: 'var(--ink-3)', fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.7 }}>
             Nextmate keeps 90 days of memory.<br />
             It doesn't provide clinical advice — it reflects.
           </div>

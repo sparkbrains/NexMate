@@ -272,13 +272,6 @@ export function createJournalEntry({ body, mood_emoji = '', mood_label = '', ent
   });
 }
 
-export function updateJournalEntry(id, { body, mood_emoji = '', mood_label = '' }) {
-  return request(`/api/journal/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    body: { body, mood_emoji, mood_label },
-  });
-}
-
 export function deleteJournalEntry(id) {
   return request(`/api/journal/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }

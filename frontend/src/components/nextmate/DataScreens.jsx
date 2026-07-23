@@ -406,8 +406,7 @@ export const InsightsScreen = () => {
             {/* Growth card */}
             <div className="nm-card soft">
               <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Growth · this window vs prior</div>
-              <G label="Threads" before={growthPrev?.threads} after={growthCur?.threads} good={(growthCur?.threads ?? 0) >= (growthPrev?.threads ?? 0)} />
-              <G label="Reflections" before={growthPrev?.entries} after={growthCur?.entries} good={(growthCur?.entries ?? 0) >= (growthPrev?.entries ?? 0)} />
+              <G label="Conversations" before={growthPrev?.threads} after={growthCur?.threads} good={(growthCur?.threads ?? 0) >= (growthPrev?.threads ?? 0)} />
               <G label="Avg intensity" before={growthPrev?.avg_intensity} after={growthCur?.avg_intensity} good={intensityDelta != null && intensityDelta < 0} />
               <G label="Resolved loops" before={0} after={loopsResolved} good={loopsResolved > 0} last />
             </div>

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Icon, TopBar, LoopRing } from './Shell';
-import { getDashboardInsights, getDashboardKpis, answerDailyQuestion, reflectOnLoop } from '../../lib/api';
-import { FileIcon } from '../ui/icons';
+import { Icon, TopBar } from './Shell';
+import { getDashboardInsights, answerDailyQuestion } from '../../lib/api';
 
 const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last, onClick }) => (
   <div onClick={onClick} style={{ padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--rule-soft)', cursor: 'pointer' }} >
@@ -27,34 +26,27 @@ const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last
   </div>
 );
 
-const WeekDots = ({ days }) => {
-  const colorFor = (e) => ({
-    overwhelm: 'var(--accent)', anxious: 'var(--clay)', stressed: 'var(--clay)',
-    negative: 'var(--accent)', very_negative: 'var(--accent)', mixed: 'var(--clay)',
-    tired: 'var(--ink-4)', neutral: 'var(--ink-4)',
-    calm: 'var(--teal)', hopeful: 'var(--teal)', positive: 'var(--teal)', very_positive: 'var(--teal)',
-  }[e] || 'var(--ink-4)');
-  return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
-      {days.map((d, i) => {
-        const v = d.avg_intensity;
-        const e = d.dominant_mood;
-        return (
-          <div key={i} style={{ flex: 1, textAlign: 'center' }}>
-            <div style={{
-              height: v ? 34 + v * 4 : 14,
-              background: v ? colorFor(e) : 'transparent',
-              border: v ? 'none' : '1px dashed',
-              opacity: v ? 0.4 + (v / 10) * 0.6 : 1,
-              borderRadius: 2,
-            }} />
-            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, marginTop: 5 }}>{d.weekday?.[0] || '·'}</div>
-          </div>
-        );
-      })}
-    </div>
-  );
-};
+const RAINBOW = ['#F28C6E','#F2C46E','#6ECFB5','#7C9CF5','#C97FE3','#E36F8C','#6EB5F2'];
+
+const WeekDots = ({ days }) => (
+  <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+    {days.map((d, i) => {
+      const v = d.avg_intensity;
+      return (
+        <div key={i} style={{ flex: 1, textAlign: 'center' }}>
+          <div style={{
+            height: v ? 34 + v * 4 : 14,
+            background: v ? RAINBOW[i % RAINBOW.length] : 'transparent',
+            border: v ? 'none' : '1px dashed var(--rule)',
+            opacity: v ? 0.45 + (v / 10) * 0.55 : 1,
+            borderRadius: 2,
+          }} />
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 9, marginTop: 5 }}>{d.weekday?.[0] || '·'}</div>
+        </div>
+      );
+    })}
+  </div>
+);
 
 const TriggerBar = ({ label, pct, color, last }) => (
   <div style={{ marginBottom: last ? 0 : 8 }}>
@@ -94,11 +86,9 @@ const fmtDelta = (cur, prev) => {
 
 export const TodayScreen = ({ onNav, threads = [], user }) => {
   const [insights, setInsights] = useState(null);
-  const [kpis, setKpis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [answeringQuestion, setAnsweringQuestion] = useState(false);
-  const [reflecting, setReflecting] = useState(false);
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
 
   useEffect(() => {
@@ -108,9 +98,6 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
       .then((data) => { if (!cancelled) { setInsights(data.insights); setError(null); } })
       .catch((e) => { if (!cancelled) setError(e.message || 'Failed to load'); })
       .finally(() => { if (!cancelled) setLoading(false); });
-    getDashboardKpis()
-      .then((data) => { if (!cancelled) setKpis(data.kpis); })
-      .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -150,25 +137,6 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
     });
   };
 
-  const handleReflect = async () => {
-    if (!topLoop) return;
-    setReflecting(true);
-    try {
-      const result = await reflectOnLoop(topLoop.loop_id);
-      if (result?.thread_id && onNav) {
-        onNav('chat', {
-          threadId: result.thread_id,
-          threadTitle: result.title,
-          initialMessage: result.opening_message,
-        });
-      }
-    } catch (e) {
-      setError(e.message || 'Failed to create reflection thread');
-    } finally {
-      setReflecting(false);
-    }
-  };
-
   const now = new Date();
   const dateLabel = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   const userName = user?.email ? user.email.split('@')[0] : 'there';
@@ -180,73 +148,42 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   const prevAvgIntensity = week?.previous_stats?.avg_intensity;
   const intensityDelta = fmtDelta(avgIntensity, prevAvgIntensity);
 
-  const topLoop = insights?.loops?.items?.find((l) => l.state === 'active');
   const topTriggers = (insights?.top_triggers || []).slice(0, 4);
-  const echo = insights?.echo;
   const dailyQuestions = Array.isArray(insights?.daily_question) ? insights.daily_question : [];
   const pendingQuestions = dailyQuestions.filter((q) => q.status === 'pending');
   const currentQuestion = pendingQuestions[currentQuestionIdx] || pendingQuestions[0] || null;
-  const threadSummaries = insights?.thread_summaries || {};
 
-  const recentThreads = threads.slice(0, 5);
+  const QUOTES = [
+    { text: 'The unexamined life is not worth living.', author: 'Socrates' },
+    { text: 'Knowing yourself is the beginning of all wisdom.', author: 'Aristotle' },
+    { text: 'In the middle of difficulty lies opportunity.', author: 'Albert Einstein' },
+    { text: 'What lies behind us and what lies before us are tiny matters compared to what lies within us.', author: 'Ralph Waldo Emerson' },
+    { text: 'You are never too old to set another goal or to dream a new dream.', author: 'C.S. Lewis' },
+    { text: 'The only way out is through.', author: 'Robert Frost' },
+    { text: 'Almost everything will work again if you unplug it for a few minutes — including you.', author: 'Anne Lamott' },
+    { text: 'Vulnerability is the birthplace of innovation, creativity, and change.', author: 'Brené Brown' },
+    { text: 'You do not have to see the whole staircase, just take the first step.', author: 'Martin Luther King Jr.' },
+    { text: 'The present moment always will have been.', author: 'Eckhart Tolle' },
+  ];
+  const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
-  // Hero copy
   const totalEntries = insights?.total_entries ?? 0;
-  let heroLead, heroSub;
-  if (loading) {
-    heroLead = <>Loading your reflections…</>;
-    heroSub = '';
-  } else if (totalEntries === 0) {
-    heroLead = <>Your first reflection<br /><em>is waiting.</em></>;
-    heroSub = 'Nextmate looks for patterns across your entries. Start with one moment from today.';
-  } else if (topLoop) {
-    heroLead = <>You've been circling<br /><em>the same question</em><br />for {topLoop.occurrences} entries.</>;
-    heroSub = 'Nextmate noticed something across your recent entries. Want to sit with it before the day starts?';
-  } else {
-    heroLead = <>{totalEntries} reflection{totalEntries === 1 ? '' : 's'}<br /><em>and counting.</em></>;
-    heroSub = `Avg intensity ${avgIntensity ?? '—'} this week. Keep showing up.`;
-  }
 
   return (
     <div className="nm-main">
-      <TopBar crumb={<><b>Today</b> <span className="sep">/</span> {dateLabel}</>}>
-        <button className="nm-btn ghost" onClick={() => {
-          const q = (window.prompt('Search your threads:') || '').trim().toLowerCase();
-          if (!q) return;
-          const hits = threads.filter((t) =>
-            (t.title || '').toLowerCase().includes(q) || (t.preview || '').toLowerCase().includes(q)
-          );
-          if (!hits.length) { window.alert(`No threads match "${q}".`); return; }
-          window.alert(`${hits.length} match${hits.length === 1 ? '' : 'es'}:\n\n` + hits.map((t) => `• ${t.title || 'Untitled'}`).join('\n'));
-        }}><Icon name="search" size={12} /> Search</button>
-        <button className="nm-btn accent" onClick={() => onNav && onNav('chat')}><Icon name="plus" size={12} /> Begin reflection</button>
-      </TopBar>
+      <TopBar crumb={<><b>Today</b> <span className="sep">/</span> {dateLabel}</>} />
 
       <div className="nm-content">
         <div style={{ maxWidth: 960, margin: '0 auto' }} className="nm-fade-up">
+          {/* Hero */}
           <div style={{ marginBottom: 32 }}>
             <div className="nm-eyebrow" style={{ marginBottom: 14 }}>
               {greeting()}, {userName} · {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </div>
-            <h1 className="nm-h1">{heroLead}</h1>
-            {heroSub && (
-              <p className="nm-lede" style={{ marginTop: 18, maxWidth: 620 }}>{heroSub}</p>
-            )}
-            {kpis && (
-              <div style={{ display: 'flex', gap: 24, marginTop: 20, flexWrap: 'wrap' }}>
-                {[
-                  { label: 'Threads', value: kpis.total_threads ?? 0 },
-                  { label: 'Messages', value: kpis.total_messages ?? 0 },
-                  { label: 'Entries', value: kpis.total_entries ?? 0 },
-                  { label: 'Streak', value: `${kpis.checkin_streak_days ?? 0}d` },
-                ].map(({ label, value }) => (
-                  <div key={label}>
-                    <div className="nm-eyebrow">{label}</div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, letterSpacing: '-0.02em', marginTop: 2 }}>{value}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+            <blockquote style={{ margin: 0, padding: 0, borderLeft: '3px solid var(--accent)', paddingLeft: 18 }}>
+              <p className="nm-h1" style={{ fontStyle: 'italic', marginBottom: 10 }}>"{quote.text}"</p>
+              <footer className="nm-meta" style={{ fontSize: 12 }}>— {quote.author}</footer>
+            </blockquote>
             {error && (
               <p className="nm-meta" style={{ color: 'var(--accent)', marginTop: 12 }}>
                 Couldn't load insights: {error}
@@ -254,95 +191,36 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
             )}
           </div>
 
-          {topLoop && (
-            <div className="nm-card loop-alert nm-fade-up" style={{ marginBottom: 24, padding: '26px 30px' }}>
-              <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-                <LoopRing strength={topLoop.strength} size={96} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                    <span className="nm-chip accent"><span className="nm-dot" />Active loop</span>
-                    <span className="nm-tag">strength {topLoop.strength.toFixed(2)} · {topLoop.occurrences} occurrences</span>
-                  </div>
-                  <h2 className="nm-h2" style={{ marginBottom: 10, fontStyle: 'italic', fontWeight: 400 }}>
-                    "{topLoop.core_belief || topLoop.name}"
-                  </h2>
-                  {topLoop.trigger && (
-                    <p className="nm-body" style={{ margin: 0, maxWidth: 560 }}>
-                      Surfaces around <b>{topLoop.trigger}</b>{topLoop.valence ? <> with <b>{topLoop.valence}</b> valence</> : null}.
-                    </p>
-                  )}
-                  <div style={{ display: 'flex', gap: 6, marginTop: 16 }}>
-                    <button className="nm-btn accent" onClick={handleReflect} disabled={reflecting}>
-                      {reflecting ? 'Reflecting...' : 'Reflect on this'} <Icon name="arrow" size={12} />
-                    </button>
-                    <button className="nm-btn" onClick={() => onNav && onNav('loops')}>See all {topLoop.occurrences} occurrences</button>
-                    <button className="nm-btn ghost">Not today</button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.25fr 1fr', gap: 16, marginBottom: 16 }}>
+          {/* Row 1: This week (left) + Triggers (right) */}
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
             <div className="nm-card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
-                <div className="nm-h3">Recent threads</div>
-                <div className="nm-meta">{recentThreads.length ? `last ${recentThreads.length} · open one to continue` : 'no threads yet'}</div>
-              </div>
-              {recentThreads.length === 0 && (
-                <div className="nm-no-data">
-                  <div className="nm-no-data-icon"><FileIcon size={40} /></div>
-                  Start your first reflection to see it here.
-                </div>
-              )}
-              {recentThreads.map((t, i) => {
-                const summary = threadSummaries[t.thread_id] || {};
-                return (
-                  <ThreadRow
-                    key={t.thread_id}
-                    title={t.title || 'New thread'}
-                    preview={t.preview || ''}
-                    date={formatDateShort(t.updated_at)}
-                    msgs={t.message_count ?? 0}
-                    intensity={summary.avg_intensity ?? null}
-                    positive={!!summary.positive}
-                    last={i === recentThreads.length - 1}
-                    onClick={() => onNav && onNav('chat', { threadId: t.thread_id })}
-                  />
-                );
-              })}
-            </div>
-
-            <div className="nm-card ink">
               <div className="nm-eyebrow" style={{ marginBottom: 16 }}>This week · so far</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 54, lineHeight: 1, letterSpacing: '-0.03em' }}>{daysWithEntries}</div>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--ink)' }}>of 7</div>
               </div>
-              <div className="nm-body" style={{ color: 'var(--ink)', marginBottom: 20 }}>days with reflections</div>
+              <div className="nm-body" style={{ marginBottom: 20 }}>days with reflections</div>
               <WeekDots days={weekDays} />
-              <div className="nm-hr" style={{ background: 'rgba(255,255,255,0.08)', margin: '20px 0 14px' }} />
+              <div className="nm-hr" style={{ margin: '20px 0 14px' }} />
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                 <div>
-                  <div className="nm-tag" style={{ color: 'var(--ink)' }}>Avg intensity</div>
+                  <div className="nm-tag">Avg intensity</div>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 24 }}>
                     {avgIntensity ?? '—'}
                     {intensityDelta && (
-                      <span className="nm-meta" style={{ color: 'var(--ink)', marginLeft: 6 }}>{intensityDelta}</span>
+                      <span className="nm-meta" style={{ marginLeft: 6 }}>{intensityDelta}</span>
                     )}
                   </div>
                 </div>
                 <div>
-                  <div className="nm-tag" style={{ color: 'var(--ink)' }}>Streak</div>
+                  <div className="nm-tag">Streak</div>
                   <div className="nm-days-body" style={{ fontFamily: 'var(--font-display)' }}>
-                    {insights?.checkin_streak_days ?? 0}<span className="nm-meta" style={{ color: 'var(--ink)', marginLeft: 6 }}>days</span>
+                    {insights?.checkin_streak_days ?? 0}<span className="nm-meta" style={{ marginLeft: 6 }}>days</span>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
             <div className="nm-card">
               <div className="nm-meta" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
               {topTriggers.length === 0 && (
@@ -358,19 +236,10 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
                 />
               ))}
             </div>
-            <div className="nm-card">
-              <div className="nm-meta" style={{ marginBottom: 10 }}><Icon name="sparkle" size={10} /> {echo ? `Echo from ${echo.age_days} days ago` : 'Echo'}</div>
-              {echo ? (
-                <>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, lineHeight: 1.45, fontStyle: 'italic', color: 'var(--ink)', letterSpacing: '-0.005em' }}>
-                    "{echo.text}"
-                  </div>
-                  <div className="nm-meta-data" style={{ marginTop: 12 }}>— you, {formatDateShort(echo.date)}</div>
-                </>
-              ) : (
-                <div className="nm-meta-data">Echoes appear after ~60 days of reflections.</div>
-              )}
-            </div>
+          </div>
+
+          {/* Row 2: Today's question (full width) */}
+          <div className="nm-stagger">
             <div className="nm-card">
               <div className="nm-meta" style={{ marginBottom: 10 }}>Today's question</div>
               {dailyQuestions.length === 0 ? (
