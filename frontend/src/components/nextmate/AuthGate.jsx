@@ -64,6 +64,8 @@ export function AuthGate({ onAuth }) {
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [age, setAge] = useState('');
   const [otp, setOtp] = useState(Array(OTP_LENGTH).fill(''));
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -95,6 +97,17 @@ export function AuthGate({ onAuth }) {
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
+    if (isSignup) {
+      if (!name.trim()) {
+        setErr('Tell us what to call you.');
+        return;
+      }
+      const ageNum = Number(age);
+      if (!age || !Number.isInteger(ageNum) || ageNum < 13 || ageNum > 120) {
+        setErr('Enter an age between 13 and 120.');
+        return;
+      }
+    }
     setBusy(true); setErr(null);
     try {
       if (isLogin) {
@@ -105,7 +118,7 @@ export function AuthGate({ onAuth }) {
         // Backend stores the pending signup (email + hashed password +
         // name/age) keyed to the OTP, and only creates the user once
         // it's verified.
-        await signupRequestOtp(email.trim(), password);
+        await signupRequestOtp(email.trim(), password, name.trim(), Number(age));
         setCooldown(RESEND_COOLDOWN);
         setMode('otp');
       }
@@ -185,6 +198,10 @@ export function AuthGate({ onAuth }) {
   const toggle = () => {
     setErr(null);
     setNotice(null);
+    if (!isLogin) {
+      setName('');
+      setAge('');
+    }
     setMode(isLogin ? 'signup' : 'login');
   };
 
@@ -286,7 +303,7 @@ export function AuthGate({ onAuth }) {
       <section className="nm-auth-hero">
         <header className="nm-auth-mast nm-reveal" data-d="1">
           <BrandMark />
-          <div className="nm-brand-name">Nex<em>Mate</em></div>
+          <div className="nm-brand-name">next<em>mate</em></div>
         </header>
 
         <div>
@@ -400,6 +417,42 @@ export function AuthGate({ onAuth }) {
               />
               <span className="nm-field-mark" />
             </div>
+
+            {isSignup && (
+              <div style={{ display: 'flex', gap: 16 }}>
+                <div className="nm-field" style={{ flex: 2 }}>
+                  <label htmlFor="nm-name" className="nm-field-label">Name</label>
+                  <input
+                    id="nm-name"
+                    className="nm-field-input"
+                    type="text"
+                    autoComplete="name"
+                    placeholder="what should we call you"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                  <span className="nm-field-mark" />
+                </div>
+
+                <div className="nm-field" style={{ flex: 1 }}>
+                  <label htmlFor="nm-age" className="nm-field-label">Age</label>
+                  <input
+                    id="nm-age"
+                    className="nm-field-input"
+                    type="number"
+                    inputMode="numeric"
+                    min={13}
+                    max={120}
+                    placeholder="24"
+                    value={age}
+                    onChange={(e) => setAge(e.target.value)}
+                    required
+                  />
+                  <span className="nm-field-mark" />
+                </div>
+              </div>
+            )}
 
             <div className="nm-field">
               <label htmlFor="nm-pass" className="nm-field-label">

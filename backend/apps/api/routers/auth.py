@@ -6,9 +6,11 @@ from apps.api.deps.auth import get_current_user
 from apps.api.services.auth_service import (
     User,
     authenticate_user,
+    change_password,
     create_session,
     create_user,
     delete_session,
+    delete_user,
     request_password_reset_otp,
     request_signup_otp,
     resend_password_reset_otp,
@@ -27,6 +29,9 @@ def _user_payload(user: User) -> dict[str, Any]:
         "id": user.id,
         "email": user.email,
         "created_at": user.created_at,
+        "name": user.name,
+        "age": user.age,
+        "subscription_tier": user.subscription_tier,
     }
 
 
@@ -34,8 +39,13 @@ def _user_payload(user: User) -> dict[str, Any]:
 def signup(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     email = str(payload.get("email", "")).strip()
     password = str(payload.get("password", ""))
+    name = str(payload.get("name", "")).strip()
     try:
-        user = create_user(email=email, password=password)
+        age = int(payload.get("age"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Age is required")
+    try:
+        user = create_user(email=email, password=password, name=name, age=age)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -47,8 +57,13 @@ def signup(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 def signup_request_otp(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     email = str(payload.get("email", "")).strip()
     password = str(payload.get("password", ""))
+    name = str(payload.get("name", "")).strip()
     try:
-        request_signup_otp(email=email, password=password)
+        age = int(payload.get("age"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Age is required")
+    try:
+        request_signup_otp(email=email, password=password, name=name, age=age)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"message": "Code sent"}
@@ -147,3 +162,32 @@ def password_reset_reset(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"message": "Password updated"}
+
+
+# --- logged-in profile actions ------------------------------------------
+
+@router.post("/change-password")
+def change_password_route(
+    payload: dict[str, Any] = Body(...),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    current_password = str(payload.get("current_password", ""))
+    new_password = str(payload.get("new_password", ""))
+    try:
+        change_password(user_id=current_user.id, current_password=current_password, new_password=new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"message": "Password updated"}
+
+
+@router.delete("/account")
+def delete_account(
+    payload: dict[str, Any] = Body(...),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    password = str(payload.get("password", ""))
+    try:
+        delete_user(user_id=current_user.id, password=password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"message": "Account deleted"}
