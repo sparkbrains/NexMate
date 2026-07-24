@@ -64,6 +64,9 @@ export function AuthGate({ onAuth }) {
   const [mode, setMode] = useState('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [age, setAge] = useState('');
+  const [plan, setPlan] = useState('Bronze');
   const [otp, setOtp] = useState(Array(OTP_LENGTH).fill(''));
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -105,7 +108,7 @@ export function AuthGate({ onAuth }) {
         // Backend stores the pending signup (email + hashed password +
         // name/age) keyed to the OTP, and only creates the user once
         // it's verified.
-        await signupRequestOtp(email.trim(), password);
+        await signupRequestOtp(email.trim(), password, name.trim(), age ? parseInt(age, 10) : null, plan);
         setCooldown(RESEND_COOLDOWN);
         setMode('otp');
       }
@@ -385,6 +388,37 @@ export function AuthGate({ onAuth }) {
 
             {isLogin && notice && <div className="nm-auth-notice">{notice}</div>}
 
+            {isSignup && (
+              <>
+                <div className="nm-field">
+                  <label htmlFor="nm-name" className="nm-field-label">Name</label>
+                  <input
+                    id="nm-name"
+                    className="nm-field-input"
+                    type="text"
+                    placeholder="what should we call you"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                  <span className="nm-field-mark" />
+                </div>
+                <div className="nm-field">
+                  <label htmlFor="nm-age" className="nm-field-label">Age</label>
+                  <input
+                    id="nm-age"
+                    className="nm-field-input"
+                    type="number"
+                    placeholder="your age"
+                    value={age}
+                    onChange={(e) => setAge(e.target.value)}
+                    required
+                  />
+                  <span className="nm-field-mark" />
+                </div>
+              </>
+            )}
+
             <div className="nm-field">
               <label htmlFor="nm-email" className="nm-field-label">Email</label>
               <input
@@ -418,6 +452,21 @@ export function AuthGate({ onAuth }) {
               />
               <span className="nm-field-mark" />
             </div>
+
+            {isSignup && (
+              <div className="nm-field">
+                <label htmlFor="nm-plan" className="nm-field-label">Plan</label>
+                <input
+                  id="nm-plan"
+                  className="nm-field-input"
+                  type="text"
+                  value="Paid"
+                  readOnly
+                  style={{ color: 'var(--ink-3)' }}
+                />
+                <span className="nm-field-mark" />
+              </div>
+            )}
 
             {isLogin && (
               <button

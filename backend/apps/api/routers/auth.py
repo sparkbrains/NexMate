@@ -16,6 +16,8 @@ from apps.api.services.auth_service import (
     reset_password,
     verify_password_reset_otp,
     verify_signup_otp,
+    change_password,
+    delete_account,
 )
 
 
@@ -27,6 +29,9 @@ def _user_payload(user: User) -> dict[str, Any]:
         "id": user.id,
         "email": user.email,
         "created_at": user.created_at,
+        "name": user.name,
+        "age": user.age,
+        "subscription_tier": user.subscription_tier,
     }
 
 
@@ -47,8 +52,18 @@ def signup(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 def signup_request_otp(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     email = str(payload.get("email", "")).strip()
     password = str(payload.get("password", ""))
+    name = payload.get("name")
+    name = str(name).strip() if name else None
+    age = payload.get("age")
     try:
-        request_signup_otp(email=email, password=password)
+        age = int(age) if age is not None else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Age must be an integer")
+    plan = payload.get("plan") or payload.get("subscription_tier")
+    plan = str(plan).strip() if plan else None
+
+    try:
+        request_signup_otp(email=email, password=password, name=name, age=age, subscription_tier=plan)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"message": "Code sent"}
@@ -147,3 +162,24 @@ def password_reset_reset(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"message": "Password updated"}
+
+
+@router.post("/change-password")
+def api_change_password(current_user: User = Depends(get_current_user), payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    current_password = str(payload.get("current_password", ""))
+    new_password = str(payload.get("new_password", ""))
+    try:
+        change_password(user_id=current_user.id, current_password=current_password, new_password=new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"message": "Password changed"}
+
+
+@router.delete("/account")
+def api_delete_account(current_user: User = Depends(get_current_user), payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    password = str(payload.get("password", ""))
+    try:
+        delete_account(user_id=current_user.id, password=password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"message": "Account deleted"}

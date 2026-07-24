@@ -1,4 +1,5 @@
 import { useContext, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { AppContext } from '../../context';
 import LogoIco from '../../assets/ic_logo.svg';
 
@@ -50,7 +51,7 @@ export const BrandMark = () => (
 // deletion, journal entry deletion, etc). Renders nothing when closed.
 export const ConfirmDialog = ({ open, title, body, confirmLabel = 'Delete', cancelLabel = 'Cancel', onConfirm, onCancel }) => {
   if (!open) return null;
-  return (
+  return createPortal(
     <div
       onClick={onCancel}
       style={{
@@ -82,7 +83,8 @@ export const ConfirmDialog = ({ open, title, body, confirmLabel = 'Delete', canc
           <button className="nm-btn accent" onClick={onConfirm}>{confirmLabel}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
