@@ -157,12 +157,18 @@ export const ChatScreen = ({
   const [voiceRecording, setVoiceRecording] = useState(null);
   const [currentVoiceLog, setCurrentVoiceLog] = useState(null);
   const [transcribing, setTranscribing] = useState(false);
-  const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(false);
+  const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(() => {
+    const saved = window.localStorage.getItem('nm_voice_enabled');
+    return saved !== null ? saved === 'true' : true;
+  });
+  useEffect(() => {
+    window.localStorage.setItem('nm_voice_enabled', voiceOutputEnabled);
+  }, [voiceOutputEnabled]);
+
   const [voiceGender, setVoiceGender] = useState('female'); // 'female' | 'male' | 'custom'
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
   const [showSidePanel, setShowSidePanel] = useState(true);
-
   const recognitionRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
