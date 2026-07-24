@@ -610,7 +610,7 @@ def change_password(user_id: int, current_password: str, new_password: str) -> N
             row = cur.fetchone()
             if not row:
                 raise ValueError("Account not found")
-            
+
             if not _verify_password(current_password, str(row["password_hash"])):
                 raise ValueError("Current password is incorrect")
 

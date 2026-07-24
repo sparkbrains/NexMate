@@ -60,6 +60,9 @@ def init_postgres() -> None:
                     id BIGSERIAL PRIMARY KEY,
                     email TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
+                    name TEXT,
+                    age INTEGER,
+                    subscription_tier TEXT DEFAULT 'Bronze',
                     created_at TIMESTAMPTZ NOT NULL
                 )
                 """
@@ -240,25 +243,12 @@ def init_postgres() -> None:
                 ON loops(user_id, thread_id)
                 """
             )
-            # Add loop_id and last_reflected_at columns if they don't exist (for existing installations)
+            # Add columns for existing installations
             cur.execute(
                 """
                 ALTER TABLE threads
-                ADD COLUMN IF NOT EXISTS loop_id UUID
-                """
-            )
-            cur.execute(
-                """
-                ALTER TABLE threads
-                ADD COLUMN IF NOT EXISTS last_reflected_at TIMESTAMPTZ
-                """
-            )
-            # Add daily_question_id column if it doesn't exist (for existing
-            # installations) — tags a thread as having been created to
-            # answer a specific daily question, independent of its title.
-            cur.execute(
-                """
-                ALTER TABLE threads
+                ADD COLUMN IF NOT EXISTS loop_id UUID,
+                ADD COLUMN IF NOT EXISTS last_reflected_at TIMESTAMPTZ,
                 ADD COLUMN IF NOT EXISTS daily_question_id BIGINT
                 """
             )
@@ -269,6 +259,9 @@ def init_postgres() -> None:
         email TEXT PRIMARY KEY,
         password_hash TEXT NOT NULL,
         otp_hash TEXT NOT NULL,
+        name TEXT,
+        age INTEGER,
+        subscription_tier TEXT DEFAULT 'Bronze',
         attempts INT NOT NULL DEFAULT 0,
         expires_at TIMESTAMPTZ NOT NULL,
         last_sent_at TIMESTAMPTZ NOT NULL,

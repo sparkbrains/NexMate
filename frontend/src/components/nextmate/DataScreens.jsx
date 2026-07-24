@@ -188,13 +188,11 @@ const fmtDelta = (cur, prev) => {
   return +(cur - prev).toFixed(1);
 };
 
-const G = ({ label, before, after, good, last }) => (
+const G = ({ label, after, good, last }) => (
   <div style={{ display: 'flex', alignItems: 'center', padding: '10px 0', borderBottom: last ? 'none' : '1px dashed var(--rule)', gap: 8 }}>
     <div style={{ flex: 1, fontSize: 13 }}>{label}</div>
-    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>{before ?? '—'}</div>
-    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>→</div>
     <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: good ? 'var(--teal)' : 'var(--ink)' }}>{after ?? '—'}</div>
-    {after != null && before != null && (
+    {after != null && (
       <span style={{ fontSize: 13, color: good ? 'var(--teal)' : 'var(--accent)' }}>{good ? '↑' : '↓'}</span>
     )}
   </div>
@@ -271,12 +269,12 @@ const EmotionMixBars = ({ trend, granularity, emotions }) => {
 
       {/* Scrollable bars */}
       <div style={{ overflowX: 'auto', flex: 1 }}>
-        <svg width={svgW - YAXIS_W} height={svgH} style={{ display: 'block' }}>
+        <svg width={svgW - YAXIS_W} height={svgH} style={{ display: 'block', minWidth: '100%' }}>
           {/* Gridlines */}
           {[0, 0.25, 0.5, 0.75, 1].map(v => {
             const y = PAD_T + CHART_H - v * CHART_H;
             return (
-              <line key={v} x1={0} y1={y} x2={svgW - YAXIS_W} y2={y}
+              <line key={v} x1={0} y1={y} x2="100%" y2={y}
                 stroke="var(--rule)" strokeWidth={v === 0 || v === 1 ? 1 : 0.5}
                 strokeDasharray={v === 0 || v === 1 ? 'none' : '3 3'} />
             );
@@ -356,7 +354,10 @@ export const InsightsScreen = () => {
   // Slice emotion_trend to the granularity window
   const visibleTrend = useMemo(() => {
     const window = GRANULARITY_WINDOW[granularity] ?? 30;
-    return sliceLast(insights?.emotion_trend, window);
+    const sliced = sliceLast(insights?.emotion_trend, window);
+    const firstDataIdx = sliced.findIndex(d => d.count > 0);
+    if (firstDataIdx === -1) return sliced;
+    return sliced.slice(firstDataIdx);
   }, [insights, granularity]);
 
   // Slice each trigger row's intensity cells to the granularity window
@@ -393,7 +394,11 @@ export const InsightsScreen = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <select
             value={granularity}
-            onChange={(e) => setGranularity(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setGranularity(val);
+              setRangeKey(val === 'week' ? '7d' : '30d');
+            }}
             style={{
               background: 'var(--surface-2, var(--ink-6))',
               border: '1px solid var(--rule)',
@@ -406,7 +411,6 @@ export const InsightsScreen = () => {
               outline: 'none',
             }}
           >
-            <option value="day">Day</option>
             <option value="week">Week</option>
             <option value="month">Month</option>
           </select>
@@ -417,9 +421,6 @@ export const InsightsScreen = () => {
         <div style={{ maxWidth: 1080, margin: '0 auto' }} className="nm-fade-up">
           <header className="nm-hero">
             <div>
-              <div className="nm-eyebrow" style={{ marginBottom: 12 }}>
-                Last {days} days · {threadCount} thread{threadCount === 1 ? '' : 's'} · {totalEntries} reflection{totalEntries === 1 ? '' : 's'}
-              </div>
               <h1 className="nm-h1">
                 {totalEntries === 0 ? <>A blank window —<br /><em>begin reflecting</em>.</> : <>The shape of your <em>{days <= 7 ? 'week' : days <= 30 ? 'month' : 'season'}</em>.</>}
               </h1>
@@ -465,11 +466,11 @@ export const InsightsScreen = () => {
 
             {/* Growth card */}
             <div className="nm-card soft" style={{ display: 'flex', flexDirection: 'column' }}>
-              <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Growth · this window vs prior</div>
+              <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Growth</div>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <G label="Conversations" before={growthPrev?.threads} after={growthCur?.threads} good={(growthCur?.threads ?? 0) >= (growthPrev?.threads ?? 0)} />
-                <G label="Avg intensity" before={growthPrev?.avg_intensity} after={growthCur?.avg_intensity} good={intensityDelta != null && intensityDelta < 0} />
-                <G label="Resolved loops" before={0} after={loopsResolved} good={loopsResolved > 0} last />
+                <G label="Conversations" before={null} after={growthCur?.threads} good={(growthCur?.threads ?? 0) >= (growthPrev?.threads ?? 0)} />
+                <G label="Emotion intensity" before={null} after={growthCur?.avg_intensity} good={intensityDelta != null && intensityDelta < 0} />
+                <G label="Resolved loops" before={null} after={loopsResolved} good={loopsResolved > 0} last />
               </div>
             </div>
           </div>

@@ -85,10 +85,10 @@ export async function signup(email, password, name, age) {
 // Step 1 of OTP signup: request a code be emailed to the address. No
 // account exists yet — the backend holds a pending signup (including
 // name/age) until it's verified.
-export async function signupRequestOtp(email, password) {
+export async function signupRequestOtp(email, password, name, age, plan) {
   return request('/api/auth/signup/request-otp', {
     method: 'POST',
-    body: { email, password },
+    body: { email, password, name, age, plan },
     auth: false,
   });
 }

@@ -74,16 +74,17 @@ def delete_book(user_id: int, book_id: int) -> bool:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE journal_logs SET book_id = NULL WHERE user_id = %s AND book_id = %s",
+                "DELETE FROM journal_logs WHERE user_id = %s AND book_id = %s",
                 (user_id, book_id),
             )
             cur.execute(
                 "DELETE FROM journal_books WHERE user_id = %s AND id = %s",
                 (user_id, book_id),
             )
-            ok = cur.rowcount > 0
-        conn.commit()
-    return ok
+            deleted = cur.rowcount > 0
+        if deleted:
+            conn.commit()
+        return deleted
 
 
 def compute_streak(user_id: int) -> dict[str, Any]:

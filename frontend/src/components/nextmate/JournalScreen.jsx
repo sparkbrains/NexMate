@@ -83,15 +83,15 @@ const Entry = ({ entry, onDelete, onUpdate }) => {
               ref={editRef}
               contentEditable
               suppressContentEditableWarning
-              onInput={(e) => setEditBody(e.currentTarget.innerText)}
-              dangerouslySetInnerHTML={{ __html: editBody }}
-              style={{ fontSize: 13, marginBottom: 8, border: '1px solid var(--rule)', borderRadius: 4, padding: '8px 10px', minHeight: 80, outline: 'none', fontFamily: 'var(--font-serif)' }}
+              onInput={(e) => setEditBody(e.currentTarget.innerHTML)}
+              dangerouslySetInnerHTML={{ __html: entry.body }}
+              style={{ fontSize: 13, marginBottom: 8, border: '1px solid var(--rule)', borderRadius: 4, padding: '8px 10px', minHeight: 80, outline: 'none', fontFamily: 'var(--font-serif)', background: 'var(--surface-2)' }}
             />
             <div style={{ display: 'flex', gap: 6 }}>
               <button className="nm-btn primary" style={{ fontSize: 11 }} onClick={handleSaveEdit} disabled={saving || !editBody.trim()}>
                 {saving ? 'Saving…' : 'Save'}
               </button>
-              <button className="nm-btn ghost" style={{ fontSize: 11 }} onClick={() => setEditing(false)}>Cancel</button>
+              <button className="nm-btn ghost" style={{ fontSize: 11 }} onClick={() => { setEditing(false); setEditBody(entry.body); }}>Cancel</button>
             </div>
           </div>
         ) : (
@@ -124,8 +124,8 @@ const BookRow = ({ book, active, onClick, onDelete }) => {
       className={'nm-book-row' + (active ? ' active' : '')}
       onClick={onClick}
     >
-      <div className="nm-book-spine" style={{ background: book.color || 'var(--accent)' }} />
-      <div className="nm-book-meta">
+      <div style={{ width: 14, height: 14, borderRadius: '50%', background: book.color || 'var(--accent)', marginLeft: 16, flexShrink: 0 }} />
+      <div className="nm-book-meta" style={{ paddingLeft: 12 }}>
         <div className="nm-book-title">{book.name}</div>
         <div className="nm-book-count">
           {book.entry_count || 0} {book.entry_count === 1 ? 'entry' : 'entries'}
@@ -174,27 +174,89 @@ const dayKindLabel = (iso) => {
 const StreakBlock = ({ streak }) => {
   if (!streak) return null;
   const lit = streak.current > 0;
-  let sub;
-  if (streak.current === 0) sub = 'A clean start. Write today to begin.';
-  else if (streak.wrote_today) sub = `${streak.current === 1 ? 'One day' : `${streak.current} days`} kept. Best: ${streak.longest}.`;
-  else sub = `${streak.current} day${streak.current === 1 ? '' : 's'} so far — write today to keep it.`;
 
   return (
-    <div className={'nm-streak' + (lit ? ' lit' : '')}>
-      <div className="nm-streak-row">
-        <span className="nm-streak-flame">{lit ? '🔥' : '·'}</span>
-        <span className="nm-streak-num">{streak.current}</span>
-        <span className="nm-streak-unit">day{streak.current === 1 ? '' : 's'}<br/>streak</span>
+    <div className="nm-streak-duo" style={{ background: '#6C5CE7', color: 'white', padding: '14px 16px', borderRadius: 16, marginBottom: 20, textAlign: 'center', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)' }}>
+      <div style={{ textTransform: 'uppercase', fontSize: 10, fontWeight: 'bold', letterSpacing: '0.1em', opacity: 0.9, marginBottom: 6 }}>
+        Streak Society
       </div>
-      <div className="nm-streak-sub">{sub}</div>
-      {streak.last_7 && (
-        <div className="nm-streak-pips" title="last 7 days">
-          {streak.last_7.map((d) => (
-            <div
-              key={d.date}
-              className={'nm-streak-pip' + (d.has_entry ? ' on' : '') + (d.is_today ? ' today' : '')}
-              title={d.date + (d.has_entry ? ' · kept' : '')}
-            />
+      <div style={{ fontSize: 44, fontWeight: 900, lineHeight: 1, marginBottom: 2, letterSpacing: '-0.02em', textShadow: '1px 1px 0 rgba(0,0,0,0.1)' }}>
+        {streak.current}
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 'bold', opacity: 0.9, marginBottom: 16 }}>
+        day streak!
+      </div>
+      
+      <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 10px', color: 'var(--ink)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+          {streak.last_7.map((d) => {
+            const dateObj = new Date(d.date);
+            const dayName = dateObj.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2);
+            return (
+              <div key={`head-${d.date}`} style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 'bold', color: 'var(--ink-3)' }}>
+                {dayName}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', position: 'relative', height: 36, alignItems: 'center' }}>
+          {/* Background bar for streak */}
+          <div style={{ position: 'absolute', left: '6%', right: '6%', height: 36, background: 'var(--surface-2)', borderRadius: 18, zIndex: 0 }} />
+          
+          {streak.last_7.map((d) => {
+            const isLit = d.has_entry;
+            const isToday = d.is_today;
+            
+            return (
+              <div key={`pip-${d.date}`} style={{ flex: 1, display: 'flex', justifyContent: 'center', zIndex: 1 }}>
+                <div style={{ 
+                  width: 32, 
+                  height: 32, 
+                  borderRadius: 16, 
+                  background: isLit ? 'var(--gold)' : 'transparent',
+                  color: isLit ? 'white' : 'var(--ink-2)',
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  boxShadow: isLit ? '0 2px 6px rgba(242,196,110,0.5)' : 'none',
+                  fontSize: isToday && isLit ? 16 : 14
+                }}>
+                  {isToday && isLit ? '🔥' : (isLit ? '✓' : '')}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const DayAccordion = ({ k, items, isFirst, handleDeleteEntry, handleUpdateEntry }) => {
+  const [open, setOpen] = useState(isFirst);
+  return (
+    <div className="nm-day-block" style={{ border: '1px solid var(--rule-soft)', borderRadius: 8, padding: '12px 16px', marginBottom: 16, background: 'var(--surface)' }}>
+      <div 
+        className="nm-day-head" 
+        style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: 0 }} 
+        onClick={() => setOpen(!open)}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="nm-day-num">{k.day}</div>
+          <div className="nm-day-text">
+            <span className="nm-day-label">{k.label}</span>
+            <span className="nm-day-sub">{k.sub}</span>
+          </div>
+        </div>
+        <div style={{ color: 'var(--ink-3)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.05em' }}>
+          {open ? '▼ HIDE' : '▶ VIEW'}
+        </div>
+      </div>
+      {open && (
+        <div style={{ paddingTop: 16, borderTop: '1px solid var(--rule-soft)', marginTop: 16 }}>
+          {items.map((e) => (
+            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} onUpdate={handleUpdateEntry} />
           ))}
         </div>
       )}
@@ -473,7 +535,6 @@ export const JournalScreen = ({ user }) => {
                 {/* Compose */}
                 <div className="nm-compose">
                   {/* Date */}
-                  <div className="nm-compose-step">Date</div>
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 22 }}>
                     <input
                       type="date"
@@ -505,7 +566,6 @@ export const JournalScreen = ({ user }) => {
                   </div>
 
                   {/* Rich text editor */}
-                  <div className="nm-compose-step">The page</div>
                   <div style={{
                     border: '1px solid var(--rule)',
                     borderRadius: 6,
@@ -636,7 +696,7 @@ export const JournalScreen = ({ user }) => {
                       {saving ? 'Keeping…' : `Keep in ${activeBook.name}`}
                     </button>
                     <span className="nm-meta">
-                      {body.length > 0 ? `${body.length} chars` : 'one sentence is enough'}
+                      {body.length > 0 ? `${body.length} chars` : ''}
                     </span>
                   </div>
 
@@ -660,21 +720,17 @@ export const JournalScreen = ({ user }) => {
                       <div className="nm-meta">{entries.length} kept</div>
                     </div>
 
-                    {entriesByDate.map(([date, items]) => {
+                    {entriesByDate.map(([date, items], i) => {
                       const k = dayKindLabel(date);
                       return (
-                        <div key={date} className="nm-day-block">
-                          <div className="nm-day-head">
-                            <div className="nm-day-num">{k.day}</div>
-                            <div className="nm-day-text">
-                              <span className="nm-day-label">{k.label}</span>
-                              <span className="nm-day-sub">{k.sub}</span>
-                            </div>
-                          </div>
-                          {items.map((e) => (
-                            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} onUpdate={handleUpdateEntry} />
-                          ))}
-                        </div>
+                        <DayAccordion 
+                          key={date}
+                          k={k}
+                          items={items}
+                          isFirst={i === 0}
+                          handleDeleteEntry={handleDeleteEntry}
+                          handleUpdateEntry={handleUpdateEntry}
+                        />
                       );
                     })}
                   </>

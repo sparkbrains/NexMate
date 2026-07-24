@@ -39,6 +39,10 @@ def _checkin_streak(entries: list[dict[str, Any]]) -> int:
 
     streak = 0
     cursor = datetime.now(timezone.utc).date()
+    
+    if cursor not in dates and (cursor - timedelta(days=1)) in dates:
+        cursor = cursor - timedelta(days=1)
+
     while cursor in dates:
         streak += 1
         cursor = cursor - timedelta(days=1)
