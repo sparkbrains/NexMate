@@ -14,7 +14,9 @@ from apps.api.routers.dashboard import router as dashboard_router
 from apps.api.routers.http import router as http_router
 from apps.api.routers.journal import router as journal_router
 from apps.api.routers.loops import router as loops_router
+from apps.api.routers.prompt_pack import router as prompt_pack_router
 from apps.api.routers.ws import router as ws_router
+from apps.api.routers.profile import router as profile_router
 from apps.api.services.auth_service import init_auth_db, seed_dummy_users_from_env
 app = FastAPI(title="NextMate Web")
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
@@ -29,11 +31,13 @@ app.add_middleware(
 app.include_router(http_router)
 app.include_router(auth_router)
 app.include_router(dashboard_router)
+app.include_router(prompt_pack_router)
 app.include_router(loops_router)
 app.include_router(journal_router)
 app.include_router(ws_router)
+app.include_router(profile_router)
 @app.on_event("startup")
-def startup() -> None:
+async def startup() -> None:
     init_auth_db()
     seed_result = seed_dummy_users_from_env()
     logger.info(
@@ -43,6 +47,19 @@ def startup() -> None:
         seed_result["seeded"],
         seed_result["skipped"],
     )
+    # Pre-warm user profile summaries for all users with answers
+    import asyncio
+    from apps.api.services.user_profile_service import get_or_refresh_user_profile
+    from apps.db import get_connection
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT user_id FROM prompt_pack_answers
+            """)
+            rows = cur.fetchall()
+            user_ids = [r["user_id"] for r in rows]
+    for uid in user_ids:
+        asyncio.create_task(get_or_refresh_user_profile(uid))
 
 
 if __name__ == "__main__":

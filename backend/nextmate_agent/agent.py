@@ -8,7 +8,6 @@ from nextmate_agent.utils.config import get_settings
 from nextmate_agent.utils.nodes import (
     build_memory_context_node,
     choose_response_mode_node,
-    detect_explicit_advice_node,
     detect_loops_node,
     generate_reply_node,
     load_memory_node,
@@ -73,7 +72,6 @@ def _build_graph(checkpointer: PostgresSaver | None):
     builder.add_node("manage_cross_thread_memory", manage_cross_thread_memory_node)
     builder.add_node("build_memory_context", build_memory_context_node)
     builder.add_node("detect_loops", detect_loops_node)
-    builder.add_node("detect_explicit_advice", detect_explicit_advice_node)
     builder.add_node("choose_response_mode", choose_response_mode_node)
     builder.add_node("generate_reply", generate_reply_node)
     builder.add_node("summarize_turn", summarize_turn_node)
@@ -86,10 +84,9 @@ def _build_graph(checkpointer: PostgresSaver | None):
     builder.add_conditional_edges(
         "build_memory_context",
         _should_detect_loops,
-        {"detect_loops": "detect_loops", "choose_response_mode": "detect_explicit_advice"},
+        {"detect_loops": "detect_loops", "choose_response_mode": "choose_response_mode"},
     )
-    builder.add_edge("detect_loops", "detect_explicit_advice")
-    builder.add_edge("detect_explicit_advice", "choose_response_mode")
+    builder.add_edge("detect_loops", "choose_response_mode")
     builder.add_edge("choose_response_mode", "generate_reply")
     builder.add_edge("generate_reply", "summarize_turn")
     builder.add_edge("summarize_turn", "persist_summary")
@@ -104,7 +101,6 @@ def _build_reply_graph(checkpointer: PostgresSaver):
     builder.add_node("manage_cross_thread_memory", manage_cross_thread_memory_node)
     builder.add_node("build_memory_context", build_memory_context_node)
     builder.add_node("detect_loops", detect_loops_node)
-    builder.add_node("detect_explicit_advice", detect_explicit_advice_node)
     builder.add_node("choose_response_mode", choose_response_mode_node)
     builder.add_node("generate_reply", generate_reply_node)
 
@@ -115,10 +111,9 @@ def _build_reply_graph(checkpointer: PostgresSaver):
     builder.add_conditional_edges(
         "build_memory_context",
         _should_detect_loops,
-        {"detect_loops": "detect_loops", "choose_response_mode": "detect_explicit_advice"},
+        {"detect_loops": "detect_loops", "choose_response_mode": "choose_response_mode"},
     )
-    builder.add_edge("detect_loops", "detect_explicit_advice")
-    builder.add_edge("detect_explicit_advice", "choose_response_mode")
+    builder.add_edge("detect_loops", "choose_response_mode")
     builder.add_edge("choose_response_mode", "generate_reply")
     builder.add_edge("generate_reply", END)
     return builder.compile(checkpointer=checkpointer)

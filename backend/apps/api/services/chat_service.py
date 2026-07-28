@@ -5,7 +5,7 @@ from typing import Any
 from nextmate_agent.agent import checkpoint_thread_id, get_reply_graph, get_summary_graph
 from nextmate_agent.utils.nodes import run_idle_thread_sweep
 # from nextmate_agent.guardrails import screen_user_input, GuardrailViolation
-
+from apps.api.services.user_profile_service import get_user_profile_text
 logger = logging.getLogger(__name__)
 
 
@@ -41,13 +41,16 @@ async def generate_assistant_reply(user_id: int, thread_id: str, user_message: s
 
     try:
         internal_thread_id = checkpoint_thread_id(user_id, thread_id)
+        user_profile = await get_user_profile_text(user_id)
+
         payload = await asyncio.to_thread(
             get_reply_graph().invoke,
-            {"user_input": user_message, "thread_id": thread_id},
+            {"user_input": user_message, "thread_id": thread_id, "user_profile": user_profile},
             {"configurable": {"thread_id": internal_thread_id, "user_id": user_id}},
         )
         assistant_reply = str(payload.get("assistant_reply", "")).strip()
 
+        reopened_loop_ids = payload.get("reopened_loop_ids", [])
         # Fired unconditionally, regardless of the toxicity outcome below --
         # this matches where manage_cross_thread_memory used to sit in the
         # graph (before detect_explicit_advice ran), so a toxic-blocked
@@ -67,6 +70,7 @@ async def generate_assistant_reply(user_id: int, thread_id: str, user_message: s
                     thread_id=thread_id,
                     user_message=user_message,
                     assistant_reply=assistant_reply,
+                    reopened_loop_ids=reopened_loop_ids,
                 )
             )
             return assistant_reply, {}
@@ -118,7 +122,13 @@ async def _sweep_stale_threads_background(user_id: int, thread_id: str) -> None:
         # as summary persistence failures below.
 
 
-async def _persist_summary_background(user_id: int, thread_id: str, user_message: str, assistant_reply: str) -> None:
+async def _persist_summary_background(
+    user_id: int,
+    thread_id: str,
+    user_message: str,
+    assistant_reply: str,
+    reopened_loop_ids: list[str] | None = None,
+) -> None:
     try:
         internal_thread_id = checkpoint_thread_id(user_id, thread_id)
         await asyncio.to_thread(
@@ -127,6 +137,7 @@ async def _persist_summary_background(user_id: int, thread_id: str, user_message
                 "user_input": user_message,
                 "assistant_reply": assistant_reply,
                 "thread_id": thread_id,
+                "reopened_loop_ids": reopened_loop_ids or [],
             },
             {"configurable": {"thread_id": internal_thread_id, "user_id": user_id}},
         )

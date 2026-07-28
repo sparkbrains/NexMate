@@ -364,9 +364,6 @@ def get_thread_messages(user_id: int, thread_id: str) -> list[dict[str, str]]:
         }
         for row in rows
     ]
-    print(f"get_thread_messages returning {len(messages)} messages for thread {thread_id}")
-    for msg in messages:
-        print(f"  - role: {msg['role']}, content: {msg['content'][:50]}...")
     return messages
 
 

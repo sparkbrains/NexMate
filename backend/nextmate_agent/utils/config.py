@@ -25,6 +25,8 @@ class Settings:
     digest_token_target: int
     detect_loops_cross_thread_prompt_limit: int
     detect_loops_max_prompt_tokens: int
+    detect_loops_confidence_threshold: float
+    detect_loops_min_cross_thread_count: int
     idle_thread_summary_minutes: int
     max_stale_threads_per_turn: int
 
@@ -69,7 +71,9 @@ def get_settings() -> Settings:
         # current-thread + user_input). Sized so, combined with
         # detect_explicit_advice + choose_response_mode + summarize_turn in the
         # same turn, total stays under Instant's 6,000 TPM free-tier cap.
-        detect_loops_max_prompt_tokens=int(os.getenv("DETECT_LOOPS_MAX_PROMPT_TOKENS", "2200")),
+        detect_loops_max_prompt_tokens=int(os.getenv("DETECT_LOOPS_MAX_PROMPT_TOKENS")),
+        detect_loops_confidence_threshold=float(os.getenv("DETECT_LOOPS_CONFIDENCE_THRESHOLD")),
+        detect_loops_min_cross_thread_count=int(os.getenv("DETECT_LOOPS_MIN_CROSS_THREAD_COUNT")),
         # IDLE-SWEEP settings: how long a thread must be quiet before it's
         # eligible for opportunistic summarization (runs on every turn for
         # OTHER threads, never the active one -- see manage_cross_thread_memory_node).

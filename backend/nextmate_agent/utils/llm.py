@@ -232,30 +232,24 @@ class _GeminiClient:
         self.chat = _GeminiChatNamespace(self._genai_client)
 
 
-def _get_gemini_chat_model() -> tuple[_GeminiClient, str]:
+def _get_gemini_chat_model(model_env_var: str = "GENERATION_MODEL") -> tuple[_GeminiClient, str]:
     """Builds a fresh Gemini client every call -- no caching, so changes to
-    GEMINI_API_KEY/GOOGLE_API_KEY/GENERATION_MODEL take effect on the very
-    next call. Uses Google's "-latest" alias by default rather than a
-    pinned version string, since Google retires dated model IDs on short
-    notice; override via GENERATION_MODEL if you want a specific pinned
-    version instead."""
-    model_name = os.getenv("GENERATION_MODEL") or "gemini-flash-latest"
+    GEMINI_API_KEY/GOOGLE_API_KEY/GENERATION_MODEL/FAST_MODEL take effect on the very
+    next call."""
+    model_name = os.getenv(model_env_var) or os.getenv("GENERATION_MODEL") or "gemini-flash-latest"
     api_key = _resolve_gemini_api_key()
     client = _GeminiClient(api_key=api_key)
     return client, model_name
 
 
 def get_chat_model():
-    """Return a (client, model_name) tuple for Gemini. Always reads current
-    environment/.env values and builds a fresh client -- nothing is cached
-    across calls."""
-    return _get_gemini_chat_model()
+    """Return a (client, model_name) tuple for Gemini using GENERATION_MODEL."""
+    return _get_gemini_chat_model("GENERATION_MODEL")
 
 
 def get_fast_chat_model():
-    """Return the same client/model as get_chat_model for unified usage
-    (unchanged architecture -- both fast and regular paths share one model)."""
-    return get_chat_model()
+    """Return a (client, model_name) tuple for Gemini using FAST_MODEL (falling back to GENERATION_MODEL)."""
+    return _get_gemini_chat_model("FAST_MODEL")
 
 
 import re as _re
