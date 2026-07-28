@@ -509,7 +509,13 @@ export const ChatScreen = ({
   }, []);
 
   useEffect(() => {
-    if (!streaming) refreshLoops();
+    if (!streaming) {
+      refreshLoops();
+      const t1 = setTimeout(refreshLoops, 3000);
+      const t2 = setTimeout(refreshLoops, 8000);
+      const t3 = setTimeout(refreshLoops, 15000);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    }
   }, [streaming]);
 
   const activeLoops = loops.filter((l) => l.state === 'active');

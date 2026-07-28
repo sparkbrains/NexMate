@@ -108,7 +108,7 @@ const fmtWhen = (iso) => {
 
 export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onNewThread, onDeleteThread, user, onLogout }) => {
   const { sidebarOpen, setSidebarOpen } = useContext(AppContext);
-  const [threadTab, setThreadTab] = useState('regular');
+  const [openSections, setOpenSections] = useState({ regular: true, reflecting: false, daily: false });
   const [pendingDeleteThread, setPendingDeleteThread] = useState(null);
 
   const isReflecting = (t) => Boolean(t.loop_id) || /^Reflecting on:/i.test(t.title || '');
@@ -118,10 +118,69 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
   const reflectingThreads = threads.filter(t => !isDailyQuestion(t) && isReflecting(t));
   const regularThreads = threads.filter(t => !isDailyQuestion(t) && !isReflecting(t));
 
-  const activeThreads =
-    threadTab === 'reflecting' ? reflectingThreads :
-    threadTab === 'daily' ? dailyThreads :
-    regularThreads;
+  const toggleSection = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const renderThreadList = (items, tab) => (
+    <div className="nm-threads">
+      {items.length === 0 && (
+        <div style={{ padding: '6px 12px 10px', fontSize: 11.5, color: 'var(--ink-4)', fontWeight: 400, fontFamily: 'var(--font-sans)' }}>
+          {tab === 'reflecting' ? 'No reflections yet.' : tab === 'daily' ? 'No answered daily questions yet.' : 'No threads yet.'}
+        </div>
+      )}
+      {items.map(t => {
+        const isActive = t.thread_id === activeThreadId && active === 'chat';
+        return (
+          <div
+            key={t.thread_id}
+            className={"nm-thread" + (isActive ? " active" : "")}
+            style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            <div
+              style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+              onClick={() => { onSelectThread && onSelectThread(t.thread_id); setSidebarOpen(false); }}
+            >
+              <div className="nm-thread-title">
+                {tab === 'reflecting' ? (t.title || 'Untitled').replace(/^Reflecting on:\s*/, '') : (t.title || 'Untitled')}
+              </div>
+              <div className="nm-thread-meta">{fmtWhen(t.updated_at)}</div>
+            </div>
+            {onDeleteThread && (
+              <button
+                className="nm-btn ghost"
+                style={{ padding: 3, flexShrink: 0, opacity: 0.5 }}
+                title="Delete thread"
+                onClick={(e) => { e.stopPropagation(); setPendingDeleteThread(t); }}
+              >
+                <Icon name="trash" size={11} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const SectionHeader = ({ label, sectionKey, count }) => (
+    <button
+      onClick={() => toggleSection(sectionKey)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+        background: 'none', border: 'none', cursor: 'pointer',
+        padding: '6px 4px', color: 'var(--accent-2)',
+        fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 600,
+        letterSpacing: '0.06em', textTransform: 'uppercase',
+      }}
+    >
+      <span style={{
+        display: 'inline-block',
+        transition: 'transform 0.2s',
+        transform: openSections[sectionKey] ? 'rotate(90deg)' : 'rotate(0deg)',
+        fontSize: 10,
+      }}>▶</span>
+      {label}
+      {count > 0 && <span className="nm-nav-count" style={{ marginLeft: 'auto', color: 'var(--accent-2)' }}>{count}</span>}
+    </button>
+  );
 
   return (
     <>
@@ -149,52 +208,14 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
 
         <div className="nm-nav-section" style={{ marginTop: 12 }}>Conversations</div>
 
-        <div className="nm-thread-tabs">
-          <button className={"nm-thread-tab" + (threadTab === 'regular' ? " active" : "")} onClick={() => setThreadTab('regular')}>
-            Threads
-            {regularThreads.length > 0 && <span className="nm-nav-count">{regularThreads.length}</span>}
-          </button>
-          <button className={"nm-thread-tab" + (threadTab === 'reflecting' ? " active" : "")} onClick={() => setThreadTab('reflecting')}>
-            Reflecting on
-            {reflectingThreads.length > 0 && <span className="nm-nav-count">{reflectingThreads.length}</span>}
-          </button>
-          <button className={"nm-thread-tab" + (threadTab === 'daily' ? " active" : "")} onClick={() => setThreadTab('daily')}>
-            Daily Questions
-            {dailyThreads.length > 0 && <span className="nm-nav-count">{dailyThreads.length}</span>}
-          </button>
-        </div>
+        <SectionHeader label="Daily Conversation" sectionKey="regular" count={regularThreads.length} />
+        {openSections.regular && renderThreadList(regularThreads, 'regular')}
 
-        <div className="nm-threads">
-          {activeThreads.length === 0 && (
-            <div className="nm-meta" style={{ padding: '8px 12px' }}>
-              {threadTab === 'reflecting' ? 'No reflections yet.' : threadTab === 'daily' ? 'No answered daily questions yet.' : 'No threads yet.'}
-            </div>
-          )}
-          {activeThreads.map(t => {
-            const isActive = t.thread_id === activeThreadId && active === 'chat';
-            return (
-              <div
-                key={t.thread_id}
-                className={"nm-thread" + (isActive ? " active" : "")}
-                onClick={() => { onSelectThread && onSelectThread(t.thread_id); setSidebarOpen(false); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="nm-thread-title">
-                    {threadTab === 'reflecting' ? (t.title || 'Untitled').replace(/^Reflecting on:\s*/, '') : (t.title || 'Untitled')}
-                  </div>
-                  <div className="nm-thread-meta">{fmtWhen(t.updated_at)}</div>
-                </div>
-                {onDeleteThread && (
-                  <button className="nm-btn ghost" title="Delete thread" style={{ padding: 4, flexShrink: 0 }}
-                    onClick={(e) => { e.stopPropagation(); setPendingDeleteThread(t); }}>
-                    <Icon name="trash" size={11} />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <SectionHeader label="Reflection" sectionKey="reflecting" count={reflectingThreads.length} />
+        {openSections.reflecting && renderThreadList(reflectingThreads, 'reflecting')}
+
+        <SectionHeader label="Daily Questions" sectionKey="daily" count={dailyThreads.length} />
+        {openSections.daily && renderThreadList(dailyThreads, 'daily')}
 
         <div
           className={"nm-side-footer" + (active === 'profile' ? " active" : "")}

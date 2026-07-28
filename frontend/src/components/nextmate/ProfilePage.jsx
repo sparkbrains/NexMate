@@ -78,15 +78,9 @@ export function ProfilePage({ onLogout }) {
         const data = await getMe();
         if (!cancelled) setUser(data.user);
         const summaryData = await getUserProfileSummary();
-        if (!cancelled) {
-          setSummary(summaryData.summary);
-          setSummaryLoading(false);
-        }
+        if (!cancelled) { setSummary(summaryData.summary); setSummaryLoading(false); }
       } catch {
-        if (!cancelled) {
-          setErr("Couldn't refresh your details — showing what we last had.");
-          setSummaryLoading(false);
-        }
+        if (!cancelled) { setErr("Couldn't refresh your details — showing what we last had."); setSummaryLoading(false); }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -152,7 +146,7 @@ export function ProfilePage({ onLogout }) {
               {err}
             </p>
           )}
-          {/* User Profile Summary */}
+
           <div className="nm-eyebrow" style={{ marginBottom: 14 }}>Your Summary</div>
           <div className="nm-card soft" style={{ padding: '12px 24px', marginBottom: 24 }}>
             {summaryLoading ? 'Loading...' : (summary || 'Answer a few daily prompts and your summary will appear here.')}

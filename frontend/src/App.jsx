@@ -6,7 +6,8 @@ import { ChatScreen } from './components/nextmate/ChatScreen';
 import { LoopsScreen } from './components/nextmate/LoopsScreen';
 import { InsightsScreen } from './components/nextmate/DataScreens';
 import { JournalScreen } from './components/nextmate/JournalScreen';
-import { AuthGate } from './components/nextmate/AuthGate';
+import PricingScreen from './components/nextmate/PricingScreen';
+import { LandingPage } from './components/nextmate/LandingPage';
 import { ProfilePage } from './components/nextmate/ProfilePage';
 import { clearSession, deleteThread as deleteThreadApi, getMe, getToken, getUser, listThreads, logout as apiLogout } from './lib/api';
 import { AppContext } from './context';
@@ -101,7 +102,16 @@ export default function App() {
     navigateTo('today');
   };
 
-  if (!user) return <AuthGate onAuth={setUser} />;
+  if (!user) {
+    if (window.location.pathname === '/pricing') {
+      return (
+        <div style={{ minHeight: '100vh', background: 'var(--surface)' }}>
+          <PricingScreen isLanding={true} />
+        </div>
+      );
+    }
+    return <LandingPage onAuth={setUser} />;
+  }
 
   const activeThread = threads.find((t) => t.thread_id === threadId);
 

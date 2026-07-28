@@ -9,7 +9,7 @@ import {
   resendPasswordResetOtp,
   resetPassword,
 } from '../../lib/api';
-import { BrandMark } from './Shell';
+import LogoIco from '../../assets/ic_logo.svg';
 
 const QUOTES = [
   "The thought you keep circling is trying to tell you something.",
@@ -59,13 +59,13 @@ const ENTRY_NO = {
   reset: '006',
 };
 
-export function AuthGate({ onAuth }) {
+export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onBack }) {
   // mode: 'login' | 'signup' | 'otp' | 'forgot' | 'forgot-otp' | 'reset'
-  const [mode, setMode] = useState('login');
+  const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
-  const [age, setAge] = useState('');
+  const [dob, setDob] = useState('');
   const [otp, setOtp] = useState(Array(OTP_LENGTH).fill(''));
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -102,9 +102,8 @@ export function AuthGate({ onAuth }) {
         setErr('Tell us what to call you.');
         return;
       }
-      const ageNum = Number(age);
-      if (!age || !Number.isInteger(ageNum) || ageNum < 13 || ageNum > 120) {
-        setErr('Enter an age between 13 and 120.');
+      if (!dob) {
+        setErr('Enter your date of birth.');
         return;
       }
     }
@@ -118,7 +117,14 @@ export function AuthGate({ onAuth }) {
         // Backend stores the pending signup (email + hashed password +
         // name/age) keyed to the OTP, and only creates the user once
         // it's verified.
-        await signupRequestOtp(email.trim(), password, name.trim(), Number(age));
+        // Calculate age from dob
+        const dobDate = new Date(dob);
+        let age = new Date().getFullYear() - dobDate.getFullYear();
+        const m = new Date().getMonth() - dobDate.getMonth();
+        if (m < 0 || (m === 0 && new Date().getDate() < dobDate.getDate())) {
+          age--;
+        }
+        await signupRequestOtp(email.trim(), password, name.trim(), age, dob);
         setCooldown(RESEND_COOLDOWN);
         setMode('otp');
       }
@@ -200,7 +206,7 @@ export function AuthGate({ onAuth }) {
     setNotice(null);
     if (!isLogin) {
       setName('');
-      setAge('');
+      setDob('');
     }
     setMode(isLogin ? 'signup' : 'login');
   };
@@ -301,9 +307,32 @@ export function AuthGate({ onAuth }) {
     <div className="nm-auth">
       {/* LEFT — editorial hero */}
       <section className="nm-auth-hero">
-        <header className="nm-auth-mast nm-reveal" data-d="1">
-          <BrandMark />
-          <div className="nm-brand-name">next<em>mate</em></div>
+        <header className="nm-auth-mast nm-reveal" data-d="1" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: onScrollToPricing ? 20 : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {onBack && (
+              <button 
+                type="button"
+                onClick={onBack} 
+                style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', transition: 'color 0.2s', padding: 0 }}
+                onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; }}
+              >
+                ← Back
+              </button>
+            )}
+            <img src={LogoIco} alt="Nextmate" height="30" className="nm-logo" />
+          </div>
+          {onScrollToPricing && (
+            <button 
+              type="button"
+              onClick={onScrollToPricing} 
+              style={{ background: 'var(--surface-0)', color: 'var(--ink)', border: '1px solid var(--rule)', padding: '6px 14px', borderRadius: 20, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, transition: 'all 0.2s' }}
+              onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--ink-4)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = 'var(--surface-0)'; e.currentTarget.style.borderColor = 'var(--rule)'; }}
+            >
+              Pricing
+            </button>
+          )}
         </header>
 
         <div>
@@ -397,7 +426,7 @@ export function AuthGate({ onAuth }) {
         {(isLogin || isSignup) && (
           <form onSubmit={submit} className="nm-auth-form nm-reveal" data-d="3" noValidate>
             <h2 className="nm-auth-title">
-              {isLogin ? <>Sign <em>in.</em></> : <>Make <em>room.</em></>}
+              {isLogin ? <>Sign <em>in.</em></> : <>Make <em>a space.</em></>}
             </h2>
 
             {isLogin && notice && <div className="nm-auth-notice">{notice}</div>}
@@ -436,17 +465,13 @@ export function AuthGate({ onAuth }) {
                 </div>
 
                 <div className="nm-field" style={{ flex: 1 }}>
-                  <label htmlFor="nm-age" className="nm-field-label">Age</label>
+                  <label htmlFor="nm-dob" className="nm-field-label">DOB</label>
                   <input
-                    id="nm-age"
+                    id="nm-dob"
                     className="nm-field-input"
-                    type="number"
-                    inputMode="numeric"
-                    min={13}
-                    max={120}
-                    placeholder="24"
-                    value={age}
-                    onChange={(e) => setAge(e.target.value)}
+                    type="date"
+                    value={dob}
+                    onChange={(e) => setDob(e.target.value)}
                     required
                   />
                   <span className="nm-field-mark" />

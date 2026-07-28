@@ -391,7 +391,8 @@ def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateS
     stored_loops = state.get("stored_loops", [])
     user_profile = state.get("user_profile", "")
 
-    if len(entries) < 2:
+    cross_threads = state.get("active_thread_summaries", [])
+    if len(entries) < 2 and len(cross_threads) < 2 and not stored_loops:
         log_node(
             thread_id=thread_id,
             node_name="detect_loops",

@@ -20,9 +20,11 @@ from nextmate_agent.utils.state import NextMateState
 
 
 def _should_detect_loops(state: NextMateState) -> str:
-    """Route to detect_loops only when there are enough memory entries."""
+    """Route to detect_loops when there are enough memory entries or seeded loops."""
     entries = state.get("memory_entries", [])
-    if len(entries) >= 2:
+    cross_threads = state.get("active_thread_summaries", [])
+    stored_loops = state.get("stored_loops", [])
+    if len(entries) >= 2 or len(cross_threads) >= 2 or stored_loops:
         return "detect_loops"
     return "choose_response_mode"
 

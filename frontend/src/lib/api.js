@@ -49,11 +49,6 @@ async function request(path, { method = 'GET', body, auth = true, signal } = {})
     method,
     headers,
     signal,
-    // Always hit the network -- without this, repeated GETs to the same
-    // URL (e.g. re-opening a loop, revisiting Loops/Insights) can get
-    // served from the browser's HTTP cache instead of refetching, so UI
-    // updates after a backend-side change (e.g. a loop being reopened)
-    // don't show up until a hard reload.
     cache: 'no-store',
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
@@ -229,13 +224,27 @@ export function getDashboardKpis() {
 }
 
 export function getDashboardInsights(days = 30) {
-    return request(`/api/dashboard/insights?days=${encodeURIComponent(days)}`);
+  return request(`/api/dashboard/insights?days=${encodeURIComponent(days)}`);
 }
 
 export function getUserProfileSummary() {
   return request('/api/profile/summary');
 }
 
+export function getTodaysPrompt({ signal } = {}) {
+  return request('/api/dashboard/prompt-pack/today', { signal });
+}
+
+export function answerPrompt(promptId, answerText) {
+  return request(`/api/dashboard/prompt-pack/${encodeURIComponent(promptId)}/answer`, {
+    method: 'POST',
+    body: { answer_text: answerText },
+  });
+}
+
+export function getPromptHistory() {
+  return request('/api/dashboard/prompt-pack/history');
+}
 
 export function listLoops() {
   return request('/api/loops');
@@ -313,36 +322,12 @@ export function chatSocketUrl(threadId) {
   return `${wsBase}/ws/chat/${encodeURIComponent(threadId)}?token=${token}`;
 }
 
-// --- prompt pack ------------------------------------------------------
-//
-// One prompt from the pack is shown per calendar day (same rotation for
-// everyone). getTodaysPrompt() tells the caller which prompt it is and
-// whether the user already answered it today.
-
-export function getTodaysPrompt({ signal } = {}) {
-  return request('/api/dashboard/prompt-pack/today', { signal });
-}
-
-export function answerPrompt(promptId, answerText) {
-  return request(`/api/dashboard/prompt-pack/${encodeURIComponent(promptId)}/answer`, {
-    method: 'POST',
-    body: { answer_text: answerText },
-  });
-}
-
-export function getPromptHistory() {
-  return request('/api/dashboard/prompt-pack/history');
-}
-
-// Daily question API functions
 export async function answerDailyQuestion(questionId) {
-  // Answers a daily question by creating a new thread and marking it answered
   return request(`/api/dashboard/daily-question/${encodeURIComponent(questionId)}/answer`, {
     method: 'POST',
   });
 }
 
 export async function getDailyQuestionContext(questionId) {
-  // Retrieves context (source thread, etc.) for a specific daily question
   return request(`/api/dashboard/daily-question/${encodeURIComponent(questionId)}/context`);
 }

@@ -36,6 +36,9 @@
   --loop-medium: #a78bfa;
   --loop-light:  #dbeafe;
 
+  --indigo:      #4f46e5;
+  --indigo-soft: #eef2ff;
+
   --font-serif:   "Source Serif 4", "Source Serif Pro", Georgia, serif;
   --font-sans:    "Inter", -apple-system, sans-serif;
   --font-display: "Source Serif 4", Georgia, serif;
@@ -82,6 +85,9 @@
   --loop-strong: #a78bfa;
   --loop-medium: #818cf8;
   --loop-light:  rgba(167, 139, 250, 0.15);
+
+  --indigo:      #818cf8;
+  --indigo-soft: rgba(129, 140, 248, 0.15);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
   --shadow:    0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);

@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
 import { getDashboardInsights } from '../../lib/api';
+import {
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  ComposedChart, Bar, Line, Legend
+} from 'recharts';
 
 const MOOD_COLORS = {
   overwhelm: 'var(--accent)', stressed: 'var(--accent)', negative: 'var(--accent)', very_negative: 'var(--accent)',
@@ -159,9 +164,16 @@ const TriggerHeat = ({ heatmap, granularity }) => {
   );
 };
 
-const LoopSummary = ({ loops }) => {
-  if (!loops || loops.length === 0) {
-    return <div className="nm-meta" style={{ padding: 16 }}>No loops detected yet. They surface after recurring patterns appear in your reflections.</div>;
+const LoopSummary = ({ loops }) => {  if (!loops || loops.length === 0) {
+    return (
+      <div style={{ padding: 20, textAlign: 'center', background: 'rgba(78, 205, 196, 0.05)', borderRadius: 8, border: '1px dashed var(--teal)' }}>
+        <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
+        <div style={{ color: 'var(--teal)', fontWeight: 600, fontSize: 13, marginBottom: 4 }}>No Patterns Yet</div>
+        <div className="nm-meta" style={{ fontSize: 12, lineHeight: 1.5 }}>
+          Keep journaling! We need more data to detect your recurring emotional loops and behavioral patterns.
+        </div>
+      </div>
+    );
   }
   return (
     <div>
@@ -217,18 +229,18 @@ const ValenceIntensityLineChart = ({ data }) => {
 };
 
 const EMOTION_PALETTE = [
-  '#7C9CF5', '#F28C6E', '#6ECFB5', '#C97FE3',
-  '#F2C46E', '#E36F8C', '#6EB5F2', '#A8E36F',
-  '#F5C07C', '#8CE3D4',
+  '#FF6B6B', // vibrant red
+  '#4ECDC4', // vibrant teal
+  '#45B7D1', // bright blue
+  '#FDCB6E', // warm yellow
+  '#6C5CE7', // vibrant purple
+  '#FD79A8', // bright pink
+  '#00B894', // strong green
+  '#E17055', // orange
+  '#0984E3', // deep vibrant blue
+  '#D63031', // crimson
 ];
 
-/*
-  EmotionMixBars
-  What it shows: how your emotional mix shifted day by day.
-  Each bar = one day. Segments = each emotion's share of that day's total.
-  Empty days render as a faint outline — honest, no fake data.
-  Scrollable for any date range.
-*/
 const EmotionMixBars = ({ trend, granularity, emotions }) => {
   const n = trend?.length || 0;
   if (!n) return <div className="nm-meta" style={{ padding: 30 }}>No emotion data yet.</div>;
@@ -250,7 +262,6 @@ const EmotionMixBars = ({ trend, granularity, emotions }) => {
 
   return (
     <div style={{ marginTop: 8, height: 220, border: '1px solid var(--rule)', borderRadius: 4, display: 'flex' }}>
-      {/* Fixed Y-axis */}
       <svg width={YAXIS_W} height={svgH} style={{ flexShrink: 0, display: 'block' }}>
         {[0, 0.25, 0.5, 0.75, 1].map(v => {
           const y = PAD_T + CHART_H - v * CHART_H;
@@ -266,11 +277,8 @@ const EmotionMixBars = ({ trend, granularity, emotions }) => {
           EMOTION SHARE
         </text>
       </svg>
-
-      {/* Scrollable bars */}
       <div style={{ overflowX: 'auto', flex: 1 }}>
         <svg width={svgW - YAXIS_W} height={svgH} style={{ display: 'block', minWidth: '100%' }}>
-          {/* Gridlines */}
           {[0, 0.25, 0.5, 0.75, 1].map(v => {
             const y = PAD_T + CHART_H - v * CHART_H;
             return (
@@ -279,8 +287,6 @@ const EmotionMixBars = ({ trend, granularity, emotions }) => {
                 strokeDasharray={v === 0 || v === 1 ? 'none' : '3 3'} />
             );
           })}
-
-          {/* Bars */}
           {trend.map((d, i) => {
             const total = Object.values(d.moods || {}).reduce((a, b) => a + b, 0);
             const x = i * (BAR_W + GAP);
@@ -304,8 +310,6 @@ const EmotionMixBars = ({ trend, granularity, emotions }) => {
               );
             });
           })}
-
-          {/* X-axis date labels */}
           {trend.map((d, i) => {
             if (i % tickEvery !== 0 && i !== n - 1) return null;
             const x = i * (BAR_W + GAP);
@@ -318,6 +322,104 @@ const EmotionMixBars = ({ trend, granularity, emotions }) => {
             );
           })}
         </svg>
+      </div>
+    </div>
+  );
+};
+
+const EmotionalSpectrum = ({ moods }) => {
+  if (!moods || moods.length === 0) return <div className="nm-meta" style={{ padding: 30 }}>Not enough mood data yet.</div>;
+  
+  // Format data for Radar Chart
+  const data = moods.slice(0, 6).map(m => ({
+    subject: m.mood.charAt(0).toUpperCase() + m.mood.slice(1),
+    A: m.pct,
+    fullMark: 100,
+  }));
+
+  return (
+    <div style={{ height: 260, width: '100%', marginTop: 8 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data}>
+          <PolarGrid stroke="var(--rule-soft)" />
+          <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--ink-2)', fontSize: 11, fontFamily: 'var(--font-display)' }} />
+          <PolarRadiusAxis angle={30} domain={[0, 'dataMax']} tick={false} axisLine={false} />
+          <Radar name="Mood" dataKey="A" stroke="var(--teal)" fill="var(--teal)" fillOpacity={0.4} />
+          <Tooltip 
+            contentStyle={{ background: 'var(--surface-0)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+            itemStyle={{ color: 'var(--teal)' }}
+          />
+        </RadarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+const EmotionalBandwidth = ({ distribution }) => {
+  if (!distribution || distribution.length === 0) return <div className="nm-meta" style={{ padding: 30 }}>No intensity data yet.</div>;
+
+  return (
+    <div style={{ height: 200, width: '100%', marginTop: 13 }}>
+      <div style={{ overflow: 'auto', height: '100%' }}>
+        <div style={{ minWidth: 500, minHeight: 220, height: '100%' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={distribution} margin={{ top: 17, right: 10, left: 45, bottom: 25 }}>
+              <defs>
+                <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="var(--accent)" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="intensity" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Intensity (1-10)', position: 'insideBottom', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <YAxis tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Frequency (Days)', angle: -90, position: 'insideLeft', offset: -15, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <Tooltip 
+                contentStyle={{ background: 'var(--surface-0)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
+                formatter={(value) => [value, 'Frequency']}
+                labelFormatter={(label) => `Intensity Level: ${label}`}
+              />
+              <Area type="monotone" dataKey="count" stroke="var(--accent)" fillOpacity={1} fill="url(#colorCount)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CognitiveLoad = ({ trend, granularity }) => {
+  const n = trend?.length || 0;
+  if (!n) return <div className="nm-meta" style={{ padding: 30 }}>No data yet.</div>;
+
+  const data = trend.map(d => ({
+    name: formatTick(d.day, granularity),
+    thoughts: d.count,
+    intensity: d.avg_intensity || 0,
+  }));
+
+  return (
+    <div style={{ height: 260, width: '100%', marginTop: 8 }}>
+      <div style={{ overflow: 'auto', height: '100%' }}>
+        <div style={{ minWidth: 600, minHeight: 280, height: '100%' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 27, right: 20, left: 20, bottom: 40 }}>
+              <defs>
+                <linearGradient id="barColor" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--teal)" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="var(--surface-2)" stopOpacity={0.8}/>
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="name" tick={{ fill: 'var(--ink-3)', fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'Timeline', position: 'insideBottom', offset: -20, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <YAxis yAxisId="left" tick={{ fill: 'var(--ink-3)', fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'Thought Volume', angle: -90, position: 'insideLeft', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <YAxis yAxisId="right" orientation="right" domain={[0, 10]} tick={{ fill: 'var(--accent)', fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'Avg Intensity (1-10)', angle: -90, position: 'insideRight', offset: -10, fill: 'var(--accent)', fontSize: 12, fontWeight: 500 }} />
+              <Tooltip 
+                contentStyle={{ background: 'var(--surface-0)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11, color: 'var(--ink-2)', paddingBottom: 10 }} verticalAlign="top" />
+              <Bar yAxisId="left" dataKey="thoughts" name="Thoughts (Count)" fill="url(#barColor)" radius={[4, 4, 0, 0]} />
+              <Line yAxisId="right" type="monotone" dataKey="intensity" name="Intensity (Scale)" stroke="var(--accent)" strokeWidth={3} dot={{ r: 4, fill: 'var(--accent)', stroke: 'var(--surface-0)' }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );
@@ -387,6 +489,12 @@ export const InsightsScreen = () => {
   const loopsActive = insights?.loops?.active ?? 0;
   const loopsResolved = insights?.loops?.resolved ?? 0;
   const loopsNew = insights?.loops?.new_in_window ?? 0;
+  const masteryPct = insights?.loops?.mastery_pct ?? 0;
+  
+  const coreBeliefs = insights?.core_beliefs_profile || [];
+  const topCoreThemes = insights?.top_core_themes || [];
+  const peakSummary = insights?.intensity_stats?.peak_summary;
+  const lowSummary = insights?.intensity_stats?.low_summary;
 
   return (
     <div className="nm-main">
@@ -439,7 +547,7 @@ export const InsightsScreen = () => {
             </div>
           )}
 
-          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, marginBottom: 14 }}>
             {/* Emotion Trend card */}
             <div className="nm-card" style={{ overflow: 'hidden' }}>
               <div style={{ marginBottom: 14 }}>
@@ -463,14 +571,107 @@ export const InsightsScreen = () => {
                 </div>
               </div>
             </div>
+          </div>
 
-            {/* Growth card */}
-            <div className="nm-card soft" style={{ display: 'flex', flexDirection: 'column' }}>
-              <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Growth</div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <G label="Conversations" before={null} after={growthCur?.threads} good={(growthCur?.threads ?? 0) >= (growthPrev?.threads ?? 0)} />
-                <G label="Emotion intensity" before={null} after={growthCur?.avg_intensity} good={intensityDelta != null && intensityDelta < 0} />
-                <G label="Resolved loops" before={null} after={loopsResolved} good={loopsResolved > 0} last />
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14, marginBottom: 14 }}>
+            {/* Cognitive Load card */}
+            <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ marginBottom: 14 }}>
+                <div className="nm-eyebrow">Cognitive Load · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
+                <div className="nm-h3" style={{ marginTop: 4 }}>Thought Volume vs. Intensity</div>
+                <CognitiveLoad trend={visibleTrend} granularity={granularity} />
+              </div>
+            </div>
+
+            {/* Emotional Spectrum card */}
+            <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ marginBottom: 14 }}>
+                <div className="nm-eyebrow">The Emotional Spectrum</div>
+                <div className="nm-h3" style={{ marginTop: 4 }}>Your emotional shape</div>
+                <EmotionalSpectrum moods={moods} />
+              </div>
+            </div>
+          </div>
+
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 14, marginBottom: 14 }}>
+            {/* Emotional Bandwidth card */}
+            <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ marginBottom: 14 }}>
+                <div className="nm-eyebrow">Emotional Bandwidth</div>
+                <div className="nm-h3" style={{ marginTop: 4 }}>Intensity Distribution</div>
+                <EmotionalBandwidth distribution={insights?.intensity_distribution} />
+              </div>
+            </div>
+
+            {/* Growth & Awareness card */}
+            <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', background: 'linear-gradient(145deg, var(--surface-1), var(--surface-2))', border: '1px solid var(--rule-soft)' }}>
+              <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Growth & Awareness</div>
+              <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+                
+                {/* Embedded KPI 1: Emotional State */}
+                <div style={{ background: 'var(--surface-0)', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div className="nm-meta" style={{ marginBottom: 6 }}>Dominant State</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 600, color: 'var(--ink)' }}>
+                        {moods[0] ? moods[0].mood.charAt(0).toUpperCase() + moods[0].mood.slice(1) : '—'}
+                      </div>
+                      {moods[0] && <div className="nm-meta" style={{ color: 'var(--ink-3)' }}>({moods[0].pct}%)</div>}
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div className="nm-meta" style={{ marginBottom: 6 }}>Avg Intensity</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, justifyContent: 'flex-end' }}>
+                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 600, color: 'var(--ink)' }}>{growthCur?.avg_intensity ?? '—'}</div>
+                      {intensityDelta != null && (
+                        <div style={{ fontSize: 12, fontWeight: 600, color: intensityDelta <= 0 ? 'var(--teal)' : 'var(--accent)' }}>
+                          {intensityDelta <= 0 ? '↓ Calming' : '↑ Elevating'}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Embedded KPI 2: Core Beliefs Profile */}
+                <div style={{ background: 'var(--surface-0)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div className="nm-meta">Core Beliefs Profile</div>
+                  {coreBeliefs.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {coreBeliefs.slice(0, 3).map((belief, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <div style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 13, color: 'var(--ink)' }}>
+                            {belief.belief}
+                          </div>
+                          <div style={{ width: 40, height: 4, background: 'var(--rule-soft)', borderRadius: 2, overflow: 'hidden' }}>
+                            <div style={{ width: `${belief.pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 2 }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="nm-meta" style={{ fontStyle: 'italic', fontSize: 12 }}>Not enough data to profile core beliefs.</div>
+                  )}
+                </div>
+
+                {/* Embedded KPI 3: Pattern Mastery */}
+                <div style={{ background: 'linear-gradient(135deg, rgba(78, 205, 196, 0.1), rgba(108, 92, 231, 0.15))', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div className="nm-meta" style={{ marginBottom: 6 }}>Pattern Mastery</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: 'var(--ink)' }}>{masteryPct}%</div>
+                        <div className="nm-meta" style={{ color: 'var(--ink-3)' }}>resolved</div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 4 }}>
+                      {loopsResolved} resolved / {loopsActive + loopsResolved} total loops
+                    </div>
+                  </div>
+                  <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--surface-0)', border: '2px solid var(--teal)', color: 'var(--teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, boxShadow: '0 4px 12px rgba(78, 205, 196, 0.2)' }}>
+                    {masteryPct === 100 ? '✧' : '∞'}
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>
@@ -480,6 +681,66 @@ export const InsightsScreen = () => {
               <div className="nm-eyebrow">Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
             </div>
             <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />
+          </div>
+
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            {/* Discovered Patterns */}
+            <div className="nm-card" style={{ display: 'flex', flexDirection: 'column' }}>
+              <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Discovered Patterns</div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <LoopSummary loops={loops} />
+              </div>
+            </div>
+
+            {/* Themes & Extremes */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              
+              {/* Subconscious Themes */}
+              <div className="nm-card" style={{ background: 'var(--surface-0)', border: '1px solid var(--rule-soft)' }}>
+                <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Subconscious Themes</div>
+                {topCoreThemes.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {topCoreThemes.map((t, i) => (
+                      <div key={i} style={{ padding: '6px 12px', background: 'var(--surface-1)', borderRadius: 20, border: '1px solid var(--rule)', fontSize: 13, color: 'var(--ink)' }}>
+                        {t.theme}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="nm-meta" style={{ fontStyle: 'italic' }}>Not enough data to extract themes.</div>
+                )}
+              </div>
+
+              {/* Month in Extremes */}
+              <div className="nm-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'linear-gradient(135deg, rgba(78, 205, 196, 0.05), rgba(108, 92, 231, 0.05))', border: '1px solid var(--rule-soft)' }}>
+                <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Month in Extremes</div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, flex: 1 }}>
+                  {/* Peak Day */}
+                  <div style={{ background: 'var(--surface-0)', padding: 12, borderRadius: 8, border: '1px solid var(--accent)', borderOpacity: 0.3, display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div className="nm-meta" style={{ color: 'var(--accent)' }}>Peak Intensity</div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{peakDay ? formatShort(peakDay) : '—'}</div>
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--ink-2)', fontStyle: 'italic', lineHeight: 1.5, flex: 1 }}>
+                      {peakSummary ? `"${peakSummary}"` : 'No summary available.'}
+                    </div>
+                  </div>
+
+                  {/* Low Day */}
+                  <div style={{ background: 'var(--surface-0)', padding: 12, borderRadius: 8, border: '1px solid var(--teal)', borderOpacity: 0.3, display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div className="nm-meta" style={{ color: 'var(--teal)' }}>Lowest Intensity</div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{lowDay ? formatShort(lowDay) : '—'}</div>
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--ink-2)', fontStyle: 'italic', lineHeight: 1.5, flex: 1 }}>
+                      {lowSummary ? `"${lowSummary}"` : 'No summary available.'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+            </div>
           </div>
 
           {loading && totalEntries === 0 && (

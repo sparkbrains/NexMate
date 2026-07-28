@@ -11,6 +11,7 @@ import {
   updateJournalEntry,
 } from '../../lib/api';
 import WelcomeBookImg from '../../assets/ic_welcome_book.png';
+import { TemplateModal } from './TemplateModal';
 
 const MOODS = [
   { emoji: '😄', label: 'great' },
@@ -69,6 +70,14 @@ const Entry = ({ entry, onDelete, onUpdate }) => {
         <div className="nm-entry-time">
           <span>{time}</span>
           <span className="nm-entry-del">
+            <button className="nm-btn ghost" title="Download PDF" style={{ padding: 4, marginRight: 2 }} onClick={(e) => {
+              const el = e.currentTarget.closest('.nm-entry');
+              if (el) el.classList.add('print-target');
+              window.print();
+              if (el) el.classList.remove('print-target');
+            }}>
+              <Icon name="download" size={11} />
+            </button>
             <button className="nm-btn ghost" title="Edit entry" style={{ padding: 4, marginRight: 2 }} onClick={() => { setEditing(!editing); setEditBody(entry.body); }}>
               <Icon name="edit" size={11} />
             </button>
@@ -283,6 +292,8 @@ export const JournalScreen = ({ user }) => {
   const [showNewBook, setShowNewBook] = useState(false);
   const [newBookName, setNewBookName] = useState('');
   const [newBookColor, setNewBookColor] = useState(BOOK_COLORS[0]);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [bgImage, setBgImage] = useState('');
 
   const selectedMood = useMemo(() => moodFor(moodLabel), [moodLabel]);
   const activeBook = useMemo(() => books.find((b) => b.id === activeBookId), [books, activeBookId]);
@@ -345,8 +356,12 @@ export const JournalScreen = ({ user }) => {
     setSaving(true);
     try {
       const plainBody = editorRef.current?.innerHTML || body;
+      const finalBody = bgImage 
+        ? `<div style="background-image: url('${bgImage}'); background-size: cover; background-position: center; padding: 20px; border-radius: 8px;">${plainBody}</div>`
+        : plainBody;
+
       await createJournalEntry({
-        body: plainBody,
+        body: finalBody,
         mood_emoji: selectedMood?.emoji || '',
         mood_label: selectedMood?.label || '',
         entry_date: entryDate || todayISO(),
@@ -358,6 +373,7 @@ export const JournalScreen = ({ user }) => {
       if (editorRef.current) editorRef.current.innerHTML = '';
       setMoodLabel('');
       setEntryDate(todayISO());
+      setBgImage('');
       await Promise.all([fetchEntries(activeBookId), fetchBooks(activeBookId), fetchStreak()]);
     } catch (e) {
       setError(e.message || 'Failed to save');
@@ -424,6 +440,13 @@ export const JournalScreen = ({ user }) => {
 
   const displayName = user?.email ? user.email.split('@')[0].replace(/^\w/, (c) => c.toUpperCase()) : 'Girish';
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+
+  const handleUseTemplate = (html) => {
+    setBody(html);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = html;
+    }
+  };
 
   return (
     <div className="nm-main">
@@ -499,9 +522,14 @@ export const JournalScreen = ({ user }) => {
                   </div>
                 </div>
               ) : (
-                <button className="nm-btn" style={{ width: '100%', justifyContent: 'center' }} onClick={() => setShowNewBook(true)}>
-                  <Icon name="plus" size={12} /> New book
-                </button>
+                <>
+                  <button className="nm-btn" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }} onClick={() => setShowNewBook(true)}>
+                    <Icon name="plus" size={12} /> New book
+                  </button>
+                  <button className="nm-btn ghost" style={{ width: '100%', justifyContent: 'center', border: '1px solid var(--rule)' }} onClick={() => setShowTemplateModal(true)}>
+                    <Icon name="plus" size={12} /> Template Gallery
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -602,6 +630,25 @@ export const JournalScreen = ({ user }) => {
                         </button>
                       ))}
                       <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
+                      <select onMouseDown={(e) => e.stopPropagation()}
+                        onChange={(e) => { setBgImage(e.target.value); e.target.value = ''; }}
+                        defaultValue=""
+                        style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer', maxWidth: 110 }}>
+                        <option value="" disabled>Background</option>
+                        <option value="https://images.unsplash.com/photo-1508614999368-9260051292e5?w=1200&q=80">Clock (Priority)</option>
+                        <option value="https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=1200&q=80">Nature</option>
+                        <option value="https://images.unsplash.com/photo-1507608616759-54f48f0af0ee?w=1200&q=80">Rain</option>
+                        <option value="">None</option>
+                      </select>
+                      <button type="button" title="Download PDF" onClick={(e) => {
+                        const wrapper = e.currentTarget.closest('.nm-compose');
+                        if (wrapper) wrapper.classList.add('print-target');
+                        window.print();
+                        if (wrapper) wrapper.classList.remove('print-target');
+                      }} className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13, color: 'var(--ink-3)', marginLeft: 'auto' }}>
+                        <Icon name="download" size={13} /> PDF
+                      </button>
+                      <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
                       <button type="button" onMouseDown={(e) => {
                         e.preventDefault();
                         const ed = editorRef.current;
@@ -664,13 +711,14 @@ export const JournalScreen = ({ user }) => {
                       data-placeholder={`Today, in your ${activeBook.name.toLowerCase()} book…`}
                       style={{
                         minHeight: 160,
-                        padding: '14px 18px',
+                        padding: bgImage ? '24px 28px' : '14px 18px',
                         fontFamily: 'var(--font-serif)',
                         fontSize: 16,
                         lineHeight: '28px',
                         color: 'var(--ink)',
                         outline: 'none',
-                        background: '#e5d7fd80',
+                        background: bgImage ? `url('${bgImage}') center/cover` : '#e5d7fd80',
+                        borderRadius: bgImage ? 8 : 0,
                       }}
                     />
                   </div>
@@ -741,6 +789,11 @@ export const JournalScreen = ({ user }) => {
         </main>
       </div>
       </div>
+      <TemplateModal 
+        isOpen={showTemplateModal} 
+        onClose={() => setShowTemplateModal(false)} 
+        onUseTemplate={handleUseTemplate} 
+      />
     </div>
   );
 };

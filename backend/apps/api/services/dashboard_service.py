@@ -128,7 +128,7 @@ def get_dashboard_kpis(user_id: int) -> dict[str, Any]:
 
 def _fetch_v2_entries(user_id: int, since: datetime | None = None) -> list[dict[str, Any]]:
     query = """
-        SELECT thread_id, mood, triggers, core_theme, intensity, raw_summary, created_at
+        SELECT thread_id, mood, triggers, core_beliefs, core_theme, intensity, raw_summary, created_at
         FROM journal_entries_v2
         WHERE user_id = %s
     """
@@ -194,7 +194,39 @@ def _avg(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 2) if values else None
 
 
-def _get_dashboard_insights_sync(user_id: int, days: int = 30) -> dict[str, Any]:
+def _build_engaging_summary(entry: dict[str, Any]) -> str | None:
+    theme = str(entry.get("core_theme") or "").strip()
+    mood = str(entry.get("mood") or "").strip().lower()
+    triggers = entry.get("triggers") or []
+    
+    parts = []
+    if mood and mood != "neutral":
+        parts.append(f"Felt {mood}")
+        cleaned_triggers = [t for t in triggers if t and isinstance(t, str)]
+        if cleaned_triggers:
+            parts[-1] += f" about {', '.join(cleaned_triggers)}."
+        else:
+            parts[-1] += "."
+            
+    if theme:
+        if not theme[-1] in ".!?":
+            theme += "."
+        parts.append(theme.capitalize())
+        
+    raw = entry.get("raw_summary")
+    if isinstance(raw, dict) and not theme:
+        facts = raw.get("key_facts", [])
+        valid_facts = [f for f in facts if isinstance(f, str) and "user initiated" not in f.lower() and len(f) > 10]
+        if valid_facts:
+            parts.append(valid_facts[0])
+            
+    if not parts:
+        return None
+        
+    return " ".join(parts)
+
+
+async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]:
     """Rich dashboard payload sourced from journal_entries_v2 + loops."""
     now = datetime.now(timezone.utc)
     today = now.date()
@@ -275,6 +307,8 @@ def _get_dashboard_insights_sync(user_id: int, days: int = 30) -> dict[str, Any]
     # Find peak/low days
     peak_day = None
     low_day = None
+    peak_summary = None
+    low_summary = None
     if intensity_by_day:
         day_avgs = {
             d: sum(v) / len(v) for d, v in intensity_by_day.items() if v
@@ -282,6 +316,16 @@ def _get_dashboard_insights_sync(user_id: int, days: int = 30) -> dict[str, Any]
         if day_avgs:
             peak_day = max(day_avgs, key=day_avgs.get)
             low_day = min(day_avgs, key=day_avgs.get)
+            
+            peak_entries = [e for e in in_window if e.get("created_at") and e["created_at"].date().isoformat() == peak_day]
+            if peak_entries:
+                peak_entry = sorted(peak_entries, key=lambda x: x.get("intensity", 0), reverse=True)[0]
+                peak_summary = _build_engaging_summary(peak_entry)
+
+            low_entries = [e for e in in_window if e.get("created_at") and e["created_at"].date().isoformat() == low_day]
+            if low_entries:
+                low_entry = sorted(low_entries, key=lambda x: x.get("intensity", 0))[0]
+                low_summary = _build_engaging_summary(low_entry)
 
     # Emotion trend (per day, last N days) - returns daily mood mix
     emotion_trend: list[dict[str, Any]] = []
@@ -302,6 +346,36 @@ def _get_dashboard_insights_sync(user_id: int, days: int = 30) -> dict[str, Any]
     for trig, count in triggers_counter.most_common(5):
         pct = round(count * 100 / max_trigger_count) if max_trigger_count else 0
         top_triggers.append({"trigger": trig, "count": count, "pct": pct})
+
+    # Core Beliefs Profile
+    core_beliefs_counter = Counter()
+    for row in all_entries:
+        for belief in row.get("core_beliefs", []) or []:
+            cleaned = str(belief).strip()
+            if cleaned:
+                # Sometimes LLMs end with periods, let's strip them
+                cleaned = cleaned.rstrip('.')
+                core_beliefs_counter[cleaned] += 1
+    
+    core_beliefs_profile = []
+    max_belief_count = max(core_beliefs_counter.values()) if core_beliefs_counter else 0
+    for belief, count in core_beliefs_counter.most_common(5):
+        pct = round(count * 100 / max_belief_count) if max_belief_count else 0
+        core_beliefs_profile.append({"belief": belief, "count": count, "pct": pct})
+
+    # Core Themes
+    core_themes_counter = Counter()
+    for row in in_window:
+        theme = str(row.get("core_theme") or "").strip()
+        if theme:
+            # strip trailing punctuation
+            theme = theme.rstrip('.').capitalize()
+            core_themes_counter[theme] += 1
+    
+    top_core_themes = [
+        {"theme": theme, "count": count}
+        for theme, count in core_themes_counter.most_common(5)
+    ]
 
     # Trigger heatmap: top triggers x days
     top_trigger_names = [t["trigger"] for t in top_triggers]
@@ -353,6 +427,9 @@ def _get_dashboard_insights_sync(user_id: int, days: int = 30) -> dict[str, Any]
         if first and first >= window_start:
             new_in_window += 1
         loops_summary.append(summarized)
+    
+    total_loops = active_loops + resolved_loops
+    pattern_mastery_pct = round((resolved_loops / total_loops) * 100) if total_loops > 0 else 0
 
     # Streak (uses all v2 entries)
     streak = _checkin_streak(all_entries)
@@ -469,11 +546,15 @@ def _get_dashboard_insights_sync(user_id: int, days: int = 30) -> dict[str, Any]
             "avg": intensity_avg,
             "peak": peak_intensity,
             "peak_day": peak_day,
+            "peak_summary": peak_summary,
             "low": low_intensity,
             "low_day": low_day,
+            "low_summary": low_summary,
         },
         "emotion_trend": emotion_trend,
         "top_triggers": top_triggers,
+        "core_beliefs_profile": core_beliefs_profile,
+        "top_core_themes": top_core_themes,
         "trigger_heatmap": heatmap,
         "growth": {
             "current": cur_stats,
@@ -490,12 +571,9 @@ def _get_dashboard_insights_sync(user_id: int, days: int = 30) -> dict[str, Any]
             "active": active_loops,
             "resolved": resolved_loops,
             "new_in_window": new_in_window,
+            "mastery_pct": pattern_mastery_pct,
         },
         "echo": echo,
         "daily_question": None,
         "thread_summaries": thread_summaries,
     }
-async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]:
-    data = await asyncio.to_thread(_get_dashboard_insights_sync, user_id, days)
-    data["daily_question"] = await get_or_create_daily_question(user_id)
-    return data
