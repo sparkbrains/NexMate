@@ -1,7 +1,7 @@
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
-
+import asyncio
 from apps.db import get_connection
 from apps.api.services.daily_question_service import get_or_create_daily_question
 from apps.api.services.loop_service import _summarize_loop
@@ -190,7 +190,7 @@ def _avg(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 2) if values else None
 
 
-async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]:
+def _get_dashboard_insights_sync(user_id: int, days: int = 30) -> dict[str, Any]:
     """Rich dashboard payload sourced from journal_entries_v2 + loops."""
     now = datetime.now(timezone.utc)
     today = now.date()
@@ -369,8 +369,6 @@ async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]
                     "age_days": age_days,
                 }
 
-    # Today's daily question — from previous day's core themes
-    daily_question = await get_or_create_daily_question(user_id)
 
     # Window meta
     thread_count = _thread_count_in_window(user_id, window_start)
@@ -478,6 +476,10 @@ async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]
             "new_in_window": new_in_window,
         },
         "echo": echo,
-        "daily_question": daily_question,
+        "daily_question": None,
         "thread_summaries": thread_summaries,
     }
+async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]:
+    data = await asyncio.to_thread(_get_dashboard_insights_sync, user_id, days)
+    data["daily_question"] = await get_or_create_daily_question(user_id)
+    return data

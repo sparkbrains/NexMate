@@ -122,8 +122,16 @@ Return ONLY the title. 3-6 words maximum and no more than 40 characters."""
     return _short_title(title)
 
 
-def save_thread_title(user_id: int, thread_id: str, title: str) -> None:
-    """Save or update a thread title in the threads table."""
+def save_thread_title(user_id: int, thread_id: str, title: str, daily_question_id: int | None = None) -> None:
+    """Save or update a thread title in the threads table.
+
+    `daily_question_id` is only ever written on INSERT (i.e. when the
+    thread is first created as an answer to a daily question) or when
+    explicitly passed on an UPDATE. Plain title updates (e.g. the
+    later LLM resummarization once a thread has 4+ messages) must NOT
+    touch this column, or the thread would silently lose its
+    daily-question tag the moment it gets retitled.
+    """
     with get_connection() as conn:
         with conn.cursor() as cur:
             # Check if thread exists
@@ -136,23 +144,33 @@ def save_thread_title(user_id: int, thread_id: str, title: str) -> None:
             existing = cur.fetchone()
 
             if existing:
-                # Update existing thread
-                cur.execute(
-                    """
-                    UPDATE threads
-                    SET title = %s, updated_at = %s
-                    WHERE thread_id = %s
-                    """,
-                    (title, utc_now(), thread_id),
-                )
+                if daily_question_id is not None:
+                    cur.execute(
+                        """
+                        UPDATE threads
+                        SET title = %s, updated_at = %s, daily_question_id = %s
+                        WHERE thread_id = %s
+                        """,
+                        (title, utc_now(), daily_question_id, thread_id),
+                    )
+                else:
+                    # Do not overwrite an existing daily_question_id tag
+                    # just because the title is being refreshed.
+                    cur.execute(
+                        """
+                        UPDATE threads
+                        SET title = %s, updated_at = %s
+                        WHERE thread_id = %s
+                        """,
+                        (title, utc_now(), thread_id),
+                    )
             else:
-                # Insert new thread
                 cur.execute(
                     """
-                    INSERT INTO threads (thread_id, user_id, title, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO threads (thread_id, user_id, title, created_at, updated_at, daily_question_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (thread_id, user_id, title, utc_now(), utc_now()),
+                    (thread_id, user_id, title, utc_now(), utc_now(), daily_question_id),
                 )
         conn.commit()
 
@@ -194,7 +212,7 @@ def list_threads(user_id: int) -> list[dict[str, Any]]:
             # Get all threads from threads table
             cur.execute(
                 """
-                SELECT thread_id, title, updated_at
+                SELECT thread_id, title, updated_at, loop_id, daily_question_id
                 FROM threads
                 WHERE user_id = %s
                 ORDER BY updated_at DESC
@@ -265,6 +283,8 @@ def list_threads(user_id: int) -> list[dict[str, Any]]:
         
         cached_title = (str(t_row["title"]).strip() if t_row and t_row["title"] else None)
         core_theme = core_theme_lookup.get(norm_tid)
+        daily_question_id = t_row["daily_question_id"] if t_row else None
+        loop_id = str(t_row["loop_id"]) if t_row and t_row["loop_id"] else None
 
         # Priority logic:
         # 1. If we have 4+ messages, we want the high-quality thread summary.
@@ -280,7 +300,9 @@ def list_threads(user_id: int) -> list[dict[str, Any]]:
 
         if should_summarize and (not cached_title or is_cached_placeholder):
             title = summarize_thread_messages(items, raw_tid)
-            save_thread_title(user_id, raw_tid, title)
+            # Resummarizing must not clear the daily_question_id tag —
+            # pass it through explicitly so it's preserved on UPDATE.
+            save_thread_title(user_id, raw_tid, title, daily_question_id=daily_question_id)
         elif cached_title:
             title = cached_title
         if not title:
@@ -311,6 +333,8 @@ def list_threads(user_id: int) -> list[dict[str, Any]]:
                 "title": title,
                 "preview": preview,
                 "message_count": len(items),
+                "loop_id": loop_id,
+                "daily_question_id": daily_question_id,
             }
         )
 
@@ -340,16 +364,14 @@ def get_thread_messages(user_id: int, thread_id: str) -> list[dict[str, str]]:
         }
         for row in rows
     ]
-    print(f"get_thread_messages returning {len(messages)} messages for thread {thread_id}")
-    for msg in messages:
-        print(f"  - role: {msg['role']}, content: {msg['content'][:50]}...")
     return messages
 
 
 def create_thread(user_id: int, title: str, context: dict[str, Any] = None) -> dict[str, Any]:
     """Create a new thread with optional context."""
     thread_id = str(uuid.uuid4())
-    
+    daily_question_id = context.get("daily_question_id") if context else None
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             # Add the question as a bot message to start the conversation
@@ -363,8 +385,10 @@ def create_thread(user_id: int, title: str, context: dict[str, Any] = None) -> d
                 )
         conn.commit()
 
-    # Save initial title to the threads table immediately
-    save_thread_title(user_id, thread_id, title)
+    # Save initial title to the threads table immediately, tagging the
+    # thread with its daily_question_id (if any) so it survives later
+    # title resummarization.
+    save_thread_title(user_id, thread_id, title, daily_question_id=daily_question_id)
     
     return {
         "thread_id": thread_id,

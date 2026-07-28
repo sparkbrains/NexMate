@@ -42,8 +42,8 @@ const intensityColor = (i) => {
 
 const DayByDayIntensity = ({ days }) => (
   <div style={{ display: 'flex', gap: 8 }}>
-    {days.map((d) => (
-      <div key={d.day} style={{ flex: 1, textAlign: 'center' }}>
+    {days.map((d, i) => (
+      <div key={d.weekday || i} style={{ flex: 1, textAlign: 'center' }}>
         <div style={{
           height: 80,
           background: intensityColor(d.avg_intensity),

@@ -330,7 +330,7 @@
   font-weight: 600;
   padding: 8px 14px;
   border-radius: var(--radius);
-  border: 0px solid var(--rule);
+  border: 1px solid var(--rule);
   background-color: var(--surface-2);
   color: var(--ink-2);
   cursor: pointer;
@@ -428,6 +428,28 @@
   background: linear-gradient(135deg, var(--surface) 0%, var(--accent-wash) 100%);
   border-left: 4px solid var(--accent);
   box-shadow: 0 8px 24px rgba(249, 115, 22, 0.1);
+}
+
+/* Prompt pack popup overlay and card */
+.nm-pp-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 20px;
+}
+
+.nm-pp-card {
+  background-color: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  max-width: 460px;
+  width: 100%;
+  box-shadow: var(--shadow);
 }
 
 /* ─── Typography ─── */

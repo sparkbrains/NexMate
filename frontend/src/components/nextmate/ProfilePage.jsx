@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getUser, getMe, changePassword, deleteAccount } from '../../lib/api';
+import { getUser, getMe, changePassword, deleteAccount, getUserProfileSummary } from '../../lib/api';
 import { Icon, TopBar } from './Shell';
 
 function capitalize(s) {
@@ -26,6 +26,8 @@ export function ProfilePage({ onLogout }) {
   const [user, setUser] = useState(() => getUser());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
+  const [summary, setSummary] = useState('');
+  const [summaryLoading, setSummaryLoading] = useState(true);
 
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -75,8 +77,16 @@ export function ProfilePage({ onLogout }) {
       try {
         const data = await getMe();
         if (!cancelled) setUser(data.user);
+        const summaryData = await getUserProfileSummary();
+        if (!cancelled) {
+          setSummary(summaryData.summary);
+          setSummaryLoading(false);
+        }
       } catch {
-        if (!cancelled) setErr("Couldn't refresh your details — showing what we last had.");
+        if (!cancelled) {
+          setErr("Couldn't refresh your details — showing what we last had.");
+          setSummaryLoading(false);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -142,6 +152,11 @@ export function ProfilePage({ onLogout }) {
               {err}
             </p>
           )}
+          {/* User Profile Summary */}
+          <div className="nm-eyebrow" style={{ marginBottom: 14 }}>Your Summary</div>
+          <div className="nm-card soft" style={{ padding: '12px 24px', marginBottom: 24 }}>
+            {summaryLoading ? 'Loading...' : (summary || 'Answer a few daily prompts and your summary will appear here.')}
+          </div>
 
           <div className="nm-eyebrow" style={{ marginBottom: 14 }}>
             Account Actions

@@ -286,7 +286,7 @@ def _get_cross_thread_memory_entries(user_id: int, current_thread_id: str) -> li
     _select_prompt_cross_thread_entries in nodes.py for the prompt-facing
     subset).
     """
-    with get_connection(autocommit=True) as conn:
+    with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -305,19 +305,19 @@ def _get_cross_thread_memory_entries(user_id: int, current_thread_id: str) -> li
                 """,
                 (user_id, current_thread_id)
             )
-            cross_thread_entries = []
-            for row in cur.fetchall():
-                cross_thread_entries.append({
+            return [
+                {
                     "core_theme": row["core_theme"],
                     "mood": row["mood"],
                     "core_beliefs": row["core_beliefs"] or [],
                     "triggers": row["triggers"] or [],
                     "intensity": row["intensity"],
-                    "created_at": row["created_at"].isoformat(),
-                    "thread_id": row["thread_id"]
-                })
+                    "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
+                    "thread_id": row["thread_id"],
+                }
+                for row in cur.fetchall()
+            ]
 
-    return cross_thread_entries
 
 
 def _select_prompt_cross_thread_entries(
@@ -600,7 +600,6 @@ def _update_loop_last_seen(loop: dict[str, Any], user_id: int, new_matches: list
         return
     now = datetime.now(timezone.utc)
     
-    # Fetch existing loop to get current first_detected_at, detection_dates, and matched_entries
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -608,36 +607,35 @@ def _update_loop_last_seen(loop: dict[str, Any], user_id: int, new_matches: list
                 SELECT first_detected_at, detection_dates, matched_entries
                 FROM loops
                 WHERE loop_id = %s AND user_id = %s
+                FOR UPDATE
                 """,
                 (loop_id, user_id),
             )
             row = cur.fetchone()
 
-    if not row:
-        return
+            if not row:
+                return
 
-    first_dt = row.get("first_detected_at")
-    detection_dates = row.get("detection_dates") or []
-    matched_entries = row.get("matched_entries") or []
+            first_dt = row.get("first_detected_at")
+            detection_dates = row.get("detection_dates") or []
+            matched_entries = row.get("matched_entries") or []
 
-    # Merge new matches if not already present
-    existing_dates = {e.get("date", "") for e in matched_entries if e.get("date")}
-    if new_matches:
-        for m in new_matches:
-            m_date = m.get("date", "")
-            if m_date and m_date not in existing_dates:
-                matched_entries.append(m)
+            # Merge new matches if not already present
+            existing_dates = {e.get("date", "") for e in matched_entries if e.get("date")}
+            if new_matches:
+                for m in new_matches:
+                    m_date = m.get("date", "")
+                    if m_date and m_date not in existing_dates:
+                        matched_entries.append(m)
 
-    # Append now to detection_dates if not already there
-    now_iso = now.isoformat()
-    if now_iso not in detection_dates:
-        detection_dates.append(now_iso)
+            # Append now to detection_dates if not already there
+            now_iso = now.isoformat()
+            if now_iso not in detection_dates:
+                detection_dates.append(now_iso)
 
-    detection_count = len(detection_dates)
-    first_detected_at, last_detected_at = _calculate_loop_span_dates(matched_entries, now)
-
-    with get_connection(autocommit=True) as conn:
-        with conn.cursor() as cur:
+            detection_count = len(detection_dates)
+            first_detected_at, computed_last = _calculate_loop_span_dates(matched_entries, now)
+            last_detected_at = max(computed_last, now)
             cur.execute(
                 """
                 UPDATE loops
@@ -650,6 +648,81 @@ def _update_loop_last_seen(loop: dict[str, Any], user_id: int, new_matches: list
                 """,
                 (first_detected_at, last_detected_at, detection_count, Jsonb(detection_dates), Jsonb(matched_entries), loop_id, user_id),
             )
+        conn.commit()
+
+
+def append_loop_entry(loop_id: str, user_id: int, entry: dict[str, Any]) -> bool:
+    """Attaches one freshly-persisted journal entry (in the matched_entries
+    shape: date/summary/mood/thread_id/intensity) to a loop that was
+    reopened this turn via the resurface-check or fallback match in
+    choose_response_mode_node.
+
+    This is the counterpart reopen_loop's docstring points at: reopen_loop
+    intentionally does NOT touch matched_entries, because at the point it
+    runs there is no new entry yet -- summarize_turn_node /
+    persist_summary_node haven't executed yet in the graph. Once
+    persist_summary_node creates that entry, this is what actually attaches
+    it -- without this, a loop's matched_entries silently goes stale even
+    while last_detected_at keeps advancing via reopen_loop each time the
+    loop resurfaces.
+
+    Uses the same loop_id::text cast as reopen_loop (rather than
+    _update_loop_last_seen's uncast `loop_id = %s`), since that cast is
+    what reopen_loop's docstring identifies as necessary for a plain
+    python str loop_id (as produced by str(row["loop_id"]) in
+    load_memory_node) to reliably match the UUID column.
+    """
+    if not entry.get("date"):
+        return False
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT matched_entries, detection_dates
+                FROM loops
+                WHERE loop_id::text = %s AND user_id = %s
+                FOR UPDATE
+                """,
+                (str(loop_id), user_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                return False
+
+            matched_entries = row.get("matched_entries") or []
+            existing_dates = {e.get("date", "") for e in matched_entries if isinstance(e, dict)}
+            if entry.get("date") not in existing_dates:
+                matched_entries.append(entry)
+
+            detection_dates = row.get("detection_dates") or []
+            entry_date = entry.get("date", "")
+            if entry_date and entry_date not in detection_dates:
+                detection_dates.append(entry_date)
+
+            now = datetime.now(timezone.utc)
+            first_dt, computed_last = _calculate_loop_span_dates(matched_entries, now)
+            last_dt = max(computed_last, now)
+            detection_count = len(detection_dates)
+
+            cur.execute(
+                """
+                UPDATE loops
+                SET first_detected_at = %s,
+                    last_detected_at = %s,
+                    detection_count = %s,
+                    detection_dates = %s::jsonb,
+                    matched_entries = %s::jsonb
+                WHERE loop_id::text = %s AND user_id = %s
+                """,
+                (
+                    first_dt, last_dt, detection_count,
+                    Jsonb(detection_dates), Jsonb(matched_entries),
+                    str(loop_id), user_id,
+                ),
+            )
+        conn.commit()
+    return True
 
 
 def _analyze_loop_persistence(loop: dict[str, Any]) -> dict[str, Any]:
@@ -754,6 +827,22 @@ def _analyze_loop_persistence(loop: dict[str, Any]) -> dict[str, Any]:
 def _save_merged_loop_info(
     loop_info: list[dict[str, Any]], thread_id: str, user_id: int
 ) -> list[dict[str, Any]]:
+    # NOTE on concurrency: this whole read -> merge-in-Python -> write cycle
+    # now happens on ONE connection/transaction, and the initial SELECT takes
+    # a row lock (FOR UPDATE) on this user's loops. Previously the read used
+    # its own short-lived connection (committed/released immediately) and the
+    # write used a second, separate autocommit connection -- leaving a window
+    # where two turns for the same user (e.g. two open threads/tabs) could
+    # both read the same "before" state, merge independently, and the second
+    # write would silently clobber the first (lost update). Locking the rows
+    # for the duration of this function serializes concurrent callers instead.
+    #
+    # We also now only write rows that were actually created or modified in
+    # this call (`touched_ids`), instead of re-INSERT...ON CONFLICT-ing every
+    # loop the user has on every single detection event. That upsert-all
+    # pattern meant a chat turn that touched one loop was doing O(n) writes
+    # against all of the user's stored loops -- wasteful and only getting
+    # worse as loop counts grow.
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -764,74 +853,79 @@ def _save_merged_loop_info(
                        confidence_score, validation_metadata
                 FROM loops
                 WHERE user_id = %s
+                FOR UPDATE
                 """,
                 (user_id,)
             )
             rows = cur.fetchall()
 
-    thread_loops = []
-    for row in rows:
-        thread_loops.append({
-            "loop_id": str(row["loop_id"]),
-            "loop_name": row["loop_name"],
-            "core_belief": row["core_belief"],
-            "trigger": row["trigger"],
-            "valence": row["valence"],
-            "first_detected_at": row["first_detected_at"].isoformat() if row["first_detected_at"] else "",
-            "last_detected_at": row["last_detected_at"].isoformat() if row["last_detected_at"] else "",
-            "detection_count": row["detection_count"],
-            "detection_dates": row["detection_dates"] or [],
-            "matched_entries": row["matched_entries"] or [],
-            "description": row["description"],
-            "suggestion": row["suggestion"],
-            "thread_id": thread_id,
-            "confidence_score": float(row["confidence_score"]) if row["confidence_score"] is not None else 0.0,
-            "validation_metadata": row["validation_metadata"] or {},
-        })
+            thread_loops = []
+            for row in rows:
+                thread_loops.append({
+                    "loop_id": str(row["loop_id"]),
+                    "loop_name": row["loop_name"],
+                    "core_belief": row["core_belief"],
+                    "trigger": row["trigger"],
+                    "valence": row["valence"],
+                    "first_detected_at": row["first_detected_at"].isoformat() if row["first_detected_at"] else "",
+                    "last_detected_at": row["last_detected_at"].isoformat() if row["last_detected_at"] else "",
+                    "detection_count": row["detection_count"],
+                    "detection_dates": row["detection_dates"] or [],
+                    "matched_entries": row["matched_entries"] or [],
+                    "description": row["description"],
+                    "suggestion": row["suggestion"],
+                    "thread_id": thread_id,
+                    "confidence_score": float(row["confidence_score"]) if row["confidence_score"] is not None else 0.0,
+                    "validation_metadata": row["validation_metadata"] or {},
+                })
 
-    now = datetime.now(timezone.utc).isoformat()
-    for new_loop in loop_info:
-        new_loop["detected_at"] = now
-        new_loop["thread_id"] = thread_id
+            now = datetime.now(timezone.utc).isoformat()
+            touched_ids: set[str] = set()
 
-        merged = False
-        for i, existing in enumerate(thread_loops):
-            if _loops_match(existing, new_loop):
-                matched = new_loop.get("matched_entries", [])
-                thread_loops[i] = _merge_loop_records(existing, new_loop, matched)
-                merged = True
-                break
+            for new_loop in loop_info:
+                new_loop["detected_at"] = now
+                new_loop["thread_id"] = thread_id
 
-        if not merged:
-            new_matched = new_loop.get("matched_entries", [])
-            first_dt, last_dt = _calculate_loop_span_dates(new_matched, datetime.now(timezone.utc))
-            new_record = {
-                "loop_id": str(uuid4()),
-                "loop_name": new_loop.get("loop_name", ""),
-                "core_belief": new_loop.get("core_belief", ""),
-                "trigger": new_loop.get("trigger", ""),
-                "valence": new_loop.get("valence", "neutral"),
-                "first_detected_at": first_dt.isoformat(),
-                "last_detected_at": last_dt.isoformat(),
-                "detection_count": 1,
-                "detection_dates": [now],
-                "matched_entries": new_matched,
-                "description": new_loop.get("description", ""),
-                "suggestion": new_loop.get("suggestion", ""),
-                "thread_id": thread_id,
-                "confidence_score": new_loop.get("confidence", 0.0),
-                "validation_metadata": {
-                    "temporal_span_days": (last_dt - first_dt).days,
-                    "context_diversity": 0.0,
-                    "total_matches": len(new_matched),
-                    "validation_timestamp": now
-                }
-            }
-            thread_loops.append(new_record)
+                merged = False
+                for i, existing in enumerate(thread_loops):
+                    if _loops_match(existing, new_loop):
+                        matched = new_loop.get("matched_entries", [])
+                        thread_loops[i] = _merge_loop_records(existing, new_loop, matched)
+                        touched_ids.add(thread_loops[i]["loop_id"])
+                        merged = True
+                        break
 
-    with get_connection(autocommit=True) as conn:
-        with conn.cursor() as cur:
+                if not merged:
+                    new_matched = new_loop.get("matched_entries", [])
+                    first_dt, last_dt = _calculate_loop_span_dates(new_matched, datetime.now(timezone.utc))
+                    new_record = {
+                        "loop_id": str(uuid4()),
+                        "loop_name": new_loop.get("loop_name", ""),
+                        "core_belief": new_loop.get("core_belief", ""),
+                        "trigger": new_loop.get("trigger", ""),
+                        "valence": new_loop.get("valence", "neutral"),
+                        "first_detected_at": first_dt.isoformat(),
+                        "last_detected_at": last_dt.isoformat(),
+                        "detection_count": 1,
+                        "detection_dates": [now],
+                        "matched_entries": new_matched,
+                        "description": new_loop.get("description", ""),
+                        "suggestion": new_loop.get("suggestion", ""),
+                        "thread_id": thread_id,
+                        "confidence_score": new_loop.get("confidence", 0.0),
+                        "validation_metadata": {
+                            "temporal_span_days": (last_dt - first_dt).days,
+                            "context_diversity": 0.0,
+                            "total_matches": len(new_matched),
+                            "validation_timestamp": now
+                        }
+                    }
+                    thread_loops.append(new_record)
+                    touched_ids.add(new_record["loop_id"])
+
             for loop in thread_loops:
+                if loop["loop_id"] not in touched_ids:
+                    continue  # unchanged this call -- nothing to write
                 cur.execute(
                     """
                     INSERT INTO loops (
@@ -870,6 +964,8 @@ def _save_merged_loop_info(
                     )
                 )
 
+        conn.commit()
+
     return thread_loops
 
 
@@ -896,6 +992,10 @@ def remove_thread_from_loops(user_id: int, thread_id: str) -> dict[str, Any]:
 
     Returns {"updated": [...loop_ids...], "deleted": [...loop_ids...]}.
     """
+    updated: list[str] = []
+    deleted: list[str] = []
+    now = datetime.now(timezone.utc)
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -903,17 +1003,12 @@ def remove_thread_from_loops(user_id: int, thread_id: str) -> dict[str, Any]:
                 SELECT loop_id, matched_entries, last_detected_at
                 FROM loops
                 WHERE user_id = %s
+                FOR UPDATE
                 """,
                 (user_id,),
             )
             rows = cur.fetchall()
 
-    updated: list[str] = []
-    deleted: list[str] = []
-    now = datetime.now(timezone.utc)
-
-    with get_connection(autocommit=True) as conn:
-        with conn.cursor() as cur:
             for row in rows:
                 matched_entries = row.get("matched_entries") or []
                 if not isinstance(matched_entries, list):
@@ -978,6 +1073,8 @@ def remove_thread_from_loops(user_id: int, thread_id: str) -> dict[str, Any]:
                     (Jsonb(remaining), detection_count, first_dt, last_dt, loop_id, user_id),
                 )
                 updated.append(str(loop_id))
+
+        conn.commit()
 
     return {"updated": updated, "deleted": deleted}
 
@@ -1090,72 +1187,24 @@ Generate a natural, conversational opening that acknowledges this pattern and as
     thread_id = str(uuid.uuid4())
     thread_title = f"Reflecting on: {loop_name}"
     
-    # First, insert without the new columns (works with old schema)
+    now = utc_now()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO threads (thread_id, user_id, title, created_at, updated_at)
+                INSERT INTO threads (thread_id, user_id, title, loop_id, last_reflected_at, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (thread_id, user_id, thread_title, loop_id, now, now, now),
+            )
+            cur.execute(
+                """
+                INSERT INTO thread_messages (user_id, thread_id, role, content, created_at)
                 VALUES (%s, %s, %s, %s, %s)
                 """,
-                (thread_id, user_id, thread_title, utc_now(), utc_now()),
+                (user_id, thread_id, "assistant", opening_message, now),
             )
-            print(f"Thread created: {thread_id}")
-            # Add the AI-generated opening message as the first message
-            try:
-                cur.execute(
-                    """
-                    INSERT INTO thread_messages (user_id, thread_id, role, content, created_at)
-                    VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (user_id, thread_id, "assistant", opening_message, utc_now()),
-                )
-                print(f"Message inserted: {opening_message[:50]}...")
-            except Exception as msg_error:
-                print(f"Failed to insert message: {msg_error}")
-                raise
         conn.commit()
-    
-    # Verify the message was committed by querying it back
-    import time
-    time.sleep(0.1)  # Small delay to ensure transaction is fully committed
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT COUNT(*) as count
-                FROM thread_messages
-                WHERE user_id = %s AND thread_id = %s AND role = 'assistant'
-                """,
-                (user_id, thread_id),
-            )
-            count = cur.fetchone()
-            print(f"Verified message count in database: {count['count']}")
-    
-    # Then try to add the columns and update the row (for new schema)
-    try:
-        with get_connection(autocommit=True) as conn:
-            with conn.cursor() as cur:
-                cur.execute("ALTER TABLE threads ADD COLUMN IF NOT EXISTS loop_id UUID")
-                cur.execute("ALTER TABLE threads ADD COLUMN IF NOT EXISTS last_reflected_at TIMESTAMPTZ")
-    except Exception:
-        pass  # Ignore errors, columns might already exist
-    
-    # Try to update the row with loop_id and last_reflected_at
-    try:
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE threads
-                    SET loop_id = %s, last_reflected_at = %s
-                    WHERE thread_id = %s AND user_id = %s
-                    """,
-                    (loop_id, utc_now(), thread_id, user_id),
-                )
-            conn.commit()
-    except Exception:
-        pass  # Ignore if columns don't exist yet
 
     return {
         "thread_id": thread_id,
@@ -1163,3 +1212,63 @@ Generate a natural, conversational opening that acknowledges this pattern and as
         "opening_message": opening_message,
         "loop_id": loop_id,
     }
+
+def reopen_loop(loop_id: str, user_id: int) -> bool:
+    """Bumps last_detected_at to now, for the case where a loop resurfaces
+    in conversation with no new matched journal entry backing it (e.g. the
+    resurface-check in choose_response_mode_node). Deliberately does NOT
+    touch matched_entries/first_detected_at via _calculate_loop_span_dates
+    -- that function derives last_detected_at from matched_entries' own
+    dates, which would just recompute back to the old date when there's
+    nothing new to add, silently no-opping the reopen.
+
+    See append_loop_entry() above for the counterpart that DOES attach a
+    matched_entries record, once persist_summary_node has actually created
+    the turn's journal entry later in the graph.
+
+    FIX: loop_id arrives here as a plain Python str (e.g. from
+    stored.get("loop_id"), which load_memory_node populates via
+    str(row["loop_id"])), but the `loop_id` column is a UUID column.
+    Every other loop_id-scoped query in this file (get_loop,
+    mark_resolved) casts the column with `loop_id::text = %s` to compare
+    it against that str safely -- this function was missing that cast on
+    both the SELECT and UPDATE, so the WHERE clause silently matched no
+    rows, fetchone() returned None, and this returned False without ever
+    raising or logging. Added the same ::text cast used everywhere else
+    in this module.
+    """
+    now = datetime.now(timezone.utc)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT detection_dates FROM loops
+                WHERE loop_id::text = %s AND user_id = %s
+                FOR UPDATE
+                """,
+                (str(loop_id), user_id),
+            )
+            row = cur.fetchone()
+            print(f"[reopen_loop] DEBUG loop_id={loop_id!r} user_id={user_id!r} found_row={row is not None}", flush=True)
+            if not row:
+                return False
+
+            detection_dates = row.get("detection_dates") or []
+            now_iso = now.isoformat()
+            if now_iso not in detection_dates:
+                detection_dates.append(now_iso)
+
+            cur.execute(
+                """
+                UPDATE loops
+                SET last_detected_at = %s,
+                    detection_dates = %s::jsonb,
+                    detection_count = %s
+                WHERE loop_id::text = %s AND user_id = %s
+                """,
+                (now, Jsonb(detection_dates), len(detection_dates), str(loop_id), user_id),
+            )
+            print(f"[reopen_loop] DEBUG rowcount={cur.rowcount} new_last_detected_at={now.isoformat()} new_detection_count={len(detection_dates)}", flush=True)
+        conn.commit()
+        print(f"[reopen_loop] DEBUG committed", flush=True)
+    return True

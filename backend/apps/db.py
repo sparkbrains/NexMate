@@ -197,7 +197,8 @@ def init_postgres() -> None:
                     created_at TIMESTAMPTZ NOT NULL,
                     updated_at TIMESTAMPTZ NOT NULL,
                     loop_id UUID,
-                    last_reflected_at TIMESTAMPTZ
+                    last_reflected_at TIMESTAMPTZ,
+                    daily_question_id BIGINT
                 )
                 """
             )
@@ -252,6 +253,15 @@ def init_postgres() -> None:
                 ADD COLUMN IF NOT EXISTS last_reflected_at TIMESTAMPTZ
                 """
             )
+            # Add daily_question_id column if it doesn't exist (for existing
+            # installations) — tags a thread as having been created to
+            # answer a specific daily question, independent of its title.
+            cur.execute(
+                """
+                ALTER TABLE threads
+                ADD COLUMN IF NOT EXISTS daily_question_id BIGINT
+                """
+            )
             cur.execute(
     """
     CREATE TABLE IF NOT EXISTS pending_signups (
@@ -285,7 +295,44 @@ def init_postgres() -> None:
     )
     """
 )
-            
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS prompt_pack_answers (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    prompt_id TEXT NOT NULL,
+                    prompt_text TEXT NOT NULL,
+                    category TEXT NOT NULL DEFAULT '',
+                    answer_text TEXT NOT NULL,
+                    answered_date DATE NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL,
+                    UNIQUE (user_id, answered_date)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_prompt_pack_answers_user ON prompt_pack_answers(user_id, answered_date DESC)"
+            )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_profile_summary (
+                    user_id BIGINT PRIMARY KEY,
+                    summary_text TEXT NOT NULL,
+                    source_answer_count INT NOT NULL DEFAULT 0,
+                    generated_date DATE NOT NULL,
+                    covers_through_date DATE,
+                    created_at TIMESTAMPTZ NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                """
+                ALTER TABLE user_profile_summary
+                ADD COLUMN IF NOT EXISTS covers_through_date DATE
+                """
+            )
             # Create index on loop_id after ensuring column exists
             try:
                 cur.execute(
@@ -296,3 +343,17 @@ def init_postgres() -> None:
                 )
             except Exception:
                 pass  # Ignore if column doesn't exist yet
+
+            # Create index on daily_question_id after ensuring column exists
+            try:
+                cur.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_threads_daily_question_id
+                    ON threads(daily_question_id)
+                    """
+                )
+            except Exception:
+                pass  # Ignore if column doesn't exist yet
+
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_threads_user_updated ON threads(user_id, updated_at DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_loops_user_last_detected ON loops(user_id, last_detected_at DESC)")

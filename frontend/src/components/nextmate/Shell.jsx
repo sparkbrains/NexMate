@@ -104,7 +104,7 @@ const fmtWhen = (iso) => {
 
 export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onDeleteThread, onNewThread, user, onLogout }) => {
   const { sidebarOpen, setSidebarOpen } = useContext(AppContext);
-  const [threadTab, setThreadTab] = useState('regular'); // 'regular' | 'reflecting'
+  const [threadTab, setThreadTab] = useState('regular'); // 'regular' | 'reflecting' | 'daily'
   const [pendingDeleteThread, setPendingDeleteThread] = useState(null);
 
   // A thread counts as "reflecting" if it has a loop_id, or — as a
@@ -112,9 +112,21 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
   // if its title carries the "Reflecting on: ..." prefix used for
   // loop-reflection threads.
   const isReflecting = (t) => Boolean(t.loop_id) || /^Reflecting on:/i.test(t.title || '');
-  const regularThreads = threads.filter(t => !isReflecting(t));
-  const reflectingThreads = threads.filter(isReflecting);
-  const activeThreads = threadTab === 'reflecting' ? reflectingThreads : regularThreads;
+  // A thread counts as an answered "Daily Question" thread if it's tagged
+  // with a daily_question_id from the threads table. The title-prefix
+  // fallback only matters for threads created before this column existed
+  // (or before they'd accumulated 4+ messages) — new threads are tagged
+  // reliably via daily_question_id itself.
+  const isDailyQuestion = (t) => Boolean(t.daily_question_id) || /^Daily Question:/i.test(t.title || '');
+
+  const dailyThreads = threads.filter(isDailyQuestion);
+  const reflectingThreads = threads.filter(t => !isDailyQuestion(t) && isReflecting(t));
+  const regularThreads = threads.filter(t => !isDailyQuestion(t) && !isReflecting(t));
+
+  const activeThreads =
+    threadTab === 'reflecting' ? reflectingThreads :
+    threadTab === 'daily' ? dailyThreads :
+    regularThreads;
 
   return (
     <>
@@ -168,12 +180,23 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
             Reflecting on
             {reflectingThreads.length > 0 && <span className="nm-nav-count">{reflectingThreads.length}</span>}
           </button>
+          <button
+            className={"nm-thread-tab" + (threadTab === 'daily' ? " active" : "")}
+            onClick={() => setThreadTab('daily')}
+          >
+            Daily Questions
+            {dailyThreads.length > 0 && <span className="nm-nav-count">{dailyThreads.length}</span>}
+          </button>
         </div>
 
         <div className="nm-threads">
           {activeThreads.length === 0 && (
             <div className="nm-meta" style={{ padding: '8px 12px' }}>
-              {threadTab === 'reflecting' ? 'No reflections yet.' : 'No threads yet.'}
+              {threadTab === 'reflecting'
+                ? 'No reflections yet.'
+                : threadTab === 'daily'
+                ? 'No answered daily questions yet.'
+                : 'No threads yet.'}
             </div>
           )}
           {activeThreads.map(t => {

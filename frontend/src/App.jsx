@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './components/nextmate/Shell';
+import { PromptPackPop } from './components/nextmate/PromptPackPop';
 import { TodayScreen } from './components/nextmate/TodayScreen';
 import { ChatScreen } from './components/nextmate/ChatScreen';
 import { LoopsScreen } from './components/nextmate/LoopsScreen';
@@ -165,6 +166,7 @@ export default function App() {
           onLogout={onLogout}
         />
         {screen}
+        <PromptPackPop />
       </div>
     </AppContext.Provider>
   );

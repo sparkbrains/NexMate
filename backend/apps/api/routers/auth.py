@@ -3,6 +3,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from apps.api.deps.auth import get_current_user
+from apps.api.services.user_profile_service import get_user_profile_text
 from apps.api.services.auth_service import (
     User,
     authenticate_user,
@@ -115,6 +116,14 @@ def logout(current_user: User = Depends(get_current_user), payload: dict[str, An
 @router.get("/me")
 def me(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     return {"user": _user_payload(current_user)}
+
+@router.get("/profile/summary")
+async def get_profile_summary(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    """Return the internal user profile summary for the authenticated user.
+    The summary is generated once per day and cached in the DB.
+    """
+    summary = await get_user_profile_text(current_user.id)
+    return {"summary": summary}
 
 
 # --- forgot password ------------------------------------------------

@@ -37,7 +37,7 @@ def answer_daily_question(
     """Answer a daily question by creating a new thread with the question context."""
     from apps.api.services.thread_service import create_thread
     from apps.db import get_connection, utc_now
-    
+
     # Get the question details
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -50,32 +50,47 @@ def answer_daily_question(
                 (question_id, current_user.id),
             )
             question = cur.fetchone()
-            
-            if not question:
-                return {"success": False, "message": "Question not found or already answered"}
-            
-            # Mark the question as answered
-            success = mark_question_answered(question_id)
-            
-            # Create a new thread for answering the question
-            thread_title = f"Daily Question: {question['question_text'][:50]}..."
-            new_thread = create_thread(
-                user_id=current_user.id,
-                title=thread_title,
-                context={
-                    "daily_question_id": question_id,
-                    "question_text": question["question_text"],
-                    "source_thread_id": question["source_thread_id"],
-                    "source_core_themes": question["source_core_themes"],
-                }
-            )
-            
-            return {
-                "success": True,
-                "message": "Question answered successfully",
-                "thread_id": new_thread["thread_id"],
-                "question_text": question["question_text"]
-            }
+
+    if not question:
+        return {"success": False, "message": "Question not found or already answered"}
+
+    # Create the thread FIRST. mark_question_answered() commits in its own
+    # connection, so if we marked-answered before this and create_thread()
+    # then failed (DB hiccup, LLM title-gen error, etc.), the question would
+    # be permanently stuck as "answered" with no thread ever created -- an
+    # orphaned, unrecoverable daily question. Only mark it answered once we
+    # know the thread genuinely exists.
+    thread_title = f"Daily Question: {question['question_text'][:50]}..."
+    new_thread = create_thread(
+        user_id=current_user.id,
+        title=thread_title,
+        context={
+            "daily_question_id": question_id,
+            "question_text": question["question_text"],
+            "source_thread_id": question["source_thread_id"],
+            "source_core_themes": question["source_core_themes"],
+        }
+    )
+
+    success = mark_question_answered(question_id)
+    if not success:
+        # Thread now exists but the question row didn't transition (e.g.
+        # answered concurrently by another request in between). Don't fail
+        # the request -- the thread is real and usable either way -- but
+        # surface it so it's visible in logs rather than silently ignored.
+        import logging
+        logging.getLogger(__name__).warning(
+            "daily_question %s: thread %s created but mark_question_answered "
+            "returned False (already answered/expired?)",
+            question_id, new_thread["thread_id"],
+        )
+
+    return {
+        "success": True,
+        "message": "Question answered successfully",
+        "thread_id": new_thread["thread_id"],
+        "question_text": question["question_text"]
+    }
 
 
 @router.get("/daily-question/{question_id}/context")
@@ -86,7 +101,7 @@ def get_question_context(
     """Get thread context for answering a daily question."""
     # First get the question to find the source thread
     from apps.db import get_connection
-    
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -97,13 +112,13 @@ def get_question_context(
                 (question_id, current_user.id),
             )
             question = cur.fetchone()
-            
+
             if not question:
                 return {"error": "Question not found"}
-            
+
             thread_id = question["source_thread_id"]
             context = get_thread_context_for_question(current_user.id, thread_id)
-            
+
             return {
                 "thread_id": thread_id,
                 "context": context,
