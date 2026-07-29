@@ -12,6 +12,22 @@ import { ProfilePage } from './components/nextmate/ProfilePage';
 import { clearSession, deleteThread as deleteThreadApi, getToken, getUser, listThreads } from './lib/api';
 import { AppContext } from './context';
 
+const onLogout = () => {
+    clearSession();
+    setUser(null);
+    setThreads([]);
+    setThreadId(null);
+    setChatParams(null);
+    navigateTo('today');
+  };
+
+  const onAuthExpired = () => {
+    setUser(null);
+    setThreads([]);
+    setThreadId(null);
+    setChatParams(null);
+    navigateTo('today');
+  };
 const newThreadId = () =>
   (crypto.randomUUID ? crypto.randomUUID() : `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
@@ -115,6 +131,7 @@ export default function App() {
         threadTitle={chatParams?.threadTitle || activeThread?.title}
         initialMessage={chatParams?.initialMessage}
         onMessageDone={refreshThreads}
+        onAuthExpired={onAuthExpired}
       />
     );
   } else if (route === 'journal') {

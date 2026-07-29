@@ -1,7 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
 import { useChatSocket } from '../../hooks/useChatSocket';
-import { getThreadMessages, listLoops } from '../../lib/api';
+import {
+  getThreadMessages,
+  listLoops,
+  getThreadSummary,
+  transcribeAudio,
+  finalizeThreadSummary,
+  listJournalBooks,
+  createJournalBook,
+  createJournalEntry,
+  saveThreadSummaryAsJournalEntry
+} from '../../lib/api';
+
+const NEW_BOOK_OPTION = '__new__';
+
+const todayISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 const Msg = ({ from, text, meta, quoted, choices, className }) => {
   const containerStyle = {
@@ -144,9 +161,11 @@ export const ChatScreen = ({
   onMessageDone,
   context,
   initialMessage,
+  onAuthExpired,
 }) => {
   const [draft, setDraft] = useState('');
   const [loops, setLoops] = useState([]);
+  const [threadSummary, setThreadSummary] = useState(null);
   const [recording, setRecording] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [voiceError, setVoiceError] = useState('');
@@ -159,6 +178,15 @@ export const ChatScreen = ({
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
   const [showSidePanel, setShowSidePanel] = useState(true);
+
+  const [showSaveToJournal, setShowSaveToJournal] = useState(false);
+  const [loadingJournalBooks, setLoadingJournalBooks] = useState(false);
+  const [journalBooks, setJournalBooks] = useState([]);
+  const [journalTargetBookId, setJournalTargetBookId] = useState('');
+  const [newJournalBookName, setNewJournalBookName] = useState('');
+  const [savingToJournal, setSavingToJournal] = useState(false);
+  const [journalSaveMessage, setJournalSaveMessage] = useState('');
+  const [journalSaveError, setJournalSaveError] = useState(false);
 
   const recognitionRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -201,6 +229,7 @@ export const ChatScreen = ({
       if (onMessageDone) onMessageDone();
     },
     context,
+    onAuthExpired,
   });
 
   // Load available voices (browser voices load asynchronously)
@@ -403,27 +432,11 @@ export const ChatScreen = ({
       });
 
       try {
-        const token = localStorage.getItem('nextmate.token');
-        const response = await fetch('http://127.0.0.1:8010/api/transcribe', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: blob,
-        });
-
-        const responseText = await response.text();
-        let data = null;
-        try {
-          data = responseText ? JSON.parse(responseText) : null;
-        } catch (parseError) {
-          console.warn('Transcription response JSON parse failed', parseError, responseText);
-        }
-
-        if (!response.ok) {
-          const errorMessage = data?.detail || responseText || 'Transcription failed';
-          throw new Error(errorMessage);
-        }
+        // Routed through lib/api.js's transcribeAudio() instead of a
+        // hardcoded fetch URL, so this moves with the rest of the app
+        // (VITE_API_BASE_URL) across environments instead of being
+        // pinned to this one dev host/port.
+        const data = await transcribeAudio(blob);
 
         if (!data || typeof data !== 'object') {
           throw new Error('Transcription endpoint returned invalid response');
@@ -497,13 +510,113 @@ export const ChatScreen = ({
       .catch(() => {});
   };
 
+  const refreshThreadSummary = () => {
+    if (!threadId) { setThreadSummary(null); return; }
+    // Backend returns { thread_id, summary_text }, and the render below
+    // reads threadSummary.summary_text / threadSummary.updated_at off the
+    // whole object -- not a bare string. An empty summary_text (no summary
+    // persisted yet for this thread) resolves to null, so the sidebar
+    // section stays hidden rather than rendering an empty card.
+    getThreadSummary(threadId)
+      .then((data) => setThreadSummary(data && data.summary_text ? data : null))
+      .catch(() => setThreadSummary(null));
+  };
+
   useEffect(() => {
     refreshLoops();
   }, []);
 
   useEffect(() => {
-    if (!streaming) refreshLoops();
+    refreshThreadSummary();
+  }, [threadId]);
+
+  // Reset the save-to-journal panel whenever the thread changes, so an
+  // in-progress pick from a previous thread doesn't leak into this one.
+  useEffect(() => {
+    setShowSaveToJournal(false);
+    setJournalTargetBookId('');
+    setNewJournalBookName('');
+    setJournalSaveMessage('');
+    setJournalSaveError(false);
+  }, [threadId]);
+
+  const toggleSaveToJournal = (checked) => {
+    setShowSaveToJournal(checked);
+    setJournalSaveMessage('');
+    setJournalSaveError(false);
+    if (checked && journalBooks.length === 0 && !loadingJournalBooks) {
+      setLoadingJournalBooks(true);
+      listJournalBooks()
+        .then((data) => {
+          const list = data.books || [];
+          setJournalBooks(list);
+          setJournalTargetBookId(list[0] ? String(list[0].id) : NEW_BOOK_OPTION);
+        })
+        .catch(() => {
+          setJournalBooks([]);
+          setJournalTargetBookId(NEW_BOOK_OPTION);
+        })
+        .finally(() => setLoadingJournalBooks(false));
+    }
+  };
+
+  const handleSaveSummaryToJournal = async () => {
+    if (!threadSummary?.summary_text) return;
+    setSavingToJournal(true);
+    setJournalSaveMessage('');
+    setJournalSaveError(false);
+    try {
+      let bookId = journalTargetBookId;
+      let bookName = journalBooks.find((b) => String(b.id) === String(bookId))?.name;
+
+      if (bookId === NEW_BOOK_OPTION) {
+        const name = newJournalBookName.trim();
+        if (!name) throw new Error('Name the new book first.');
+        const created = await createJournalBook({ name, color: '' });
+        bookId = created.book.id;
+        bookName = created.book.name;
+        setJournalBooks((prev) => [...prev, created.book]);
+        setJournalTargetBookId(String(bookId));
+        setNewJournalBookName('');
+      }
+
+      await saveThreadSummaryAsJournalEntry({
+  thread_id: threadId,
+  body: threadSummary.summary_text,
+  book_id: bookId,
+});
+      setJournalSaveMessage(`Saved to ${bookName || 'journal'}.`);
+    } catch (e) {
+      setJournalSaveError(true);
+      setJournalSaveMessage(e?.message || 'Failed to save entry.');
+    } finally {
+      setSavingToJournal(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!streaming) {
+      refreshLoops();
+      refreshThreadSummary();
+    }
   }, [streaming]);
+
+  // Tab-switch case: the socket stays open when the browser tab is merely
+  // backgrounded (unlike navigating away, which unmounts this screen and
+  // triggers the WebSocketDisconnect path server-side), so nothing else
+  // catches it. Fire-and-forget on the way out; we don't wait for or
+  // surface the result since the person has already moved on.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && threadId) {
+        finalizeThreadSummary(threadId).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [threadId]);
 
   const activeLoops = loops.filter((l) => l.state === 'active');
   const topLoop = activeLoops[0];
@@ -664,14 +777,115 @@ export const ChatScreen = ({
           )}
 
           <div className="nm-hr dotted" />
-          <div className="nm-eyebrow" style={{ marginBottom: 10 }}>
-            This thread
-          </div>
-          <StatLine label="Messages" value={messages.length} />
-          <StatLine label="Connection" value={status} teal={status === 'open'} />
-          <StatLine label="Active loops" value={activeLoops.length} />
 
-          <div className="nm-hr dotted" />
+          {threadSummary && (
+            <>
+              <div className="nm-eyebrow" style={{ marginBottom: 10 }}>
+                This thread, so far
+              </div>
+              <div className="nm-card" style={{ padding: 12, marginBottom: 16 }}>
+                <div className="nm-body" style={{ fontSize: 12.5, lineHeight: 1.55 }}>
+                  {threadSummary.summary_text}
+                </div>
+                <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 8 }}>
+                  last updated {new Date(threadSummary.updated_at).toLocaleDateString()}
+                </div>
+
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--rule)' }}>
+                  <label
+                    className="nm-meta"
+                    style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}
+                  >
+                    <span className="nm-switch">
+                      <input
+                        type="checkbox"
+                        checked={showSaveToJournal}
+                        onChange={(e) => toggleSaveToJournal(e.target.checked)}
+                      />
+                      <span className="nm-switch-slider"></span>
+                    </span>
+                    Save this summary as a journal entry
+                  </label>
+
+                  {showSaveToJournal && (
+                    <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                      {loadingJournalBooks ? (
+                        <div className="nm-meta" style={{ fontSize: 11 }}>Loading books…</div>
+                      ) : (
+                        <>
+                          <select
+                            value={journalTargetBookId}
+                            onChange={(e) => setJournalTargetBookId(e.target.value)}
+                            style={{
+                              fontSize: 11.5,
+                              fontFamily: 'var(--font-mono)',
+                              border: '1px solid var(--rule)',
+                              background: 'var(--surface)',
+                              color: 'var(--ink)',
+                              borderRadius: 4,
+                              padding: '4px 6px',
+                            }}
+                          >
+                            {journalBooks.map((b) => (
+                              <option key={b.id} value={String(b.id)}>
+                                {b.name}
+                              </option>
+                            ))}
+                            <option value={NEW_BOOK_OPTION}>+ New book…</option>
+                          </select>
+
+                          {journalTargetBookId === NEW_BOOK_OPTION && (
+                            <input
+                              type="text"
+                              value={newJournalBookName}
+                              onChange={(e) => setNewJournalBookName(e.target.value)}
+                              placeholder="Name this book…"
+                              style={{
+                                fontSize: 12,
+                                border: '1px solid var(--rule)',
+                                background: 'var(--surface)',
+                                color: 'var(--ink)',
+                                borderRadius: 4,
+                                padding: '6px 8px',
+                              }}
+                            />
+                          )}
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <button
+                              className="nm-btn primary"
+                              style={{ fontSize: 11.5, padding: '6px 10px' }}
+                              onClick={handleSaveSummaryToJournal}
+                              disabled={
+                                savingToJournal ||
+                                !threadSummary.summary_text ||
+                                (journalTargetBookId === NEW_BOOK_OPTION && !newJournalBookName.trim())
+                              }
+                            >
+                              {savingToJournal ? 'Saving…' : 'Save entry'}
+                            </button>
+                            {journalSaveMessage && (
+                              <span
+                                className="nm-meta"
+                                style={{
+                                  fontSize: 10.5,
+                                  color: journalSaveError ? 'var(--accent)' : 'var(--teal)',
+                                }}
+                              >
+                                {journalSaveMessage}
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="nm-hr dotted" />
+            </>
+          )}
+
           <div className="nm-meta" style={{ lineHeight: 1.5, color: 'var(--ink-4)' }}>
             Nextmate doesn't provide clinical advice. Safety screens run on every message.
           </div>

@@ -8,9 +8,13 @@ from apps.api.services.thread_service import (
     delete_thread_everywhere,
     get_thread_messages,
     list_threads,
+    normalize_thread_id,
 )
+from apps.api.services.thread_summary_service import get_thread_summary
 from apps.api.services.transcription_service import transcribe_audio
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
+from apps.api.services.thread_summary_service import generate_summary_now
 
 router = APIRouter()
 
@@ -33,6 +37,22 @@ def get_messages(thread_id: str, current_user: User = Depends(get_current_user))
     return {
         "thread_id": cleaned_thread_id,
         "messages": get_thread_messages(current_user.id, cleaned_thread_id),
+    }
+
+
+@router.get("/api/threads/{thread_id}/summary")
+def get_thread_summary_endpoint(thread_id: str, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    cleaned_thread_id = thread_id.strip()
+    if not cleaned_thread_id:
+        raise HTTPException(status_code=400, detail="Invalid thread_id")
+
+    normalized_id = normalize_thread_id(cleaned_thread_id)
+    existing = get_thread_summary(current_user.id, normalized_id)
+
+    return {
+        "thread_id": cleaned_thread_id,
+        "summary_text": existing["summary_text"] if existing else "",
+        "updated_at": existing["updated_at"] if existing else None,
     }
 
 
@@ -64,3 +84,18 @@ async def transcribe_endpoint(request: Request, current_user: User = Depends(get
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Transcription error: {str(e)}")
+
+@router.post("/api/threads/{thread_id}/finalize-summary")
+def finalize_thread_summary_endpoint(
+    thread_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    cleaned_thread_id = thread_id.strip()
+    if not cleaned_thread_id:
+        raise HTTPException(status_code=400, detail="Invalid thread_id")
+
+    normalized_id = normalize_thread_id(cleaned_thread_id)
+    background_tasks.add_task(generate_summary_now, current_user.id, normalized_id)
+
+    return {"thread_id": cleaned_thread_id, "scheduled": True}

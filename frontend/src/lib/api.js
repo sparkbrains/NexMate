@@ -277,6 +277,9 @@ export function listJournalEntries(bookId = null) {
   return request(`/api/journal${qs}`);
 }
 
+// Regular, hand-written journal entry (from the Journal screen). Kept
+// exactly as-is -- unrelated to, and unaffected by, the thread-summary
+// save path below. Any number of these can be created per book/day.
 export function createJournalEntry({ body, mood_emoji = '', mood_label = '', entry_date = null, translated = '', auto_translate = false, book_id = null, allow_loop_detection = true }) {
   return request('/api/journal', {
     method: 'POST',
@@ -302,11 +305,37 @@ export function chatSocketUrl(threadId) {
   return `${wsBase}/ws/chat/${encodeURIComponent(threadId)}?token=${token}`;
 }
 
-// --- prompt pack ------------------------------------------------------
-//
-// One prompt from the pack is shown per calendar day (same rotation for
-// everyone). getTodaysPrompt() tells the caller which prompt it is and
-// whether the user already answered it today.
+// Transcription takes a raw audio Blob, not JSON, so it can't go through
+// request() (which always JSON.stringifies its body). This mirrors
+// request()'s auth header / API_BASE_URL usage instead of hardcoding a URL,
+// so it moves with the rest of the app across environments.
+export async function transcribeAudio(blob) {
+  const token = getToken();
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE_URL}/api/transcribe`, {
+    method: 'POST',
+    headers,
+    body: blob,
+  });
+
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = { raw: text }; }
+  }
+
+  if (!res.ok) {
+    const detail = (data && (data.detail || data.message)) || res.statusText || 'Transcription failed';
+    const err = new Error(typeof detail === 'string' ? detail : 'Transcription failed');
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+
+  return data;
+}
 
 export function getTodaysPrompt({ signal } = {}) {
   return request('/api/dashboard/prompt-pack/today', { signal });
@@ -334,4 +363,29 @@ export async function answerDailyQuestion(questionId) {
 export async function getDailyQuestionContext(questionId) {
   // Retrieves context (source thread, etc.) for a specific daily question
   return request(`/api/dashboard/daily-question/${encodeURIComponent(questionId)}/context`);
+}
+
+export function getThreadSummary(threadId) {
+  return request(`/api/threads/${encodeURIComponent(threadId)}/summary`);
+}
+
+// Tab-switch / navigate-away trigger for on-demand summary generation.
+// Fire-and-forget from the caller's side -- uses the same request() helper
+// (and therefore the same auth header handling) as everything else here.
+export function finalizeThreadSummary(threadId) {
+  return request(`/api/threads/${encodeURIComponent(threadId)}/finalize-summary`, {
+    method: 'POST',
+  });
+}
+
+// Saves (or updates, if one already exists for this thread) a journal
+// entry sourced from a thread's summary. Separate from createJournalEntry
+// above -- this always upserts on thread_id server-side, so calling it
+// again for the same thread edits the existing entry instead of creating
+// a duplicate.
+export function saveThreadSummaryAsJournalEntry({ body, thread_id, book_id = null }) {
+  return request('/api/journal/from-thread-summary', {
+    method: 'POST',
+    body: { body, thread_id, book_id },
+  });
 }

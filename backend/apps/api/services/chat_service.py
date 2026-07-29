@@ -9,6 +9,61 @@ from apps.api.services.user_profile_service import get_user_profile_text
 logger = logging.getLogger(__name__)
 
 
+# Fire-and-forget tasks created via asyncio.create_task() are only weakly
+# referenced by the event loop -- if nothing else holds a reference to the
+# returned Task, the garbage collector is free to destroy it at any point,
+# including before it has run at all. When that happens the coroutine is
+# cancelled outside of its own try/except, so nothing is ever logged from
+# inside _sweep_stale_threads_background / _persist_summary_background --
+# only (if you happen to be watching for it) asyncio's own internal
+# "Task was destroyed but it is pending!" warning, not this module's logger.
+# This set exists purely to hold a strong reference to every background
+# task until it completes, so it can actually run to completion instead of
+# being GC'd mid-flight or before starting. See:
+# https://docs.python.org/3/library/asyncio-task.html#asyncio.create_task
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire_and_forget(coro) -> None:
+    """Schedule a coroutine as a background task, keeping a strong
+    reference to it until it finishes so it can't be silently garbage
+    collected. Use this instead of a bare asyncio.create_task(...) for any
+    fire-and-forget work in this module."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
+def background_task_count() -> int:
+    """Number of fire-and-forget tasks (idle-sweep, summary-persist) that
+    are currently in flight. Exposed so a health-check endpoint or a
+    periodic startup-time log can sanity-check that background work is
+    actually being scheduled and completing, rather than silently dying --
+    which is exactly how the earlier GC bug went unnoticed for weeks (no
+    error surfaced anywhere; _sweep_stale_threads_background's own
+    try/except never got the chance to run because the task itself was
+    destroyed before executing). A persistently-growing count across
+    repeated samples would indicate tasks are being scheduled but never
+    completing/erroring out; a count that never rises above 0 while chat
+    traffic is flowing would indicate the opposite failure mode (nothing
+    being scheduled at all)."""
+    return len(_background_tasks)
+
+
+async def log_background_task_health(interval_seconds: float = 300.0) -> None:
+    """Optional long-running background loop: logs the in-flight
+    fire-and-forget task count every `interval_seconds`. Not started
+    automatically -- wire this into your app's startup (e.g.
+    asyncio.create_task(log_background_task_health()) from a FastAPI
+    lifespan/startup event, keeping a reference to THAT task the same way
+    _fire_and_forget does) if you want an ongoing signal that background
+    summary/sweep work is actually flowing, without waiting to notice
+    stale summaries again two weeks from now."""
+    while True:
+        await asyncio.sleep(interval_seconds)
+        logger.info("Background task health check: %d task(s) in flight.", background_task_count())
+
+
 def _fallback_reply_for_error(exc: Exception) -> str:
     message = str(exc).strip().lower()
     if "401" in message or "authentication" in message or "user not found" in message:
@@ -65,13 +120,13 @@ async def generate_assistant_reply(user_id: int, thread_id: str, user_message: s
         # This is housekeeping for OTHER threads, not this turn's content,
         # so it doesn't need to wait on (or be gated by) anything about the
         # current message.
-        asyncio.create_task(
+        _fire_and_forget(
             _sweep_stale_threads_background(user_id=user_id, thread_id=thread_id)
         )
 
         toxic_detected = payload.get("toxic_language_detected", False)
         if not toxic_detected:
-            asyncio.create_task(
+            _fire_and_forget(
                 _persist_summary_background(
                     user_id=user_id,
                     thread_id=thread_id,

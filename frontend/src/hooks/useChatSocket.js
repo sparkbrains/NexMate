@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { chatSocketUrl } from '../lib/api';
+import { chatSocketUrl, clearSession } from '../lib/api';
 
-export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
+export function useChatSocket(threadId, { onDone, onChunk, context, onAuthExpired } = {}) {
   const [messages, setMessages] = useState([]);
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState('idle');
@@ -11,6 +11,7 @@ export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
   const streamingIdxRef = useRef(null);
   const onDoneRef = useRef(onDone);
   const onChunkRef = useRef(onChunk);
+  const onAuthExpiredRef = useRef(onAuthExpired);
 
   useEffect(() => {
     onDoneRef.current = onDone;
@@ -19,6 +20,10 @@ export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
   useEffect(() => {
     onChunkRef.current = onChunk;
   }, [onChunk]);
+
+  useEffect(() => {
+    onAuthExpiredRef.current = onAuthExpired;
+  }, [onAuthExpired]);
 
   useEffect(() => {
     if (!threadId) return;
@@ -46,7 +51,17 @@ export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
       setStatus('open');
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      // 4401 is the backend's dedicated close code for an auth rejection
+      // (see apps/api/routers/ws.py) -- distinct from a normal close, a
+      // network drop, or the server restarting. Without checking this,
+      // an expired/invalidated session and an ordinary disconnect look
+      // identical to the user: chat just silently stops responding.
+      if (event.code === 4401) {
+        setError('Your session expired. Please log in again.');
+        clearSession();
+        if (onAuthExpiredRef.current) onAuthExpiredRef.current();
+      }
       setStatus('closed');
       setStreaming(false);
     };

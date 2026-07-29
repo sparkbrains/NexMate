@@ -160,6 +160,25 @@ def init_postgres() -> None:
                 ADD COLUMN IF NOT EXISTS triggers JSONB NOT NULL DEFAULT '[]'::jsonb
                 """
             )
+            # source_thread_id ties a journal entry back to the chat thread it was
+            # generated from (via /api/journal/from-thread-summary). It stays NULL
+            # for manually-created entries. The partial unique index below is what
+            # lets upsert_journal_entry_for_thread() do a true ON CONFLICT upsert,
+            # so re-saving a summary for the same thread updates that one row
+            # instead of creating a duplicate entry.
+            cur.execute(
+                """
+                ALTER TABLE journal_logs
+                ADD COLUMN IF NOT EXISTS source_thread_id TEXT
+                """
+            )
+            cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_logs_thread_dedupe
+                ON journal_logs(user_id, source_thread_id)
+                WHERE source_thread_id IS NOT NULL
+                """
+            )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_journal_logs_user_date ON journal_logs(user_id, entry_date DESC)"
             )

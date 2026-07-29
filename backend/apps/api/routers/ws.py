@@ -7,10 +7,21 @@ from apps.api.config import STREAM_CHUNK_SIZE, STREAM_DELAY_SECONDS
 from apps.api.services.auth_service import get_user_by_token
 from apps.api.services.chat_service import generate_assistant_reply
 from apps.api.services.thread_service import append_thread_message, chunk_text
+from apps.api.services.thread_summary_service import generate_summary_now
 
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Tasks must be held onto until completion, or asyncio may garbage-collect
+# them mid-run since create_task() only keeps a weak reference internally.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire_and_forget(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 @router.websocket("/ws/chat/{thread_id}")
@@ -124,6 +135,7 @@ async def chat_socket(websocket: WebSocket, thread_id: str) -> None:
             )
     except WebSocketDisconnect:
         logger.info("Websocket disconnected user_id=%s thread_id=%s", user.id, cleaned_thread_id)
+        _fire_and_forget(generate_summary_now(user.id, cleaned_thread_id))
         return
     except Exception:
         logger.exception("Unhandled websocket failure for thread_id=%s", cleaned_thread_id)
