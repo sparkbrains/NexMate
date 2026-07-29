@@ -1,0 +1,1154 @@
+Timer unit: 1e-07 s
+
+Total time: 0.0105456 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\nodes.py
+Function: load_memory_node at line 63
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    63                                           def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
+    64         1        488.0    488.0      0.5      settings = get_settings()
+    65         1         42.0     42.0      0.0      thread_id = _thread_id_from_config(config)
+    66         1         28.0     28.0      0.0      user_id = _user_id_from_config(config)
+    67                                               
+    68         1         14.0     14.0      0.0      def inline_normalize(tid: str) -> str:
+    69                                                   if not tid:
+    70                                                       return ""
+    71                                                   if ":" in tid:
+    72                                                       parts = tid.split(":")
+    73                                                       if len(parts) >= 4 and parts[0] == "user" and parts[2] == "thread":
+    74                                                           return parts[3]
+    75                                                   return tid
+    76                                               
+    77         1         48.0     48.0      0.0      uuid_part = inline_normalize(thread_id)
+    78                                               
+    79         1          6.0      6.0      0.0      chat_history = state.get("chat_history", [])
+    80         1          4.0      4.0      0.0      chat_history_update = None
+    81         1          4.0      4.0      0.0      if not chat_history:
+    82                                                   if uuid_part:
+    83                                                       with get_connection() as conn:
+    84                                                           with conn.cursor() as cur:
+    85                                                               cur.execute(
+    86                                                                   """
+    87                                                                   SELECT role, content
+    88                                                                   FROM thread_messages
+    89                                                                   WHERE user_id = %s AND thread_id = %s
+    90                                                                   ORDER BY created_at ASC
+    91                                                                   """,
+    92                                                                   (user_id, uuid_part),
+    93                                                               )
+    94                                                               msg_rows = cur.fetchall()
+    95                                                       
+    96                                                       db_history = []
+    97                                                       for r in msg_rows:
+    98                                                           db_history.append({"role": str(r["role"]), "content": str(r["content"])})
+    99                                                       
+   100                                                       if db_history:
+   101                                                           if db_history[-1]["role"] == "user":
+   102                                                               db_history = db_history[:-1]
+   103                                                           chat_history_update = db_history
+   104                                           
+   105         2       8705.0   4352.5      8.3      with get_connection() as conn:
+   106         2        458.0    229.0      0.4          with conn.cursor() as cur:
+   107         2      32581.0  16290.5     30.9              cur.execute(
+   108         1          6.0      6.0      0.0                  """
+   109                                                           SELECT core_theme, mood, core_beliefs, triggers, key_facts, intensity, created_at
+   110                                                           FROM (
+   111                                                               SELECT core_theme, mood, core_beliefs, triggers, key_facts, intensity, created_at
+   112                                                               FROM journal_entries_v2
+   113                                                               WHERE user_id = %s AND thread_id = %s
+   114                                                               ORDER BY created_at DESC
+   115                                                               LIMIT %s
+   116                                                           ) recent_entries
+   117                                                           ORDER BY created_at ASC
+   118                                                           """,
+   119         1          6.0      6.0      0.0                  (user_id, thread_id, settings.memory_window),
+   120                                                       )
+   121         1       2878.0   2878.0      2.7              rows = cur.fetchall()
+   122                                           
+   123         1          5.0      5.0      0.0      thread_entries = []
+   124        16         26.0      1.6      0.0      for row in rows:
+   125        30         81.0      2.7      0.1          thread_entries.append({
+   126        15         54.0      3.6      0.1              "core_theme": str(row["core_theme"]),
+   127        15         27.0      1.8      0.0              "summary": str(row["core_theme"]),
+   128        15         30.0      2.0      0.0              "mood": str(row["mood"]),
+   129        15         21.0      1.4      0.0              "core_beliefs": row["core_beliefs"],
+   130        15         29.0      1.9      0.0              "triggers": row["triggers"],
+   131        15         20.0      1.3      0.0              "key_facts": row["key_facts"],
+   132        15         41.0      2.7      0.0              "intensity": int(row["intensity"]) if row["intensity"] is not None else 5,
+   133        15        328.0     21.9      0.3              "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
+   134                                                   })
+   135                                           
+   136         1          2.0      2.0      0.0      stored_loops = []
+   137         2       8041.0   4020.5      7.6      with get_connection() as conn:
+   138         2        473.0    236.5      0.4          with conn.cursor() as cur:
+   139         2      25730.0  12865.0     24.4              cur.execute(
+   140         1          2.0      2.0      0.0                  """
+   141                                                           SELECT loop_id, loop_name, core_belief, trigger, valence,
+   142                                                                  first_detected_at, last_detected_at, detection_count,
+   143                                                                  description, suggestion, confidence_score, validation_metadata, matched_entries
+   144                                                           FROM loops
+   145                                                           WHERE user_id = %s
+   146                                                           ORDER BY last_detected_at DESC
+   147                                                           """,
+   148         1          3.0      3.0      0.0                  (user_id,),
+   149                                                       )
+   150         1         98.0     98.0      0.1              rows = cur.fetchall()
+   151                                           
+   152         1          6.0      6.0      0.0      for row in rows:
+   153                                                   stored_loops.append({
+   154                                                       "loop_id": str(row["loop_id"]),
+   155                                                       "loop_name": str(row["loop_name"]),
+   156                                                       "core_belief": str(row["core_belief"]),
+   157                                                       "trigger": str(row["trigger"]),
+   158                                                       "valence": str(row["valence"]),
+   159                                                       "first_detected_at": row["first_detected_at"].isoformat() if hasattr(row["first_detected_at"], "isoformat") else str(row["first_detected_at"]),
+   160                                                       "last_detected_at": row["last_detected_at"].isoformat() if hasattr(row["last_detected_at"], "isoformat") else str(row["last_detected_at"]),
+   161                                                       "detection_count": int(row["detection_count"]) if row["detection_count"] else 1,
+   162                                                       "description": str(row["description"]),
+   163                                                       "suggestion": str(row["suggestion"]),
+   164                                                       "confidence_score": float(row["confidence_score"]) if row["confidence_score"] is not None else 0.0,
+   165                                                       "validation_metadata": row["validation_metadata"] or {},
+   166                                                       "matched_entries": row["matched_entries"] or [],
+   167                                                   })
+   168                                           
+   169                                               # Fetch active loop for current thread if linked
+   170         1          3.0      3.0      0.0      active_loop = None
+   171         1          4.0      4.0      0.0      if uuid_part:
+   172         1          3.0      3.0      0.0          active_loop_id = None
+   173         1          3.0      3.0      0.0          try:
+   174         2       7874.0   3937.0      7.5              with get_connection() as conn:
+   175         2        569.0    284.5      0.5                  with conn.cursor() as cur:
+   176         2      16104.0   8052.0     15.3                      cur.execute(
+   177         1          2.0      2.0      0.0                          """
+   178                                                                   SELECT loop_id FROM threads
+   179                                                                   WHERE user_id = %s AND thread_id = %s
+   180                                                                   """,
+   181         1          3.0      3.0      0.0                          (user_id, uuid_part),
+   182                                                               )
+   183         1         74.0     74.0      0.1                      thread_row = cur.fetchone()
+   184         1          2.0      2.0      0.0                      if thread_row:
+   185                                                                   active_loop_id = thread_row.get("loop_id")
+   186                                                   except Exception:
+   187                                                       pass
+   188                                           
+   189         1          4.0      4.0      0.0          if active_loop_id:
+   190                                                       for loop in stored_loops:
+   191                                                           if loop.get("loop_id") == str(active_loop_id):
+   192                                                               active_loop = loop
+   193                                                               break
+   194                                           
+   195         2        484.0    242.0      0.5      log_node(
+   196         1          4.0      4.0      0.0          thread_id=thread_id,
+   197         1          1.0      1.0      0.0          node_name="load_memory",
+   198         1         13.0     13.0      0.0          inputs={"user_input": state.get("user_input", "")},
+   199         1         14.0     14.0      0.0          outputs={"memory_entries_count": len(thread_entries), "stored_loops_count": len(stored_loops), "thread_id": thread_id, "active_loop_id": str(active_loop_id) if active_loop_id else None},
+   200                                               )
+   201         1          5.0      5.0      0.0      outputs = {"memory_entries": thread_entries, "thread_id": thread_id, "stored_loops": stored_loops, "active_loop": active_loop}
+   202         1          4.0      4.0      0.0      if chat_history_update is not None:
+   203                                                   outputs["chat_history"] = chat_history_update
+   204         1          1.0      1.0      0.0      return outputs
+
+Total time: 0.0002191 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\nodes.py
+Function: build_memory_context_node at line 207
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   207                                           def build_memory_context_node(state: NextMateState) -> NextMateState:
+   208         1        638.0    638.0     29.1      settings = get_settings()
+   209         1         17.0     17.0      0.8      thread_id = state.get("thread_id", "default")
+   210         1         11.0     11.0      0.5      entries = state.get("memory_entries", [])
+   211         1         16.0     16.0      0.7      window = entries[-settings.memory_window :]
+   212                                           
+   213         1          2.0      2.0      0.1      if not window:
+   214                                                   memory_context = "No prior memory available yet."
+   215                                               else:
+   216         1          7.0      7.0      0.3          lines: list[str] = []
+   217        16         25.0      1.6      1.1          for item in window:
+   218        15         65.0      4.3      3.0              summary = item.get("summary", "") or item.get("core_theme", "")
+   219        15         47.0      3.1      2.1              mood = item.get("mood", "unknown")
+   220        15         56.0      3.7      2.6              created_at = item.get("created_at", "")
+   221        15         50.0      3.3      2.3              beliefs = item.get("core_beliefs", [])
+   222        15         51.0      3.4      2.3              triggers = item.get("triggers", [])
+   223        15         27.0      1.8      1.2              if not beliefs and not triggers:
+   224                                                           old_patterns = item.get("patterns", [])
+   225                                                           if old_patterns:
+   226                                                               beliefs = old_patterns
+   227        15         50.0      3.3      2.3              facts = item.get("key_facts", [])
+   228                                           
+   229        15         56.0      3.7      2.6              line = f"- ({created_at}) mood={mood}: {summary}"
+   230        15         29.0      1.9      1.3              if beliefs:
+   231        14         74.0      5.3      3.4                  line += f" | beliefs: {', '.join(beliefs)}"
+   232        15         21.0      1.4      1.0              if triggers:
+   233        15        107.0      7.1      4.9                  line += f" | triggers: {', '.join(triggers)}"
+   234        15         18.0      1.2      0.8              if facts:
+   235        15        123.0      8.2      5.6                  line += f" | facts: {', '.join(facts)}"
+   236        15         50.0      3.3      2.3              lines.append(line)
+   237                                           
+   238         1         46.0     46.0      2.1          memory_context = "\n".join(lines)
+   239                                           
+   240         1          7.0      7.0      0.3      stored_loops = state.get("stored_loops", [])
+   241         1          2.0      2.0      0.1      if stored_loops:
+   242                                                   loop_lines = ["\nPreviously identified patterns:"]
+   243                                                   for loop in stored_loops:
+   244                                                       loop_lines.append(
+   245                                                           f"- {loop['loop_name']} ({loop['valence']}, seen {loop['detection_count']}x): {loop['description']}"
+   246                                                       )
+   247                                                   memory_context += "\n" + "\n".join(loop_lines)
+   248                                           
+   249         2        567.0    283.5     25.9      log_node(
+   250         1          2.0      2.0      0.1          thread_id=thread_id,
+   251         1          2.0      2.0      0.1          node_name="build_memory_context",
+   252         1         20.0     20.0      0.9          inputs={"total_entries": len(entries), "window_size": settings.memory_window, "used_entries": len(window)},
+   253         1          3.0      3.0      0.1          outputs={"memory_context": memory_context},
+   254                                               )
+   255         1          2.0      2.0      0.1      return {"memory_context": memory_context}
+
+Total time: 1.14106 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\nodes.py
+Function: detect_loops_node at line 260
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   260                                           def detect_loops_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
+   261         1       1201.0   1201.0      0.0      llm = get_chat_model()
+   262         1         11.0     11.0      0.0      thread_id = state.get("thread_id", "default")
+   263         1         50.0     50.0      0.0      user_id = _user_id_from_config(config)
+   264         1          4.0      4.0      0.0      user_input = state.get("user_input", "")
+   265         1          6.0      6.0      0.0      entries = state.get("memory_entries", [])
+   266         1          3.0      3.0      0.0      stored_loops = state.get("stored_loops", [])
+   267                                           
+   268         1         12.0     12.0      0.0      if len(entries) < 2:
+   269                                                   log_node(
+   270                                                       thread_id=thread_id,
+   271                                                       node_name="detect_loops",
+   272                                                       inputs={"user_input": user_input, "memory_entries_count": len(entries)},
+   273                                                       outputs={"detected_loops": "(skipped — not enough history)"},
+   274                                                   )
+   275                                                   return {"detected_loops": ""}
+   276                                           
+   277                                               # Get cross-thread entries for analysis
+   278         1      25832.0  25832.0      0.2      cross_thread_entries = _get_cross_thread_memory_entries(user_id, thread_id)
+   279                                               
+   280         2        898.0    449.0      0.0      content = build_loop_detection_prompt(
+   281         1          1.0      1.0      0.0          user_input=user_input,
+   282         1        409.0    409.0      0.0          memory_entries=entries,
+   283         1          2.0      2.0      0.0          cross_thread_entries=cross_thread_entries,
+   284                                               )
+   285         2   11378785.0 5.69e+06     99.7      raw, usage = invoke_with_logging(
+   286         1          7.0      7.0      0.0          llm,
+   287         1          4.0      4.0      0.0          [
+   288         1         16.0     16.0      0.0              {"role": "system", "content": LOOP_DETECTION_SYSTEM_PROMPT},
+   289         1          7.0      7.0      0.0              {"role": "user", "content": content},
+   290                                                   ],
+   291         1          6.0      6.0      0.0          "detect_loops",
+   292         1          2.0      2.0      0.0          thread_id,
+   293                                               )
+   294                                           
+   295         1        540.0    540.0      0.0      loops_data = parse_json_object(raw if isinstance(raw, str) else "")
+   296                                           
+   297         1         22.0     22.0      0.0      if not loops_data.get("loops_found", False):
+   298                                                   log_node(
+   299                                                       thread_id=thread_id,
+   300                                                       node_name="detect_loops",
+   301                                                       inputs={"user_input": user_input, "memory_entries_count": len(entries), "cross_thread_entries_count": len(cross_thread_entries), "prompt": content},
+   302                                                       outputs={"detected_loops": "(none found)", "raw_llm_response": raw},
+   303                                                   )
+   304                                                   return {"detected_loops": "", "response_mode": "", "loop_info": []}
+   305                                           
+   306         1         16.0     16.0      0.0      loops_text: list[str] = []
+   307         1         10.0     10.0      0.0      new_loop_info: list[dict[str, Any]] = []
+   308         1          3.0      3.0      0.0      matched_existing_info: list[dict[str, Any]] = []
+   309                                           
+   310         2         26.0     13.0      0.0      for loop in loops_data.get("loops", []):
+   311         1          6.0      6.0      0.0          valence = loop.get("valence", "neutral")
+   312         1          4.0      4.0      0.0          name = loop.get("pattern_name", "unknown pattern")
+   313         1          8.0      8.0      0.0          desc = loop.get("description", "")
+   314         1          7.0      7.0      0.0          suggestion = loop.get("suggestion", "")
+   315         1          6.0      6.0      0.0          evidence = loop.get("evidence", [])
+   316                                                   
+   317         1          6.0      6.0      0.0          core_belief = loop.get("core_belief", "")
+   318         1         26.0     26.0      0.0          trigger = loop.get("trigger", "")
+   319                                                   
+   320                                                   # Apply cross-thread validation - only show loop alerts if pattern matches across threads
+   321         2       1376.0    688.0      0.0          is_valid, validated_matches, confidence = _validate_cross_thread_loop_recurrence(
+   322         1          2.0      2.0      0.0              core_belief, trigger, entries, cross_thread_entries
+   323                                                   )
+   324                                                   
+   325         1          7.0      7.0      0.0          if not is_valid or confidence < 0.7:  # Higher threshold for cross-thread loops
+   326         2        959.0    479.5      0.0              log_node(
+   327         1          1.0      1.0      0.0                  thread_id=thread_id,
+   328         1          3.0      3.0      0.0                  node_name="detect_loops_cross_thread_validation",
+   329         1          9.0      9.0      0.0                  inputs={
+   330         1          4.0      4.0      0.0                      "loop_name": name, 
+   331         1          2.0      2.0      0.0                      "confidence": confidence, 
+   332         1          8.0      8.0      0.0                      "matches": len(validated_matches),
+   333         1          2.0      2.0      0.0                      "cross_thread_entries_count": len(cross_thread_entries)
+   334                                                           },
+   335         1          4.0      4.0      0.0                  outputs={"status": "rejected - insufficient cross-thread evidence"},
+   336                                                       )
+   337         1          2.0      2.0      0.0              continue
+   338                                           
+   339                                                   matched_existing = False
+   340                                                   matched_loop_name = ""
+   341                                           
+   342                                                   if stored_loops:
+   343                                                       comparison_prompt = build_loop_comparison_prompt(loop, stored_loops)
+   344                                                       comparison_raw, comparison_usage = invoke_with_logging(
+   345                                                           llm,
+   346                                                           [
+   347                                                               {"role": "system", "content": LOOP_COMPARISON_SYSTEM_PROMPT},
+   348                                                               {"role": "user", "content": comparison_prompt},
+   349                                                           ],
+   350                                                           "detect_loops_comparison",
+   351                                                           thread_id,
+   352                                                       )
+   353                                                       comparison = parse_json_object(comparison_raw if isinstance(comparison_raw, str) else "")
+   354                                                       if comparison.get("is_similar") and comparison.get("matched_loop_name"):
+   355                                                           matched_existing = True
+   356                                                           matched_loop_name = comparison.get("matched_loop_name", "")
+   357                                           
+   358                                                   if matched_existing and matched_loop_name:
+   359                                                       for stored in stored_loops:
+   360                                                           if stored.get("loop_name") == matched_loop_name:
+   361                                                               _update_loop_last_seen(stored, user_id, validated_matches)
+   362                                                               loops_text.append(
+   363                                                                   f"- [MATCHED EXISTING] {stored.get('loop_name', matched_loop_name)}: recurring pattern detected again (confidence: {confidence:.2f})"
+   364                                                               )
+   365                                                               matched_existing_info.append({
+   366                                                                   "loop_name": stored.get("loop_name", matched_loop_name),
+   367                                                                   "core_belief": stored.get("core_belief", ""),
+   368                                                                   "trigger": stored.get("trigger", ""),
+   369                                                                   "valence": stored.get("valence", "neutral"),
+   370                                                                   "matched_entries": validated_matches,
+   371                                                                   "confidence": confidence,
+   372                                                               })
+   373                                                               break
+   374                                                       continue
+   375                                           
+   376                                                   # Count threads in validated matches for cross-thread indication
+   377                                                   thread_ids = set(m.get("thread_id", "") for m in validated_matches if m.get("thread_id"))
+   378                                                   thread_count = len(thread_ids)
+   379                                                   
+   380                                                   if thread_count > 1:
+   381                                                       loops_text.append(f"- [{valence.upper()} CROSS-THREAD LOOP] {name}: {desc} (confidence: {confidence:.2f}, across {thread_count} threads)")
+   382                                                   else:
+   383                                                       loops_text.append(f"- [{valence.upper()} LOOP] {name}: {desc} (confidence: {confidence:.2f})")
+   384                                                       
+   385                                                   if evidence:
+   386                                                       loops_text.append(f"  evidence: {', '.join(evidence)}")
+   387                                                   if suggestion:
+   388                                                       loops_text.append(f"  suggestion: {suggestion}")
+   389                                                   if thread_count > 1:
+   390                                                       loops_text.append(f"  Cross-thread pattern detected across {thread_count} different conversations")
+   391                                           
+   392                                                   if validated_matches:
+   393                                                       new_loop_info.append(
+   394                                                           {
+   395                                                               "loop_name": name,
+   396                                                               "core_belief": core_belief,
+   397                                                               "trigger": trigger,
+   398                                                               "valence": valence,
+   399                                                               "matched_entries": validated_matches,
+   400                                                               "confidence": confidence,
+   401                                                               "thread_count": thread_count,
+   402                                                               "is_cross_thread": thread_count > 1,
+   403                                                           }
+   404                                                       )
+   405                                           
+   406         1         10.0     10.0      0.0      reflection = loops_data.get("reflection_prompt", "")
+   407         1          8.0      8.0      0.0      detected = "\n".join(loops_text)
+   408         1          4.0      4.0      0.0      if reflection:
+   409         1         16.0     16.0      0.0          detected += f"\n\nReflection angle: {reflection}"
+   410                                           
+   411         1          4.0      4.0      0.0      if new_loop_info:
+   412                                                   _save_merged_loop_info(new_loop_info, thread_id, user_id)
+   413                                                   response_mode = "loop_alert"
+   414         1          1.0      1.0      0.0      elif matched_existing_info:
+   415                                                   response_mode = "pattern_reflect"
+   416                                               else:
+   417         1          3.0      3.0      0.0          response_mode = ""
+   418                                           
+   419         2        213.0    106.5      0.0      log_node(
+   420         1          3.0      3.0      0.0          thread_id=thread_id,
+   421         1          2.0      2.0      0.0          node_name="detect_loops",
+   422         1         12.0     12.0      0.0          inputs={"user_input": user_input, "memory_entries_count": len(entries), "prompt": content},
+   423         1          6.0      6.0      0.0          outputs={
+   424         1          1.0      1.0      0.0              "detected_loops": detected,
+   425         1          1.0      1.0      0.0              "loops_data": loops_data,
+   426         1          1.0      1.0      0.0              "new_loop_info": new_loop_info,
+   427         1          0.0      0.0      0.0              "matched_existing_info": matched_existing_info,
+   428         1          1.0      1.0      0.0              "response_mode": response_mode,
+   429                                                   },
+   430         1          8.0      8.0      0.0          extra={"raw_llm_response": raw},
+   431                                               )
+   432         1         21.0     21.0      0.0      return {
+   433         1          1.0      1.0      0.0          "detected_loops": detected,
+   434         1          5.0      5.0      0.0          "loop_info": new_loop_info + matched_existing_info,
+   435         1          1.0      1.0      0.0          "response_mode": response_mode,
+   436                                               }
+
+Total time: 0.276981 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\nodes.py
+Function: detect_explicit_advice_node at line 439
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   439                                           def detect_explicit_advice_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
+   440         1        777.0    777.0      0.0      llm = get_chat_model()
+   441         1          4.0      4.0      0.0      thread_id = state.get("thread_id", "default")
+   442         1          9.0      9.0      0.0      user_input = str(state.get("user_input", ""))
+   443                                           
+   444         1         12.0     12.0      0.0      if not user_input.strip():
+   445                                                   log_node(
+   446                                                       thread_id=thread_id,
+   447                                                       node_name="detect_explicit_advice",
+   448                                                       inputs={"user_input": user_input},
+   449                                                       outputs={"explicit_advice_request": False},
+   450                                                   )
+   451                                                   return {"explicit_advice_request": False, "response_mode": ""}
+   452                                           
+   453         1         29.0     29.0      0.0      content = build_explicit_advice_detection_prompt(user_input)
+   454         2    2766913.0 1.38e+06     99.9      raw, usage = invoke_with_logging(
+   455         1          1.0      1.0      0.0          llm,
+   456         1          2.0      2.0      0.0          [
+   457         1          7.0      7.0      0.0              {"role": "system", "content": EXPLICIT_ADVICE_DETECTION_SYSTEM_PROMPT},
+   458         1          9.0      9.0      0.0              {"role": "user", "content": content},
+   459                                                   ],
+   460         1          3.0      3.0      0.0          "detect_explicit_advice",
+   461         1          1.0      1.0      0.0          thread_id,
+   462                                               )
+   463                                           
+   464         1        201.0    201.0      0.0      parsed = parse_json_object(raw if isinstance(raw, str) else "")
+   465         1         13.0     13.0      0.0      explicit_advice = bool(parsed.get("explicit_advice_request", False))
+   466         1          9.0      9.0      0.0      reason = str(parsed.get("reason", "")).strip()
+   467                                           
+   468         1          1.0      1.0      0.0      response_mode = "suggest" if explicit_advice else ""
+   469                                           
+   470         2       1782.0    891.0      0.1      log_node(
+   471         1          2.0      2.0      0.0          thread_id=thread_id,
+   472         1          1.0      1.0      0.0          node_name="detect_explicit_advice",
+   473         1         10.0     10.0      0.0          inputs={"user_input": user_input, "prompt": content},
+   474         1          5.0      5.0      0.0          outputs={"explicit_advice_request": explicit_advice, "response_mode": response_mode, "reason": reason},
+   475         1          4.0      4.0      0.0          extra={"raw_llm_response": raw},
+   476                                               )
+   477         1         14.0     14.0      0.0      return {"explicit_advice_request": explicit_advice, "response_mode": response_mode}
+
+Total time: 0.355957 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\nodes.py
+Function: choose_response_mode_node at line 485
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   485                                           def choose_response_mode_node(state: NextMateState) -> NextMateState:
+   486         1         13.0     13.0      0.0      thread_id = state.get("thread_id", "default")
+   487         1          3.0      3.0      0.0      user_input = state.get("user_input", "")
+   488         1          3.0      3.0      0.0      memory_context = state.get("memory_context", "No prior memory available yet.")
+   489         1          3.0      3.0      0.0      detected_loops = state.get("detected_loops", "")
+   490         1          4.0      4.0      0.0      existing_mode = state.get("response_mode", "")
+   491         1          3.0      3.0      0.0      explicit_advice = state.get("explicit_advice_request", False)
+   492         1          4.0      4.0      0.0      stored_loops = state.get("stored_loops", [])
+   493         1          4.0      4.0      0.0      active_loop = state.get("active_loop")
+   494         1          3.0      3.0      0.0      response_mode_history = state.get("response_mode_history", [])
+   495                                           
+   496         1          4.0      4.0      0.0      chat_history = state.get("chat_history", [])
+   497                                           
+   498         1          3.0      3.0      0.0      if explicit_advice:
+   499                                                   log_node(
+   500                                                       thread_id=thread_id,
+   501                                                       node_name="choose_response_mode",
+   502                                                       inputs={"user_input": user_input, "memory_context": memory_context,
+   503                                                               "explicit_advice_request": explicit_advice},
+   504                                                       outputs={"response_mode": "suggest", "response_mode_history": ["suggest"]},
+   505                                                       extra={"reason": "explicit advice request detected by advice node or regex fallback"},
+   506                                                   )
+   507                                                   return {"response_mode": "suggest", "response_mode_history": ["suggest"]}
+   508                                           
+   509         1          2.0      2.0      0.0      if active_loop and len(chat_history) <= 1:
+   510                                                   log_node(
+   511                                                       thread_id=thread_id,
+   512                                                       node_name="choose_response_mode",
+   513                                                       inputs={"user_input": user_input, "memory_context": memory_context, "active_loop_id": active_loop.get("loop_id")},
+   514                                                       outputs={"response_mode": "pattern_reflect", "response_mode_history": ["pattern_reflect"]},
+   515                                                       extra={"reason": "active reflection thread initialized — mode locked to pattern_reflect"},
+   516                                                   )
+   517                                                   return {"response_mode": "pattern_reflect", "response_mode_history": ["pattern_reflect"]}
+   518                                           
+   519         1          5.0      5.0      0.0      if existing_mode in ("loop_alert", "pattern_reflect") and detected_loops and len(chat_history) <= 1:
+   520                                                   log_node(
+   521                                                       thread_id=thread_id,
+   522                                                       node_name="choose_response_mode",
+   523                                                       inputs={"user_input": user_input, "memory_context": memory_context, "detected_loops": detected_loops},
+   524                                                       outputs={"response_mode": existing_mode, "response_mode_history": [existing_mode]},
+   525                                                       extra={"reason": f"loop detected on first turn — mode locked by detect_loops_node ({existing_mode})"},
+   526                                                   )
+   527                                                   return {"response_mode": existing_mode, "response_mode_history": [existing_mode]}
+   528                                           
+   529         1          4.0      4.0      0.0      if stored_loops and user_input and not chat_history:
+   530                                                   llm = get_chat_model()
+   531                                                   resurface_prompt = build_loop_resurface_check_prompt(user_input, stored_loops)
+   532                                                   resurface_raw, resurface_usage = invoke_with_logging(
+   533                                                       llm,
+   534                                                       [
+   535                                                           {"role": "system", "content": LOOP_RESURFACE_CHECK_SYSTEM_PROMPT},
+   536                                                           {"role": "user", "content": resurface_prompt},
+   537                                                       ],
+   538                                                       "choose_response_mode_resurface",
+   539                                                       thread_id,
+   540                                                   )
+   541                                                   resurface_result = parse_json_object(resurface_raw if isinstance(resurface_raw, str) else "")
+   542                                           
+   543                                                   if resurface_result.get("matches_loop") and resurface_result.get("matched_loop_name"):
+   544                                                       matched_name = resurface_result["matched_loop_name"]
+   545                                                       reason = resurface_result.get("reason", "")
+   546                                                       matched_loop_text = f"- [RESURFACED PATTERN] {matched_name}: {reason}"
+   547                                           
+   548                                                       log_node(
+   549                                                           thread_id=thread_id,
+   550                                                           node_name="choose_response_mode",
+   551                                                           inputs={"user_input": user_input, "memory_context": memory_context, "stored_loops_count": len(stored_loops)},
+   552                                                           outputs={"response_mode": "pattern_reflect", "detected_loops": matched_loop_text, "response_mode_history": ["pattern_reflect"]},
+   553                                                           extra={"reason": f"LLM resurface check matched: {matched_name}", "raw_llm_response": resurface_raw},
+   554                                                       )
+   555                                                       return {"response_mode": "pattern_reflect", "detected_loops": matched_loop_text, "response_mode_history": ["pattern_reflect"]}
+   556                                           
+   557                                               # Register all node functions with the line profiler
+   558        62        159.0      2.6      0.0      for _name, _func in list(globals().items()):
+   559        61        190.0      3.1      0.0          if callable(_func) and _name.endswith("_node"):
+   560         9         41.0      4.6      0.0              profile(_func)
+   561                                           
+   562                                               # Filter allowed modes to prevent repetitive pattern callbacks or alerts in the same thread
+   563         1          7.0      7.0      0.0      allowed_modes = list(_RESPONSE_MODES)
+   564                                           
+   565         1          2.0      2.0      0.0      if active_loop and len(chat_history) > 1:
+   566                                                   if "pattern_reflect" in allowed_modes:
+   567                                                       allowed_modes.remove("pattern_reflect")
+   568                                                   if "loop_alert" in allowed_modes:
+   569                                                       allowed_modes.remove("loop_alert")
+   570                                           
+   571         1          7.0      7.0      0.0      if "pattern_reflect" in response_mode_history:
+   572                                                   if "pattern_reflect" in allowed_modes:
+   573                                                       allowed_modes.remove("pattern_reflect")
+   574         1          2.0      2.0      0.0      if "loop_alert" in response_mode_history:
+   575                                                   if "loop_alert" in allowed_modes:
+   576                                                       allowed_modes.remove("loop_alert")
+   577                                           
+   578                                               # Format chat history for the mode selection classifier
+   579         1         13.0     13.0      0.0      recent_history = chat_history[-16:]
+   580         1          1.0      1.0      0.0      if recent_history:
+   581         1          1.0      1.0      0.0          history_lines: list[str] = []
+   582        17         13.0      0.8      0.0          for msg in recent_history:
+   583        16         43.0      2.7      0.0              role = msg.get("role", "user")
+   584        16         38.0      2.4      0.0              content = msg.get("content", "")
+   585        16         75.0      4.7      0.0              history_lines.append(f"{role}: {content}")
+   586         1         27.0     27.0      0.0          history_context = "\n".join(history_lines)
+   587                                               else:
+   588                                                   history_context = "No previous messages in this thread yet."
+   589                                           
+   590         1         21.0     21.0      0.0      debug_history = [msg.get("content", "") for msg in recent_history[-3:]]
+   591         1        466.0    466.0      0.0      llm = get_chat_model()
+   592         2        239.0    119.5      0.0      content = build_mode_selection_prompt(
+   593         1          1.0      1.0      0.0          user_input=user_input,
+   594         1          1.0      1.0      0.0          memory_context=memory_context,
+   595         1          1.0      1.0      0.0          history_context=history_context,
+   596         1          0.0      0.0      0.0          detected_loops=detected_loops,
+   597         1          1.0      1.0      0.0          stored_loops=stored_loops,
+   598         1          1.0      1.0      0.0          active_loop=active_loop,
+   599         1          1.0      1.0      0.0          allowed_modes=allowed_modes,
+   600                                               )
+   601         2    3557208.0 1.78e+06     99.9      raw, usage = invoke_with_logging(
+   602         1          1.0      1.0      0.0          llm,
+   603         1          2.0      2.0      0.0          [
+   604         1          4.0      4.0      0.0              {"role": "system", "content": MODE_SELECTION_SYSTEM_PROMPT},
+   605         1          1.0      1.0      0.0              {"role": "user", "content": content},
+   606                                                   ],
+   607         1          1.0      1.0      0.0          "choose_response_mode",
+   608         1          1.0      1.0      0.0          thread_id,
+   609                                               )
+   610                                           
+   611         1         39.0     39.0      0.0      raw_text = (raw if isinstance(raw, str) else "").strip().lower()
+   612         1          7.0      7.0      0.0      chosen_mode = ""
+   613                                               # Exact match first
+   614         3         18.0      6.0      0.0      for mode in allowed_modes:
+   615         3         20.0      6.7      0.0          if mode == raw_text:
+   616         1          4.0      4.0      0.0              chosen_mode = mode
+   617         1          6.0      6.0      0.0              break
+   618                                               # Word-boundary match next
+   619         1          6.0      6.0      0.0      if not chosen_mode:
+   620                                                   for mode in allowed_modes:
+   621                                                       if re.search(rf"\b{re.escape(mode)}\b", raw_text):
+   622                                                           chosen_mode = mode
+   623                                                           break
+   624         1          4.0      4.0      0.0      if not chosen_mode:
+   625                                                   chosen_mode = "validate" if "validate" in allowed_modes else allowed_modes[0]
+   626                                           
+   627         2        752.0    376.0      0.0      log_node(
+   628         1          4.0      4.0      0.0          thread_id=thread_id,
+   629         1          3.0      3.0      0.0          node_name="choose_response_mode",
+   630         1         16.0     16.0      0.0          inputs={
+   631         1          5.0      5.0      0.0              "user_input": user_input,
+   632         1          5.0      5.0      0.0              "memory_context": memory_context,
+   633         1          5.0      5.0      0.0              "detected_loops": detected_loops,
+   634         1          3.0      3.0      0.0              "prompt": content,
+   635         1         13.0     13.0      0.0              "chat_history_count": len(chat_history),
+   636         1          2.0      2.0      0.0              "recent_history_preview": debug_history,
+   637                                                   },
+   638         1         12.0     12.0      0.0          outputs={"response_mode": chosen_mode, "response_mode_history": [chosen_mode]},
+   639         1          6.0      6.0      0.0          extra={"raw_llm_response": raw},
+   640                                               )
+   641         1         10.0     10.0      0.0      return {"response_mode": chosen_mode, "response_mode_history": [chosen_mode]}
+
+Total time: 0.493352 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\nodes.py
+Function: generate_reply_node at line 644
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   644                                           def generate_reply_node(state: NextMateState) -> NextMateState:
+   645         1        899.0    899.0      0.0      llm = get_chat_model()
+   646         1         13.0     13.0      0.0      thread_id = state.get("thread_id", "default")
+   647         1          5.0      5.0      0.0      user_input = state.get("user_input", "")
+   648         1          5.0      5.0      0.0      memory_context = state.get("memory_context", "No prior memory available yet.")
+   649         1         22.0     22.0      0.0      recent_history = state.get("chat_history", [])[-16:]
+   650         1          4.0      4.0      0.0      if recent_history:
+   651         1          3.0      3.0      0.0          history_lines: list[str] = []
+   652        17         47.0      2.8      0.0          for msg in recent_history:
+   653        16        103.0      6.4      0.0              role = msg.get("role", "user")
+   654        16         86.0      5.4      0.0              content = msg.get("content", "")
+   655        16        150.0      9.4      0.0              history_lines.append(f"{role}: {content}")
+   656         1         43.0     43.0      0.0          history_context = "\n".join(history_lines)
+   657                                               else:
+   658                                                   history_context = "No previous messages in this thread yet."
+   659                                           
+   660         1         46.0     46.0      0.0      debug_history = [msg.get("content", "") for msg in recent_history[-3:]]
+   661         1          6.0      6.0      0.0      detected_loops = state.get("detected_loops", "")
+   662         1          7.0      7.0      0.0      stored_loops = state.get("stored_loops", [])
+   663         1          5.0      5.0      0.0      response_mode = state.get("response_mode", "")
+   664         1          6.0      6.0      0.0      active_loop = state.get("active_loop")
+   665                                           
+   666         2       1271.0    635.5      0.0      content = build_chat_user_prompt(
+   667         1          2.0      2.0      0.0          user_input=user_input,
+   668         1          2.0      2.0      0.0          memory_context=memory_context,
+   669         1          2.0      2.0      0.0          history_context=history_context,
+   670         1          2.0      2.0      0.0          detected_loops=detected_loops,
+   671         1          2.0      2.0      0.0          stored_loops=stored_loops,
+   672         1          2.0      2.0      0.0          response_mode=response_mode,
+   673         1          2.0      2.0      0.0          active_loop=active_loop,
+   674                                               )
+   675                                           
+   676         1         12.0     12.0      0.0      messages: list[dict[str, str]] = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+   677        17         46.0      2.7      0.0      for msg in recent_history:
+   678        16        215.0     13.4      0.0          messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+   679         1          9.0      9.0      0.0      messages.append({"role": "user", "content": content})
+   680                                           
+   681         2    4929963.0 2.46e+06     99.9      reply, usage = invoke_with_logging(
+   682         1          2.0      2.0      0.0          llm,
+   683         1          2.0      2.0      0.0          messages,
+   684         1          3.0      3.0      0.0          "generate_reply",
+   685         1          2.0      2.0      0.0          thread_id,
+   686                                               )
+   687                                           
+   688         1         17.0     17.0      0.0      assistant_reply = (reply or "").strip()
+   689         2        428.0    214.0      0.0      log_node(
+   690         1          1.0      1.0      0.0          thread_id=thread_id,
+   691         1          4.0      4.0      0.0          node_name="generate_reply",
+   692         1         13.0     13.0      0.0          inputs={
+   693         1          3.0      3.0      0.0              "user_input": user_input,
+   694         1          2.0      2.0      0.0              "memory_context": memory_context,
+   695         1          4.0      4.0      0.0              "history_context": history_context,
+   696         1          3.0      3.0      0.0              "detected_loops": detected_loops,
+   697         1          4.0      4.0      0.0              "response_mode": response_mode,
+   698         1          7.0      7.0      0.0              "chat_history_count": len(recent_history),
+   699         1          2.0      2.0      0.0              "recent_history_preview": debug_history,
+   700         1          2.0      2.0      0.0              "prompt": content,
+   701                                                   },
+   702         1          8.0      8.0      0.0          outputs={
+   703         1          1.0      1.0      0.0              "assistant_reply": assistant_reply,
+   704         1          3.0      3.0      0.0              "chat_history_update": [
+   705         1          7.0      7.0      0.0                  {"role": "user", "content": user_input},
+   706         1          2.0      2.0      0.0                  {"role": "assistant", "content": assistant_reply},
+   707                                                       ],
+   708                                                   },
+   709         1         10.0     10.0      0.0          extra={"system_prompt": CHAT_SYSTEM_PROMPT, "raw_llm_response": reply},
+   710                                               )
+   711         1          2.0      2.0      0.0      return {
+   712         1          1.0      1.0      0.0          "assistant_reply": assistant_reply,
+   713         1          2.0      2.0      0.0          "chat_history": [
+   714         1          2.0      2.0      0.0              {"role": "user", "content": user_input},
+   715         1          5.0      5.0      0.0              {"role": "assistant", "content": assistant_reply},
+   716                                                   ],
+   717                                               }
+
+Total time: 0.68171 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\nodes.py
+Function: summarize_turn_node at line 720
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   720                                           def summarize_turn_node(state: NextMateState) -> NextMateState:
+   721         1        595.0    595.0      0.0      llm = get_chat_model()
+   722         1         10.0     10.0      0.0      thread_id = state.get("thread_id", "default")
+   723         1          4.0      4.0      0.0      user_input = state.get("user_input", "")
+   724         1          6.0      6.0      0.0      assistant_reply = state.get("assistant_reply", "")
+   725                                           
+   726         1         87.0     87.0      0.0      content = build_summary_user_prompt(user_input=user_input, assistant_reply=assistant_reply)
+   727         2    6814331.0 3.41e+06    100.0      raw, usage = invoke_with_logging(
+   728         1          3.0      3.0      0.0          llm,
+   729         1          2.0      2.0      0.0          [
+   730         1          7.0      7.0      0.0              {"role": "system", "content": SUMMARY_SYSTEM_PROMPT},
+   731         1          3.0      3.0      0.0              {"role": "user", "content": content},
+   732                                                   ],
+   733         1          1.0      1.0      0.0          "summarize_turn",
+   734         1          1.0      1.0      0.0          thread_id,
+   735                                               )
+   736                                           
+   737         1        808.0    808.0      0.0      summary = parse_json_object(raw if isinstance(raw, str) else "")
+   738         1        275.0    275.0      0.0      summary["created_at"] = datetime.now(timezone.utc).isoformat()
+   739         2        918.0    459.0      0.0      log_node(
+   740         1          4.0      4.0      0.0          thread_id=thread_id,
+   741         1          5.0      5.0      0.0          node_name="summarize_turn",
+   742         1         15.0     15.0      0.0          inputs={"user_input": user_input, "assistant_reply": assistant_reply, "prompt": content},
+   743         1          9.0      9.0      0.0          outputs={"turn_summary": summary},
+   744         1         11.0     11.0      0.0          extra={"system_prompt": SUMMARY_SYSTEM_PROMPT, "raw_llm_response": raw},
+   745                                               )
+   746         1          7.0      7.0      0.0      return {"turn_summary": summary}
+
+Total time: 0.0213152 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\nodes.py
+Function: persist_summary_node at line 749
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   749                                           def persist_summary_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
+   750         1         64.0     64.0      0.0      thread_id = _thread_id_from_config(config)
+   751         1         37.0     37.0      0.0      user_id = _user_id_from_config(config)
+   752         1         11.0     11.0      0.0      user_input = str(state.get("user_input", ""))
+   753         1          9.0      9.0      0.0      assistant_reply = str(state.get("assistant_reply", ""))
+   754         1         17.0     17.0      0.0      summary = dict(state.get("turn_summary", {}))
+   755                                           
+   756         1          5.0      5.0      0.0      if not summary:
+   757                                                   return {}
+   758                                           
+   759         1         85.0     85.0      0.0      created_at = _parse_created_at(summary.get("created_at"))
+   760         1         24.0     24.0      0.0      mood = str(summary.get("mood", "unknown")).strip() or "unknown"
+   761         1          9.0      9.0      0.0      core_theme = str(summary.get("core_theme", "")).strip()
+   762         1          8.0      8.0      0.0      next_focus = str(summary.get("next_focus", "")).strip()
+   763                                           
+   764         1          8.0      8.0      0.0      core_beliefs = summary.get("core_beliefs", [])
+   765         1          7.0      7.0      0.0      if not isinstance(core_beliefs, list):
+   766                                                   core_beliefs = []
+   767                                           
+   768         1          7.0      7.0      0.0      triggers = summary.get("triggers", [])
+   769         1          4.0      4.0      0.0      if not isinstance(triggers, list):
+   770                                                   triggers = []
+   771                                           
+   772         1          6.0      6.0      0.0      key_facts = summary.get("key_facts", [])
+   773         1          3.0      3.0      0.0      if not isinstance(key_facts, list):
+   774                                                   key_facts = []
+   775                                           
+   776         1          7.0      7.0      0.0      intensity = summary.get("intensity")
+   777         1          3.0      3.0      0.0      try:
+   778         1         11.0     11.0      0.0          intensity = int(intensity) if intensity is not None else 5
+   779                                               except (ValueError, TypeError):
+   780                                                   intensity = 5
+   781         1          9.0      9.0      0.0      if intensity < 1 or intensity > 10:
+   782                                                   intensity = max(1, min(10, intensity))
+   783                                           
+   784         2       2713.0   1356.5      1.3      with get_connection(autocommit=True) as conn:
+   785         2       1102.0    551.0      0.5          with conn.cursor() as cur:
+   786         2     207815.0 103907.5     97.5              cur.execute(
+   787         1         13.0     13.0      0.0                  """
+   788                                                           INSERT INTO journal_entries_v2 (
+   789                                                               user_id, thread_id, user_input, assistant_reply, core_theme, mood,
+   790                                                               core_beliefs, triggers, key_facts, next_focus, intensity, raw_summary, created_at
+   791                                                           ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+   792                                                           """,
+   793         1          6.0      6.0      0.0                  (
+   794         1         10.0     10.0      0.0                      user_id, thread_id, user_input, assistant_reply, core_theme, mood,
+   795         1         96.0     96.0      0.0                      Jsonb(core_beliefs), Jsonb(triggers), Jsonb(key_facts), next_focus,
+   796         1         32.0     32.0      0.0                      intensity, Jsonb(summary), created_at
+   797                                                           )
+   798                                                       )
+   799                                           
+   800         2        993.0    496.5      0.5      log_node(
+   801         1          7.0      7.0      0.0          thread_id=thread_id,
+   802         1          6.0      6.0      0.0          node_name="persist_summary",
+   803         1         16.0     16.0      0.0          inputs={"turn_summary": summary},
+   804         1          5.0      5.0      0.0          outputs={"persisted": True},
+   805                                               )
+   806         1          4.0      4.0      0.0      return {}
+
+Total time: 2.94466 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\llm.py
+Function: invoke_with_logging at line 216
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   216                                           @profile
+   217                                           @profile
+   218                                           def invoke_with_logging(llm, messages: list, node_name: str, thread_id: str = "unknown") -> tuple[str, dict]:
+   219                                               """Invoke LLM and log token usage (synchronous version)."""
+   220         5   29410088.0 5.88e+06     99.9      response = llm.invoke(messages)
+   221         5         88.0     17.6      0.0      usage = getattr(response, "usage_metadata", {})
+   222         5      36272.0   7254.4      0.1      log_token_usage(node_name, usage, thread_id)
+   223         5        113.0     22.6      0.0      return response.content, usage
+
+Total time: 0 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\llm.py
+Function: ainvoke_with_logging at line 203
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   203                                           @profile
+   204                                           @profile
+   205                                           async def ainvoke_with_logging(llm, messages: list, node_name: str, thread_id: str = "unknown") -> tuple[str, dict]:
+   206                                               """Async invoke LLM and log token usage.
+   207                                           
+   208                                               Mirrors ``invoke_with_logging`` but uses the async ``ainvoke`` method.
+   209                                               """
+   210                                               response = await llm.ainvoke(messages)
+   211                                               usage = getattr(response, "usage_metadata", {})
+   212                                               log_token_usage(node_name, usage, thread_id)
+   213                                               return response.content, usage
+
+Total time: 0.0003604 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\llm.py
+Function: get_chat_model at line 131
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   131                                           def get_chat_model() -> ChatGroq:
+   132                                               global _cached_chat_model, _cached_model_name
+   133         5       3535.0    707.0     98.1      settings = get_settings()
+   134                                           
+   135                                               # Return cached instance if model hasn't changed
+   136         5         62.0     12.4      1.7      if _cached_chat_model is not None and _cached_model_name == settings.generation_model:
+   137         5          7.0      1.4      0.2          return _cached_chat_model
+   138                                           
+   139                                               api_key = os.getenv("GROQ_API_KEY")
+   140                                               if not api_key or not api_key.strip():
+   141                                                   from pathlib import Path
+   142                                                   try:
+   143                                                       base_dir = Path(__file__).resolve().parents[2]
+   144                                                       env_path = base_dir / ".env"
+   145                                                       if env_path.exists():
+   146                                                           with open(env_path, "r", encoding="utf-8") as f:
+   147                                                               for line in f:
+   148                                                                   if line.strip().startswith("GROQ_API_KEY="):
+   149                                                                       val = line.split("=", 1)[1].strip()
+   150                                                                       if val.startswith(('"', "'")) and val.endswith(('"', "'")):
+   151                                                                           val = val[1:-1]
+   152                                                                       if val:
+   153                                                                           api_key = val
+   154                                                                           break
+   155                                                   except Exception as e:
+   156                                                       logger.error(f"Failed to read GROQ_API_KEY from .env: {e}")
+   157                                           
+   158                                               if not api_key or not api_key.strip():
+   159                                                   raise ValueError("GROQ_API_KEY is missing or empty in environment configuration")
+   160                                           
+   161                                               _cached_chat_model = ChatGroq(
+   162                                                   model=settings.generation_model,
+   163                                                   api_key=api_key,
+   164                                                   temperature=0.3,
+   165                                               )
+   166                                               _cached_model_name = settings.generation_model
+   167                                               return _cached_chat_model
+
+Total time: 0.0035338 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\llm.py
+Function: log_token_usage at line 69
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    69                                           def log_token_usage(node_name: str, usage_metadata: dict, thread_id: str = "unknown") -> None:
+    70                                               """Log token usage to a dedicated log file."""
+    71         5         40.0      8.0      0.1      if not usage_metadata:
+    72                                                   return
+    73                                               
+    74         5        936.0    187.2      2.6      timestamp = datetime.now().isoformat()
+    75         5         61.0     12.2      0.2      prompt_tokens = usage_metadata.get("prompt_tokens", 0)
+    76         5         32.0      6.4      0.1      completion_tokens = usage_metadata.get("completion_tokens", 0)
+    77         5         68.0     13.6      0.2      total_tokens = usage_metadata.get("total_tokens", prompt_tokens + completion_tokens)
+    78                                               
+    79         5         66.0     13.2      0.2      log_entry = {
+    80         5          9.0      1.8      0.0          "timestamp": timestamp,
+    81         5         40.0      8.0      0.1          "thread_id": thread_id,
+    82         5         23.0      4.6      0.1          "node_name": node_name,
+    83         5         11.0      2.2      0.0          "prompt_tokens": prompt_tokens,
+    84         5         10.0      2.0      0.0          "completion_tokens": completion_tokens,
+    85         5         19.0      3.8      0.1          "total_tokens": total_tokens
+    86                                               }
+    87                                               
+    88         5         15.0      3.0      0.0      try:
+    89        10      31469.0   3146.9     89.1          with open("data/logs/token_usage.log", "a", encoding="utf-8") as f:
+    90         5       1965.0    393.0      5.6              f.write(json.dumps(log_entry) + "\n")
+    91                                               except Exception as e:
+    92                                                   logger.error(f"Failed to log token usage: {e}")
+    93                                               
+    94         5        574.0    114.8      1.6      logger.info(f"Token usage - {node_name}: {total_tokens} tokens (prompt: {prompt_tokens}, completion: {completion_tokens})")
+
+Total time: 0.0001353 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\llm.py
+Function: parse_json_object at line 171
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   171                                           def parse_json_object(text: str) -> dict:
+   172         3        110.0     36.7      8.1      raw = (text or "").strip()
+   173                                           
+   174         3         73.0     24.3      5.4      if raw.startswith("```"):
+   175         1         51.0     51.0      3.8          lines = raw.splitlines()
+   176         1         21.0     21.0      1.6          if lines and lines[0].startswith("```"):
+   177         1         28.0     28.0      2.1              lines = lines[1:]
+   178         1         18.0     18.0      1.3          if lines and lines[-1].startswith("```"):
+   179         1         18.0     18.0      1.3              lines = lines[:-1]
+   180         1         34.0     34.0      2.5          raw = "\n".join(lines).strip()
+   181                                           
+   182         3          7.0      2.3      0.5      try:
+   183         3        993.0    331.0     73.4          return json.loads(raw)
+   184                                               except json.JSONDecodeError:
+   185                                                   start = raw.find("{")
+   186                                                   end = raw.rfind("}")
+   187                                                   if start != -1 and end != -1 and end > start:
+   188                                                       try:
+   189                                                           return json.loads(raw[start : end + 1])
+   190                                                       except json.JSONDecodeError:
+   191                                                           pass
+   192                                               return {
+   193                                                   "mood": "unknown",
+   194                                                   "core_theme": raw[:280] if raw else "",
+   195                                                   "core_beliefs": [],
+   196                                           
+   197                                                   "triggers": [],
+   198                                                   "key_facts": [],
+   199                                                   "risk_flag": False,
+   200                                               }
+
+Total time: 0 s
+File: D:\ISH_code\nex_03\backend\apps\api\services\daily_question_service.py
+Function: get_or_create_daily_question at line 118
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   118                                           async def get_or_create_daily_question(user_id: int) -> List[Dict[str, Any]]:
+   119                                               """Get existing daily questions or create new ones. Always returns a list."""
+   120                                               today = datetime.now(timezone.utc).date()
+   121                                           
+   122                                               # First, expire old pending questions from previous days
+   123                                               expire_old_pending_questions(user_id)
+   124                                           
+   125                                               # Check if questions already exist for today — fetch ALL of them
+   126                                               with get_connection() as conn:
+   127                                                   with conn.cursor() as cur:
+   128                                                       cur.execute(
+   129                                                           """
+   130                                                           SELECT id, question_text, source_thread_id, source_core_themes, status, answered_at
+   131                                                           FROM daily_questions
+   132                                                           WHERE user_id = %s AND question_date = %s
+   133                                                           ORDER BY question_order ASC
+   134                                                           """,
+   135                                                           (user_id, today),
+   136                                                       )
+   137                                                       existing = cur.fetchall()
+   138                                           
+   139                                                       # If there are any questions for today, return them
+   140                                                       if existing:
+   141                                                           return [
+   142                                                               {
+   143                                                                   "id": row["id"],
+   144                                                                   "question_text": row["question_text"],
+   145                                                                   "source_thread_id": row["source_thread_id"],
+   146                                                                   "source_core_themes": (
+   147                                                                       json.loads(row["source_core_themes"])
+   148                                                                       if isinstance(row["source_core_themes"], str)
+   149                                                                       else row["source_core_themes"]
+   150                                                                   ),
+   151                                                                   "status": row["status"],
+   152                                                                   "answered_at": row["answered_at"].isoformat() if row["answered_at"] else None,
+   153                                                               }
+   154                                                               for row in existing
+   155                                                           ]
+   156                                                       # Duplicate block removed - existing questions are returned above
+   157                                           
+   158                                               # Create new questions from previous day's entries
+   159                                               entries = get_previous_day_entries(user_id)
+   160                                               if not entries:
+   161                                                   return []
+   162                                           
+   163                                               themes = extract_core_themes(entries)
+   164                                               if not themes:
+   165                                                   return []
+   166                                           
+   167                                               # Generate 1 question
+   168                                               questions_data = []
+   169                                               themes_subset = random.sample(themes, min(2, len(themes)))
+   170                                               question_text = await generate_question_from_themes_llm(themes_subset, user_id)
+   171                                               source_entry = random.choice(entries)
+   172                                               questions_data.append({
+   173                                                   "question_text": question_text,
+   174                                                   "source_thread_id": source_entry["thread_id"],
+   175                                                   "source_core_themes": themes_subset,
+   176                                               })
+   177                                           
+   178                                               # Insert each question and collect its ID individually
+   179                                               inserted = []
+   180                                               with get_connection() as conn:
+   181                                                   with conn.cursor() as cur:
+   182                                                       for i, q in enumerate(questions_data, 1):
+   183                                                           cur.execute(
+   184                                                               """
+   185                                                               INSERT INTO daily_questions
+   186                                                               (user_id, question_date, question_text, source_thread_id, source_core_themes,
+   187                                                                status, question_order, created_at, updated_at)
+   188                                                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+   189                                                               RETURNING id
+   190                                                               """,
+   191                                                               (
+   192                                                                   user_id, today, q["question_text"], q["source_thread_id"],
+   193                                                                   json.dumps(q["source_core_themes"]), "pending", i, utc_now(), utc_now(),
+   194                                                               ),
+   195                                                           )
+   196                                                           row = cur.fetchone()
+   197                                                           inserted.append({
+   198                                                               "id": row["id"],
+   199                                                               "question_text": q["question_text"],
+   200                                                               "source_thread_id": q["source_thread_id"],
+   201                                                               "source_core_themes": q["source_core_themes"],
+   202                                                               "status": "pending",
+   203                                                               "answered_at": None,
+   204                                                           })
+   205                                                   conn.commit()
+   206                                           
+   207                                               return inserted
+
+Total time: 0 s
+File: D:\ISH_code\nex_03\backend\apps\api\services\daily_question_service.py
+Function: generate_question_from_themes_llm at line 54
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    54                                           async def generate_question_from_themes_llm(themes: List[str], user_id: int = 0) -> str:
+    55                                               """Generate a contextual daily question using LLM based on core themes."""
+    56                                               if not themes:
+    57                                                   return "How are you feeling today?"
+    58                                           
+    59                                               selected_themes = random.sample(themes, min(3, len(themes)))
+    60                                           
+    61                                               prompt = f"""You are a thoughtful journaling companion helping someone reflect deeply on their experiences. Based on these core themes from yesterday's journal entries, craft ONE insightful follow-up question that encourages deeper self-exploration.
+    62                                           
+    63                                           Core Themes from Yesterday: {', '.join(selected_themes)}
+    64                                           
+    65                                           Instructions:
+    66                                           1. FIRST, understand and rephrase the themes in natural language - DO NOT copy them directly
+    67                                           2. Extract the key concepts, emotions, or situations from the themes
+    68                                           3. Create a natural, conversational question that builds on those concepts
+    69                                           4. The question should sound like a genuine continuation of your conversation
+    70                                           
+    71                                           IMPORTANT: Generate exactly ONE question only. Do not provide alternatives or multiple versions.
+    72                                           
+    73                                           Question Crafting Guidelines:
+    74                                           - Transform technical/awkward theme language into natural, relatable terms
+    75                                           - Focus on the underlying experience, not the exact wording
+    76                                           - Use varied formats: "Thinking about...", "How have you been feeling about...", "What's your relationship with..."
+    77                                           - Keep it warm, conversational, and human-sounding
+    78                                           - Avoid repeating the exact theme wording or awkward phrasing
+    79                                           - 1-2 sentences maximum
+    80                                           
+    81                                           Examples of good transformations:
+    82                                           - Theme: "user experienced pressure to stay on top of tasks" → "How have you been managing that pressure to stay on top of things?"
+    83                                           - Theme: "user felt rare sense of self-sufficiency through rest" → "How has that feeling of self-sufficiency been showing up for you since then?"
+    84                                           
+    85                                           Generate only the natural, rephrased question:"""
+    86                                           
+    87                                               try:
+    88                                                   llm = get_chat_model()
+    89                                                   messages = [{"role": "user", "content": prompt}]
+    90                                                   content, usage = await ainvoke_with_logging(llm, messages, "daily_question_generation", user_id)
+    91                                                   return content.strip()
+    92                                               except Exception:
+    93                                                   return "Come back later for today's reflection question."
+
+Total time: 0 s
+File: D:\ISH_code\nex_03\backend\apps\api\services\daily_question_service.py
+Function: get_previous_day_entries at line 9
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+     9                                           def get_previous_day_entries(user_id: int) -> List[Dict[str, Any]]:
+    10                                               """Get journal entries from the most recent previous day with entries."""
+    11                                               today = datetime.now(timezone.utc).date()
+    12                                               start_of_today = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+    13                                           
+    14                                               with get_connection() as conn:
+    15                                                   with conn.cursor() as cur:
+    16                                                       cur.execute(
+    17                                                           """
+    18                                                           SELECT MAX(created_at::date) AS entry_date
+    19                                                           FROM journal_entries_v2
+    20                                                           WHERE user_id = %s AND created_at < %s
+    21                                                           """,
+    22                                                           (user_id, start_of_today),
+    23                                                       )
+    24                                                       row = cur.fetchone()
+    25                                                       if not row or not row.get("entry_date"):
+    26                                                           return []
+    27                                           
+    28                                                       previous_day = row["entry_date"]
+    29                                                       start_of_previous_day = datetime.combine(previous_day, datetime.min.time()).replace(tzinfo=timezone.utc)
+    30                                                       end_of_previous_day = datetime.combine(previous_day, datetime.max.time()).replace(tzinfo=timezone.utc)
+    31                                           
+    32                                                       cur.execute(
+    33                                                           """
+    34                                                           SELECT thread_id, core_theme, user_input, assistant_reply, created_at
+    35                                                           FROM journal_entries_v2
+    36                                                           WHERE user_id = %s AND created_at BETWEEN %s AND %s
+    37                                                           ORDER BY created_at DESC
+    38                                                           """,
+    39                                                           (user_id, start_of_previous_day, end_of_previous_day),
+    40                                                       )
+    41                                                       return cur.fetchall()
+
+Total time: 0 s
+File: D:\ISH_code\nex_03\backend\apps\api\services\daily_question_service.py
+Function: extract_core_themes at line 44
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    44                                           def extract_core_themes(entries: List[Dict[str, Any]]) -> List[str]:
+    45                                               """Extract unique core themes from entries."""
+    46                                               themes = set()
+    47                                               for entry in entries:
+    48                                                   theme = entry.get("core_theme", "").strip()
+    49                                                   if theme:
+    50                                                       themes.add(theme)
+    51                                               return list(themes)
+
+Total time: 3.17379 s
+File: D:\ISH_code\nex_03\backend\run_full_profile.py
+Function: run_full_pipeline at line 76
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    76                                           def run_full_pipeline():
+    77                                               """Invoke the complete LangGraph chat pipeline synchronously.
+    78                                           
+    79                                               This exercises:
+    80                                                 load_memory → build_memory_context → detect_loops → detect_explicit_advice
+    81                                                 → choose_response_mode → generate_reply → summarize_turn → persist_summary
+    82                                               """
+    83         1         51.0     51.0      0.0      graph = get_graph()
+    84         1         43.0     43.0      0.0      thread_id = checkpoint_thread_id(SAMPLE_USER_ID, SAMPLE_THREAD_ID)
+    85         1          6.0      6.0      0.0      config = {
+    86         2         10.0      5.0      0.0          "configurable": {
+    87         1          4.0      4.0      0.0              "thread_id": thread_id,
+    88         1          1.0      1.0      0.0              "user_id": SAMPLE_USER_ID,
+    89                                                   }
+    90                                               }
+    91         2   31737729.0 1.59e+07    100.0      payload = graph.invoke(
+    92         1          5.0      5.0      0.0          {"user_input": SAMPLE_USER_INPUT, "thread_id": SAMPLE_THREAD_ID},
+    93         1          1.0      1.0      0.0          config=config,
+    94                                               )
+    95         1          7.0      7.0      0.0      return payload
+

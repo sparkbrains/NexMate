@@ -1,0 +1,255 @@
+Timer unit: 1e-07 s
+
+Total time: 0.0200638 s
+File: D:\ISH_code\nex_03\backend\apps\api\services\daily_question_service.py
+Function: get_or_create_daily_question at line 118
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   118                                           async def get_or_create_daily_question(user_id: int) -> List[Dict[str, Any]]:
+   119                                               """Get existing daily questions or create new ones. Always returns a list."""
+   120         1        108.0    108.0      0.1      today = datetime.now(timezone.utc).date()
+   121                                           
+   122                                               # First, expire old pending questions from previous days
+   123         1      69132.0  69132.0     34.5      expire_old_pending_questions(user_id)
+   124                                           
+   125                                               # Check if questions already exist for today — fetch ALL of them
+   126         2       7455.0   3727.5      3.7      with get_connection() as conn:
+   127         2        498.0    249.0      0.2          with conn.cursor() as cur:
+   128         2      38760.0  19380.0     19.3              cur.execute(
+   129         1          5.0      5.0      0.0                  """
+   130                                                           SELECT id, question_text, source_thread_id, source_core_themes, status, answered_at
+   131                                                           FROM daily_questions
+   132                                                           WHERE user_id = %s AND question_date = %s
+   133                                                           ORDER BY question_order ASC
+   134                                                           """,
+   135         1          3.0      3.0      0.0                  (user_id, today),
+   136                                                       )
+   137         1         94.0     94.0      0.0              existing = cur.fetchall()
+   138                                           
+   139                                                       # If there are any questions for today, return them
+   140         1          5.0      5.0      0.0              if existing:
+   141                                                           return [
+   142                                                               {
+   143                                                                   "id": row["id"],
+   144                                                                   "question_text": row["question_text"],
+   145                                                                   "source_thread_id": row["source_thread_id"],
+   146                                                                   "source_core_themes": (
+   147                                                                       json.loads(row["source_core_themes"])
+   148                                                                       if isinstance(row["source_core_themes"], str)
+   149                                                                       else row["source_core_themes"]
+   150                                                                   ),
+   151                                                                   "status": row["status"],
+   152                                                                   "answered_at": row["answered_at"].isoformat() if row["answered_at"] else None,
+   153                                                               }
+   154                                                               for row in existing
+   155                                                           ]
+   156                                                       # Duplicate block removed - existing questions are returned above
+   157                                           
+   158                                               # Create new questions from previous day's entries
+   159         1      84567.0  84567.0     42.1      entries = get_previous_day_entries(user_id)
+   160         1          7.0      7.0      0.0      if not entries:
+   161         1          4.0      4.0      0.0          return []
+   162                                           
+   163                                               themes = extract_core_themes(entries)
+   164                                               if not themes:
+   165                                                   return []
+   166                                           
+   167                                               # Generate 1 question
+   168                                               questions_data = []
+   169                                               themes_subset = random.sample(themes, min(2, len(themes)))
+   170                                               question_text = await generate_question_from_themes_llm(themes_subset, user_id)
+   171                                               source_entry = random.choice(entries)
+   172                                               questions_data.append({
+   173                                                   "question_text": question_text,
+   174                                                   "source_thread_id": source_entry["thread_id"],
+   175                                                   "source_core_themes": themes_subset,
+   176                                               })
+   177                                           
+   178                                               # Insert each question and collect its ID individually
+   179                                               inserted = []
+   180                                               with get_connection() as conn:
+   181                                                   with conn.cursor() as cur:
+   182                                                       for i, q in enumerate(questions_data, 1):
+   183                                                           cur.execute(
+   184                                                               """
+   185                                                               INSERT INTO daily_questions
+   186                                                               (user_id, question_date, question_text, source_thread_id, source_core_themes,
+   187                                                                status, question_order, created_at, updated_at)
+   188                                                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+   189                                                               RETURNING id
+   190                                                               """,
+   191                                                               (
+   192                                                                   user_id, today, q["question_text"], q["source_thread_id"],
+   193                                                                   json.dumps(q["source_core_themes"]), "pending", i, utc_now(), utc_now(),
+   194                                                               ),
+   195                                                           )
+   196                                                           row = cur.fetchone()
+   197                                                           inserted.append({
+   198                                                               "id": row["id"],
+   199                                                               "question_text": q["question_text"],
+   200                                                               "source_thread_id": q["source_thread_id"],
+   201                                                               "source_core_themes": q["source_core_themes"],
+   202                                                               "status": "pending",
+   203                                                               "answered_at": None,
+   204                                                           })
+   205                                                   conn.commit()
+   206                                           
+   207                                               return inserted
+
+Total time: 0 s
+File: D:\ISH_code\nex_03\backend\apps\api\services\daily_question_service.py
+Function: generate_question_from_themes_llm at line 54
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    54                                           async def generate_question_from_themes_llm(themes: List[str], user_id: int = 0) -> str:
+    55                                               """Generate a contextual daily question using LLM based on core themes."""
+    56                                               if not themes:
+    57                                                   return "How are you feeling today?"
+    58                                           
+    59                                               selected_themes = random.sample(themes, min(3, len(themes)))
+    60                                           
+    61                                               prompt = f"""You are a thoughtful journaling companion helping someone reflect deeply on their experiences. Based on these core themes from yesterday's journal entries, craft ONE insightful follow-up question that encourages deeper self-exploration.
+    62                                           
+    63                                           Core Themes from Yesterday: {', '.join(selected_themes)}
+    64                                           
+    65                                           Instructions:
+    66                                           1. FIRST, understand and rephrase the themes in natural language - DO NOT copy them directly
+    67                                           2. Extract the key concepts, emotions, or situations from the themes
+    68                                           3. Create a natural, conversational question that builds on those concepts
+    69                                           4. The question should sound like a genuine continuation of your conversation
+    70                                           
+    71                                           IMPORTANT: Generate exactly ONE question only. Do not provide alternatives or multiple versions.
+    72                                           
+    73                                           Question Crafting Guidelines:
+    74                                           - Transform technical/awkward theme language into natural, relatable terms
+    75                                           - Focus on the underlying experience, not the exact wording
+    76                                           - Use varied formats: "Thinking about...", "How have you been feeling about...", "What's your relationship with..."
+    77                                           - Keep it warm, conversational, and human-sounding
+    78                                           - Avoid repeating the exact theme wording or awkward phrasing
+    79                                           - 1-2 sentences maximum
+    80                                           
+    81                                           Examples of good transformations:
+    82                                           - Theme: "user experienced pressure to stay on top of tasks" → "How have you been managing that pressure to stay on top of things?"
+    83                                           - Theme: "user felt rare sense of self-sufficiency through rest" → "How has that feeling of self-sufficiency been showing up for you since then?"
+    84                                           
+    85                                           Generate only the natural, rephrased question:"""
+    86                                           
+    87                                               try:
+    88                                                   llm = get_chat_model()
+    89                                                   messages = [{"role": "user", "content": prompt}]
+    90                                                   content, usage = await ainvoke_with_logging(llm, messages, "daily_question_generation", user_id)
+    91                                                   return content.strip()
+    92                                               except Exception:
+    93                                                   return "Come back later for today's reflection question."
+
+Total time: 0 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\llm.py
+Function: ainvoke_with_logging at line 191
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   191                                           @profile
+   192                                           @profile
+   193                                           async def ainvoke_with_logging(llm, messages: list, node_name: str, thread_id: str = "unknown") -> tuple[str, dict]:
+   194                                               """Async invoke LLM and log token usage.
+   195                                           
+   196                                               Mirrors ``invoke_with_logging`` but uses the async ``ainvoke`` method.
+   197                                               """
+   198                                               response = await llm.ainvoke(messages)
+   199                                               usage = getattr(response, "usage_metadata", {})
+   200                                               log_token_usage(node_name, usage, thread_id)
+   201                                               return response.content, usage
+
+Total time: 0 s
+File: D:\ISH_code\nex_03\backend\nextmate_agent\utils\llm.py
+Function: get_chat_model at line 127
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   127                                           def get_chat_model() -> ChatGroq:
+   128                                               settings = get_settings()
+   129                                               api_key = os.getenv("GROQ_API_KEY")
+   130                                               if not api_key or not api_key.strip():
+   131                                                   from pathlib import Path
+   132                                                   try:
+   133                                                       base_dir = Path(__file__).resolve().parents[2]
+   134                                                       env_path = base_dir / ".env"
+   135                                                       if env_path.exists():
+   136                                                           with open(env_path, "r", encoding="utf-8") as f:
+   137                                                               for line in f:
+   138                                                                   if line.strip().startswith("GROQ_API_KEY="):
+   139                                                                       val = line.split("=", 1)[1].strip()
+   140                                                                       if val.startswith(('"', "'")) and val.endswith(('"', "'")):
+   141                                                                           val = val[1:-1]
+   142                                                                       if val:
+   143                                                                           api_key = val
+   144                                                                           break
+   145                                                   except Exception as e:
+   146                                                       logger.error(f"Failed to read GROQ_API_KEY from .env: {e}")
+   147                                           
+   148                                               if not api_key or not api_key.strip():
+   149                                                   raise ValueError("GROQ_API_KEY is missing or empty in environment configuration")
+   150                                           
+   151                                               return ChatGroq(
+   152                                                   model=settings.generation_model,
+   153                                                   api_key=api_key,
+   154                                                   temperature=0.3,
+   155                                               )
+
+Total time: 0.0084168 s
+File: D:\ISH_code\nex_03\backend\apps\api\services\daily_question_service.py
+Function: get_previous_day_entries at line 9
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+     9                                           def get_previous_day_entries(user_id: int) -> List[Dict[str, Any]]:
+    10                                               """Get journal entries from the most recent previous day with entries."""
+    11         1         99.0     99.0      0.1      today = datetime.now(timezone.utc).date()
+    12         1        120.0    120.0      0.1      start_of_today = datetime.combine(today, datetime.min.time()).replace(tzinfo=timezone.utc)
+    13                                           
+    14         2      15686.0   7843.0     18.6      with get_connection() as conn:
+    15         2        521.0    260.5      0.6          with conn.cursor() as cur:
+    16         2      67403.0  33701.5     80.1              cur.execute(
+    17         1          4.0      4.0      0.0                  """
+    18                                                           SELECT MAX(created_at::date) AS entry_date
+    19                                                           FROM journal_entries_v2
+    20                                                           WHERE user_id = %s AND created_at < %s
+    21                                                           """,
+    22         1          4.0      4.0      0.0                  (user_id, start_of_today),
+    23                                                       )
+    24         1        285.0    285.0      0.3              row = cur.fetchone()
+    25         1         38.0     38.0      0.0              if not row or not row.get("entry_date"):
+    26         1          8.0      8.0      0.0                  return []
+    27                                           
+    28                                                       previous_day = row["entry_date"]
+    29                                                       start_of_previous_day = datetime.combine(previous_day, datetime.min.time()).replace(tzinfo=timezone.utc)
+    30                                                       end_of_previous_day = datetime.combine(previous_day, datetime.max.time()).replace(tzinfo=timezone.utc)
+    31                                           
+    32                                                       cur.execute(
+    33                                                           """
+    34                                                           SELECT thread_id, core_theme, user_input, assistant_reply, created_at
+    35                                                           FROM journal_entries_v2
+    36                                                           WHERE user_id = %s AND created_at BETWEEN %s AND %s
+    37                                                           ORDER BY created_at DESC
+    38                                                           """,
+    39                                                           (user_id, start_of_previous_day, end_of_previous_day),
+    40                                                       )
+    41                                                       return cur.fetchall()
+
+Total time: 0 s
+File: D:\ISH_code\nex_03\backend\apps\api\services\daily_question_service.py
+Function: extract_core_themes at line 44
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+    44                                           def extract_core_themes(entries: List[Dict[str, Any]]) -> List[str]:
+    45                                               """Extract unique core themes from entries."""
+    46                                               themes = set()
+    47                                               for entry in entries:
+    48                                                   theme = entry.get("core_theme", "").strip()
+    49                                                   if theme:
+    50                                                       themes.add(theme)
+    51                                               return list(themes)
+
