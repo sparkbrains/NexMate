@@ -4,7 +4,8 @@ from typing import Any, AsyncGenerator
 
 from docx import Document
 from groq import AsyncGroq
-
+from dotenv import load_dotenv
+load_dotenv()
 logger = logging.getLogger(__name__)
 
 _client: AsyncGroq | None = None
@@ -27,7 +28,7 @@ def get_groq_client() -> AsyncGroq:
     return _client
 
 
-SUPPORT_MODEL = os.getenv("GROQ_SUPPORT_MODEL", "llama-3.3-70b-versatile")
+SUPPORT_MODEL = os.getenv("GROQ_SUPPORT_MODEL", "")
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +121,12 @@ def build_system_prompt() -> str:
 reflective journaling app. Answer questions about what Nextmate does, how
 its features work, and its pricing, using ONLY the information below. Be
 warm, concise, and clear -- this is a support widget, not a therapy chat.
+
+CRITICAL:
+1. Do NOT copy-paste large portions of the reference content verbatim.
+2. Keep your answer extremely concise, direct, and to the point.
+3. Limit your response to 1 to 3 sentences maximum unless the user explicitly asks for elaboration or details.
+4. Do NOT elaborate, add extra background details, or include unasked-for information.
 
 If someone brings up something emotionally heavy or asks for clinical or
 therapeutic advice, gently redirect: tell them Nextmate itself (the actual

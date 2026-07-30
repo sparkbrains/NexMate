@@ -1,35 +1,79 @@
 import { useEffect, useRef, useState } from 'react';
 import { getToken } from '../../lib/api';
 
-// Reuses the same VITE_API_BASE_URL convention as the rest of the app
-// (see lib/api.js) and just swaps the protocol for a websocket one.
 const WS_BASE = (() => {
   const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin;
   return apiBase.replace(/^http/, 'ws');
 })();
 
-// If the user is logged in, pass their existing session token along so the
-// backend can attribute logged support-widget queries to their account
-// (see resolve_user_id_from_token in support_chat_log_service.py). Purely
-// optional -- a logged-out visitor connects the same as before, just
-// without a token param, and gets logged with user_id = NULL.
 const buildSupportWsUrl = () => {
   const token = getToken();
   const url = `${WS_BASE}/api/support/ws`;
   return token ? `${url}?token=${encodeURIComponent(token)}` : url;
 };
 
+// higher = faster
+const REVEAL_INTERVAL_MS = 18;
+const REVEAL_CHARS_PER_TICK = 2;
+
 export const SupportWidget = () => {
   const [open, setOpen] = useState(false);
-  const [messages, setMessages] = useState([]); // [{ role: 'user'|'assistant', content }]
+  const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [waitingFirstChunk, setWaitingFirstChunk] = useState(false);
-  const [status, setStatus] = useState('idle'); // idle | connecting | open | closed
+  const [status, setStatus] = useState('idle');
 
   const wsRef = useRef(null);
   const streamingIndexRef = useRef(null);
   const scrollRef = useRef(null);
+
+  // Reveal-buffer state: text received from the socket but not yet shown,
+  // drained a couple characters at a time on revealTimerRef's interval.
+  // doneReceivedRef marks that the socket said "done" -- the timer keeps
+  // draining any remaining buffered text after that before it actually
+  // stops, so the tail of a fast/final chunk still animates smoothly
+  // instead of snapping in all at once.
+  const pendingBufferRef = useRef('');
+  const doneReceivedRef = useRef(false);
+  const revealTimerRef = useRef(null);
+
+  const stopRevealTimer = () => {
+    if (revealTimerRef.current) {
+      clearInterval(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+  };
+
+  const startRevealTimer = () => {
+    if (revealTimerRef.current) return;
+    revealTimerRef.current = setInterval(() => {
+      if (!pendingBufferRef.current) {
+        if (doneReceivedRef.current) {
+          stopRevealTimer();
+          setStreaming(false);
+          streamingIndexRef.current = null;
+        }
+        return;
+      }
+
+      const nextChars = pendingBufferRef.current.slice(0, REVEAL_CHARS_PER_TICK);
+      pendingBufferRef.current = pendingBufferRef.current.slice(REVEAL_CHARS_PER_TICK);
+
+      setMessages((prev) => {
+        const next = [...prev];
+        const idx = streamingIndexRef.current;
+        if (idx === null || !next[idx] || next[idx].role !== 'assistant') {
+          next.push({ role: 'assistant', content: nextChars });
+          streamingIndexRef.current = next.length - 1;
+        } else {
+          next[idx] = { ...next[idx], content: next[idx].content + nextChars };
+        }
+        return next;
+      });
+      setWaitingFirstChunk(false);
+    }, REVEAL_INTERVAL_MS);
+  };
 
   const connect = () => {
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
@@ -52,26 +96,20 @@ export const SupportWidget = () => {
       }
 
       if (data.type === 'chunk') {
-        setMessages((prev) => {
-          const next = [...prev];
-          const idx = streamingIndexRef.current;
-          if (idx === null || !next[idx] || next[idx].role !== 'assistant') {
-            next.push({ role: 'assistant', content: data.content });
-            streamingIndexRef.current = next.length - 1;
-          } else {
-            next[idx] = { ...next[idx], content: next[idx].content + data.content };
-          }
-          return next;
-        });
-        setWaitingFirstChunk(false);
+        pendingBufferRef.current += data.content || '';
+        startRevealTimer();
       } else if (data.type === 'done') {
-        setStreaming(false);
-        setWaitingFirstChunk(false);
-        streamingIndexRef.current = null;
+        // Don't flip streaming off immediately -- let the reveal timer
+        // finish draining pendingBufferRef first so the last words don't
+        // snap in ahead of the typewriter pace.
+        doneReceivedRef.current = true;
       } else if (data.type === 'error') {
+        stopRevealTimer();
+        pendingBufferRef.current = '';
+        doneReceivedRef.current = false;
+        streamingIndexRef.current = null;
         setStreaming(false);
         setWaitingFirstChunk(false);
-        streamingIndexRef.current = null;
         setMessages((prev) => [...prev, { role: 'assistant', content: data.message || 'Something went wrong.' }]);
       }
     };
@@ -86,6 +124,7 @@ export const SupportWidget = () => {
   useEffect(() => {
     return () => {
       if (wsRef.current) wsRef.current.close();
+      stopRevealTimer();
     };
   }, []);
 
@@ -100,6 +139,9 @@ export const SupportWidget = () => {
     setMessages((prev) => [...prev, { role: 'user', content: text }]);
     setStreaming(true);
     setWaitingFirstChunk(true);
+    pendingBufferRef.current = '';
+    doneReceivedRef.current = false;
+    streamingIndexRef.current = null;
     wsRef.current.send(JSON.stringify({ content: text }));
     setDraft('');
   };
