@@ -215,7 +215,7 @@ frontend/dist/
 !frontend/src/lib/
 !frontend/src/lib/**
 
-# NextMate runtime artifacts
+# NexMate runtime artifacts
 backend/data/memory/*.jsonl
 backend/data/memory/*.sqlite
 backend/data/memory/*.sqlite-journal

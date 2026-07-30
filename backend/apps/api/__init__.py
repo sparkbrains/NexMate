@@ -1,2 +1,2 @@
-"""Web API package for NextMate."""
+"""Web API package for NexMate."""
 

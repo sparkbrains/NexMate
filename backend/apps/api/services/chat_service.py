@@ -68,16 +68,16 @@ def _fallback_reply_for_error(exc: Exception) -> str:
     message = str(exc).strip().lower()
     if "401" in message or "authentication" in message or "user not found" in message:
         return (
-            "NextMate can't reply right now because the AI provider credentials configured on the "
+            "NexMate can't reply right now because the AI provider credentials configured on the "
             "server were rejected. Please update the model API key and try again."
         )
     if "rate limit" in message or "429" in message:
         return (
-            "NextMate is temporarily unavailable because the AI provider rate limit was reached. "
+            "NexMate is temporarily unavailable because the AI provider rate limit was reached. "
             "Please wait a moment and try again."
         )
     return (
-        "NextMate hit a temporary model error and couldn't generate a reply just now. "
+        "NexMate hit a temporary model error and couldn't generate a reply just now. "
         "Please try again in a moment."
     )
 

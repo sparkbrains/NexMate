@@ -1,2 +1,2 @@
-"""Utility modules for NextMate graph."""
+"""Utility modules for NexMate graph."""
 

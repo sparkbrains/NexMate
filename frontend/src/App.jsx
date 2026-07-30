@@ -163,7 +163,7 @@ export default function App() {
 
   return (
     <AppContext.Provider value={{ theme, setTheme, sidebarOpen, setSidebarOpen }}>
-      <div className="nm-app" data-screen-label={`Nextmate — ${route}`}>
+      <div className="nm-app" data-screen-label={`Nexmate — ${route}`}>
         <Sidebar
           active={route}
           onNav={navigateTo}

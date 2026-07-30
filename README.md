@@ -1,6 +1,6 @@
-# NextMate
+# NexMate
 
-NextMate is an AI-first journaling companion built with LangGraph.
+NexMate is an AI-first journaling companion built with LangGraph.
 The flow is graph-based and prompt-driven:
 1. load memory,
 2. build context,

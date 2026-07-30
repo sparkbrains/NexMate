@@ -33,7 +33,7 @@ const ChatScreen = ({ onNav }) => {
             {messages.map((m, i) => <Msg key={i} {...m} />)}
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '16px 0', color: 'var(--ink-4)' }}>
               <ThinkingDots />
-              <span className="nm-meta">Nextmate is reflecting · pulling 2 similar moments</span>
+              <span className="nm-meta">Nexmate is reflecting · pulling 2 similar moments</span>
             </div>
           </div>
         </div>
@@ -64,7 +64,7 @@ const ChatScreen = ({ onNav }) => {
 
           <div className="nm-hr dotted" />
           <div className="nm-meta" style={{ lineHeight: 1.5, color: 'var(--ink-4)' }}>
-            Nextmate doesn't provide clinical advice. Safety screens run on every message.
+            Nexmate doesn't provide clinical advice. Safety screens run on every message.
           </div>
         </aside>
       </div>

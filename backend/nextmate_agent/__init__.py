@@ -1,2 +1,2 @@
-"""NextMate LangGraph package."""
+"""NexMate LangGraph package."""
 

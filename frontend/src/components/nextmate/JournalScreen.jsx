@@ -534,7 +534,7 @@ export const JournalScreen = () => {
                         />
                         <span className="nm-switch-slider"></span>
                       </span>
-                      Allow NextMate to analyze this entry for behavioral loops
+                      Allow NexMate to analyze this entry for behavioral loops
                     </label>
                   </div>
 

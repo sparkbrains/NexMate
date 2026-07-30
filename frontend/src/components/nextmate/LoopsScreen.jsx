@@ -202,7 +202,7 @@ export const LoopsScreen = ({ onNav }) => {
             <div className="nm-eyebrow" style={{ marginBottom: 14 }}>Nothing has circled back — yet</div>
             <h1>The first loop is always <em>a surprise</em>.</h1>
             <p>
-              When the same belief returns under a familiar trigger, Nextmate names it.
+              When the same belief returns under a familiar trigger, Nexmate names it.
               Until then, keep reflecting.
             </p>
             {error && <p className="nm-meta" style={{ color: 'var(--accent)', marginTop: 14 }}>{error}</p>}

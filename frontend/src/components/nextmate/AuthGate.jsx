@@ -707,8 +707,8 @@ export function AuthGate({ onAuth }) {
             </button>
           )}
           <div className="nm-auth-fineprint">
-            Nextmate keeps 90 days of memory.<br />
-            It doesn’t provide clinical advice — it reflects.
+            Nexmate keeps 90 days of memory.<br />
+            It doesn't provide clinical advice — it reflects.
           </div>
         </div>
       </section>

@@ -127,7 +127,7 @@ const WeeklyScreen = () => (
           <blockquote style={{ margin: '18px 0', padding: '16px 24px', borderLeft: '2px solid var(--accent)', fontFamily: 'var(--font-display)', fontSize: 22, lineHeight: 1.35, fontStyle: 'italic', letterSpacing: '-0.015em' }}>
             "Maybe being needed and needing myself aren't the same thing."
           </blockquote>
-          <p className="nm-body">Nextmate logged this as a candidate belief. It won't become a core pattern until it reaffirms five times.</p>
+          <p className="nm-body">Nexmate logged this as a candidate belief. It won't become a core pattern until it reaffirms five times.</p>
         </Sec>
 
         <div className="nm-card ink" style={{ marginTop: 32 }}>
@@ -150,7 +150,7 @@ const WeeklyScreen = () => (
         </div>
 
         <div style={{ textAlign: 'center', marginTop: 40, paddingBottom: 20 }}>
-          <div className="nm-meta">Generated Sun Apr 20 · 11 threads · 184 days with Nextmate</div>
+          <div className="nm-meta">Generated Sun Apr 20 · 11 threads · 184 days with Nexmate</div>
         </div>
       </div>
     </div>

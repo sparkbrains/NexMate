@@ -1091,7 +1091,7 @@ def reflect_on_loop(user_id: int, loop_id: str) -> dict[str, Any]:
 
     print(f"Loop found: {loop.get('name', 'unknown')}")
 
-    # Build context-rich prompt for NextMate
+    # Build context-rich prompt for NexMate
     loop_name = loop.get("name", "")
     core_belief = loop.get("core_belief", "")
     trigger = loop.get("trigger", "")

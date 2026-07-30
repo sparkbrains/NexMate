@@ -11,7 +11,7 @@ def main() -> None:
     thread_id = input("Thread ID (default: demo-thread): ").strip() or "demo-thread"
     user_id_input = input("User ID (default: 1): ").strip()
     user_id = int(user_id_input) if user_id_input else 1
-    print(f"NextMate CLI (type 'exit' to quit) | User ID: {user_id}")
+    print(f"NexMate CLI (type 'exit' to quit) | User ID: {user_id}")
     print("Use '/thread <id>' to switch thread memory.")
 
     while True:
@@ -32,7 +32,7 @@ def main() -> None:
         reply = payload.get("assistant_reply", "").strip()
         summary = payload.get("turn_summary", {})
 
-        print(f"NextMate: {reply}")
+        print(f"NexMate: {reply}")
         if summary:
             print(
                 f"[memory] thread={thread_id} | mood={summary.get('mood', 'unknown')} "

@@ -213,7 +213,7 @@ export const SupportWidget = () => {
               flexShrink: 0,
             }}
           >
-            <span>Nextmate Support</span>
+            <span>Nexmate Support</span>
             <span
               style={{
                 fontSize: 10,
@@ -228,7 +228,7 @@ export const SupportWidget = () => {
           <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 14 }}>
             {messages.length === 0 && (
               <div style={{ fontSize: 12.5, color: 'var(--ink-4)', lineHeight: 1.5 }}>
-                Hi! Ask me anything about Nextmate — how it works, its features, or pricing.
+                Hi! Ask me anything about Nexmate — how it works, its features, or pricing.
               </div>
             )}
             {messages.map((m, i) => (
@@ -267,7 +267,7 @@ export const SupportWidget = () => {
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={onKey}
-              placeholder={status === 'open' ? 'Ask about Nextmate…' : 'Connecting…'}
+              placeholder={status === 'open' ? 'Ask about Nexmate…' : 'Connecting…'}
               disabled={status !== 'open'}
               style={{
                 flex: 1,

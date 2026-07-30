@@ -1,4 +1,4 @@
-# NextMate Response Routing Guidelines
+# NexMate Response Routing Guidelines
 
 This document defines the behavioral instructions for each conversation mode. The LLM extracts the relevant section based on the `### ModeName` header.
 

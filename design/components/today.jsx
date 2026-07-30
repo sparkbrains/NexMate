@@ -20,7 +20,7 @@ const TodayScreen = ({ onNav }) => (
             for nine days.
           </h1>
           <p className="nm-lede" style={{ marginTop: 18, maxWidth: 620 }}>
-            Nextmate noticed something across your last fourteen entries. Want to sit with it before the day starts?
+            Nexmate noticed something across your last fourteen entries. Want to sit with it before the day starts?
           </p>
         </div>
 

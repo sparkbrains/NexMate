@@ -209,10 +209,10 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
     heroSub = '';
   } else if (totalEntries === 0) {
     heroLead = <>Your first reflection<br /><em>is waiting.</em></>;
-    heroSub = 'Nextmate looks for patterns across your entries. Start with one moment from today.';
+    heroSub = 'Nexmate looks for patterns across your entries. Start with one moment from today.';
   } else if (topLoop) {
     heroLead = <>You've been circling<br /><em>the same question</em><br />for {topLoop.occurrences} entries.</>;
-    heroSub = 'Nextmate noticed something across your recent entries. Want to sit with it before the day starts?';
+    heroSub = 'Nexmate noticed something across your recent entries. Want to sit with it before the day starts?';
   } else {
     heroLead = <>{totalEntries} reflection{totalEntries === 1 ? '' : 's'}<br /><em>and counting.</em></>;
     heroSub = `Avg intensity ${avgIntensity ?? '—'} this week. Keep showing up.`;

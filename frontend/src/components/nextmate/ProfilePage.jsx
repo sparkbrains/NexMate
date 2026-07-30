@@ -247,7 +247,7 @@ export function ProfilePage({ onLogout }) {
           </button>
 
           <div className="nm-meta" style={{ textAlign: 'center' }}>
-            Nextmate keeps 90 days of memory.<br />
+            Nexmate keeps 90 days of memory.<br />
             It doesn't provide clinical advice — it reflects.
           </div>
         </div>

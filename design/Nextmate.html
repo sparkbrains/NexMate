@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Nextmate — reflection workspace</title>
+<title>Nexmate — reflection workspace</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -73,7 +73,7 @@ function NextmateApp({ defaultRoute = 'today' }) {
   const [route, setRoute] = React.useState(defaultRoute);
   const Screen = ({ today: TodayScreen, chat: ChatScreen, loops: LoopsScreen, insights: InsightsScreen, weekly: WeeklyScreen })[route] || TodayScreen;
   return (
-    <div className="nm-app" data-screen-label={"Nextmate — " + route}>
+    <div className="nm-app" data-screen-label={"Nexmate — " + route}>
       <Sidebar active={route} onNav={setRoute} />
       <Screen onNav={setRoute} />
     </div>
@@ -105,7 +105,7 @@ function App() {
 
   return (
     <>
-      <DesignCanvas title="Nextmate" subtitle="Reflection workspace · loop detection · web dashboard">
+      <DesignCanvas title="Nexmate" subtitle="Reflection workspace · loop detection · web dashboard">
         <DCSection id="flow" title="Core flow" subtitle="A thread-based workspace, not a journal. Loop detection is the spine.">
           <DCArtboard id="today" label="01 · Today" width={1320} height={900}>
             <NextmateApp defaultRoute="today" />

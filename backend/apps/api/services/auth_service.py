@@ -234,10 +234,10 @@ def _send_otp_email(to_email: str, code: str) -> None:
     sender = os.getenv("SMTP_FROM", smtp_user)
 
     msg = MIMEText(
-        f"Your Nextmate verification code is {code}.\n\n"
+        f"Your Nexmate verification code is {code}.\n\n"
         f"It expires in {OTP_TTL_MINUTES} minutes. If you didn't request this, you can ignore this email."
     )
-    msg["Subject"] = "Your Nextmate verification code"
+    msg["Subject"] = "Your Nexmate verification code"
     msg["From"] = sender
     msg["To"] = to_email
 
@@ -416,11 +416,11 @@ def _send_password_reset_email(to_email: str, code: str) -> None:
     sender = os.getenv("SMTP_FROM", smtp_user)
 
     msg = MIMEText(
-        f"Your Nextmate password reset code is {code}.\n\n"
+        f"Your Nexmate password reset code is {code}.\n\n"
         f"It expires in {RESET_OTP_TTL_MINUTES} minutes. If you didn't request this, "
         f"you can safely ignore this email — your password will not be changed."
     )
-    msg["Subject"] = "Reset your Nextmate password"
+    msg["Subject"] = "Reset your Nexmate password"
     msg["From"] = sender
     msg["To"] = to_email
 

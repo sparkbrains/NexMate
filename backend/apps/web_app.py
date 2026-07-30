@@ -19,7 +19,7 @@ from apps.api.routers.ws import router as ws_router
 from apps.api.routers.profile import router as profile_router
 from apps.api.services.auth_service import init_auth_db, seed_dummy_users_from_env
 from apps.api.routers.support import router as support_router
-app = FastAPI(title="NextMate Web")
+app = FastAPI(title="NexMate Web")
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
 app.add_middleware(
     CORSMiddleware,

@@ -711,7 +711,7 @@ export const ChatScreen = ({
                 }}
               >
                 <ThinkingDots />
-                <span className="nm-meta">Nextmate is reflecting…</span>
+                <span className="nm-meta">Nexmate is reflecting…</span>
               </div>
             )}
             {error && (
@@ -887,7 +887,7 @@ export const ChatScreen = ({
           )}
 
           <div className="nm-meta" style={{ lineHeight: 1.5, color: 'var(--ink-4)' }}>
-            Nextmate doesn't provide clinical advice. Safety screens run on every message.
+            Nexmate doesn't provide clinical advice. Safety screens run on every message.
           </div>
         </div>
       </div>
