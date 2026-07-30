@@ -400,8 +400,7 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
 
         <footer className="nm-auth-foot nm-reveal" data-d="6">
           <div>
-            <div style={{ marginBottom: 4 }}>{today()}</div>
-            <div><b>entry 001</b> · you</div>
+            <div>{today()}</div>
           </div>
           <div className="nm-auth-quote">{quote}</div>
         </footer>
@@ -411,14 +410,12 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
       <section className="nm-auth-pane">
         <div className="nm-auth-pane-head nm-reveal" data-d="2">
           <span>
-            {isLogin && 'To return —'}
-            {isSignup && 'To begin —'}
             {isOtp && 'One more step —'}
             {isForgotEmail && 'To reset —'}
             {isForgotOtp && 'One more step —'}
             {isReset && 'Almost there —'}
           </span>
-          <span className="entry-no">no. {ENTRY_NO[mode]}</span>
+          {(isOtp || isForgotEmail || isForgotOtp || isReset) && <span className="entry-no">no. {ENTRY_NO[mode]}</span>}
         </div>
 
         {notice && !isLogin && <div className="nm-auth-notice">{notice}</div>}

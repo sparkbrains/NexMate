@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Icon, TopBar } from './Shell';
-import { getDashboardInsights, answerDailyQuestion } from '../../lib/api';
+import { Icon, TopBar, LoopRing } from './Shell';
+import { getDashboardInsights, answerDailyQuestion, reflectOnLoop } from '../../lib/api';
 
 const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last, onClick }) => (
   <div onClick={onClick} style={{ padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--rule-soft)', cursor: 'pointer' }} >
@@ -61,14 +61,42 @@ const WeekDots = ({ days }) => (
   </div>
 );
 
+const TriggerBubbles = ({ triggers, colors }) => (
+  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', paddingTop: 4 }}>
+    {triggers.map((t, i) => {
+      const size = 52 + (t.pct / 100) * 48;
+      return (
+        <div key={t.trigger} style={{
+          width: size, height: size, borderRadius: '50%',
+          background: colors[i % colors.length],
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexDirection: 'column', gap: 2, flexShrink: 0,
+          boxShadow: `0 2px 8px ${colors[i % colors.length]}55`,
+        }}>
+          <span style={{ fontSize: Math.max(8, size * 0.16), color: '#fff', fontFamily: 'var(--font-mono)', textAlign: 'center', padding: '0 4px', lineHeight: 1.2, wordBreak: 'break-word' }}>{t.trigger}</span>
+          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.75)', fontFamily: 'var(--font-mono)' }}>{t.pct}%</span>
+        </div>
+      );
+    })}
+  </div>
+);
+
 const TriggerBar = ({ label, pct, color, last }) => (
-  <div style={{ marginBottom: last ? 0 : 8 }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-      <span style={{ fontFamily: 'var(--font-display)', fontSize: 13 }}>{label}</span>
-      <span className="nm-meta">{pct}%</span>
-    </div>
-    <div style={{ height: 3, background: 'var(--rule-soft)', borderRadius: 0, overflow: 'hidden' }}>
-      <div style={{ width: `${pct}%`, height: '100%', background: color }} />
+  <div style={{ marginBottom: last ? 0 : 10 }}>
+    <div style={{ height: 6, background: 'var(--rule-soft)', borderRadius: 99, overflow: 'visible', position: 'relative' }}>
+      <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 99, position: 'relative', minWidth: 'fit-content' }}>
+        <span style={{
+          position: 'absolute',
+          right: 8,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          fontSize: 10,
+          fontFamily: 'var(--font-mono)',
+          color: '#fff',
+          whiteSpace: 'nowrap',
+          lineHeight: 1,
+        }}>{label}</span>
+      </div>
     </div>
   </div>
 );
@@ -103,6 +131,7 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   const [error, setError] = useState(null);
   const [answeringQuestion, setAnsweringQuestion] = useState(false);
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
+  const [reflecting, setReflecting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -143,6 +172,21 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
     }
   };
 
+  const handleReflect = async () => {
+    if (!topLoop) return;
+    setReflecting(true);
+    try {
+      const result = await reflectOnLoop(topLoop.loop_id);
+      if (result && result.thread_id) {
+        if (onNav) onNav('chat', { threadId: result.thread_id, threadTitle: result.title, initialMessage: result.opening_message });
+      }
+    } catch (e) {
+      setError(e.message || 'Failed to create reflection thread');
+    } finally {
+      setReflecting(false);
+    }
+  };
+
   const handleSkipQuestion = () => {
     setCurrentQuestionIdx((i) => {
       if (pendingQuestions.length === 0) return 0;
@@ -161,6 +205,7 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   const prevAvgIntensity = week?.previous_stats?.avg_intensity;
   const intensityDelta = fmtDelta(avgIntensity, prevAvgIntensity);
 
+  const topLoop = insights?.loops?.items?.find((l) => l.state === 'active');
   const topTriggers = (insights?.top_triggers || []).slice(0, 4);
   const dailyQuestions = Array.isArray(insights?.daily_question) ? insights.daily_question : [];
   const pendingQuestions = dailyQuestions.filter((q) => q.status === 'pending');
@@ -216,6 +261,34 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
             )}
           </div>
 
+          {topLoop && (
+            <div className="nm-card nm-fade-up" style={{ marginBottom: 24, padding: '20px 24px' }}>
+              <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+                <LoopRing strength={topLoop.strength} size={72} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                    <span className="nm-chip teal"><span className="nm-dot" />Active loop</span>
+                    <span className="nm-tag">strength {topLoop.strength.toFixed(2)} · {topLoop.occurrences}×</span>
+                  </div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontStyle: 'italic', lineHeight: 1.4, marginBottom: 8 }}>
+                    "{topLoop.core_belief || topLoop.name}"
+                  </div>
+                  {topLoop.trigger && (
+                    <p className="nm-body" style={{ margin: '0 0 12px', fontSize: 13.5, color: 'var(--ink-2)' }}>
+                      Surfaces around <b>{topLoop.trigger}</b>{topLoop.valence ? <> · <b>{topLoop.valence}</b></> : null}.
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="nm-btn" onClick={handleReflect} disabled={reflecting}>
+                      {reflecting ? 'Reflecting…' : 'Reflect on this'} <Icon name="arrow" size={11} />
+                    </button>
+                    <button className="nm-btn ghost" onClick={() => onNav && onNav('loops')}>See all loops</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Content Columns */}
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
             <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -239,15 +312,12 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
                     <div className="nm-tag">Emotion intensity</div>
                     <div style={{ fontFamily: 'var(--font-display)', fontSize: 24 }}>
                       {avgIntensity ?? '—'}
-                      {intensityDelta && (
-                        <span className="nm-meta" style={{ marginLeft: 6 }}>{intensityDelta}</span>
-                      )}
                     </div>
                   </div>
                   <div>
                     <div className="nm-tag">Streak</div>
                     <div className="nm-days-body" style={{ fontFamily: 'var(--font-display)' }}>
-                      {insights?.checkin_streak_days ?? 0}<span className="nm-meta" style={{ marginLeft: 6 }}>days</span>
+                      🔥 {insights?.checkin_streak_days ?? 0}<span className="nm-meta" style={{ marginLeft: 6 }}>days</span>
                     </div>
                   </div>
                 </div>
@@ -257,24 +327,17 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <div className="nm-card">
                 <div className="nm-meta" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
-                {topTriggers.length === 0 && (
+                {topTriggers.length === 0 ? (
                   <div className="nm-meta-data">No triggers detected yet.</div>
+                ) : (
+                  <TriggerBubbles triggers={topTriggers} colors={TRIGGER_COLORS} />
                 )}
-                {topTriggers.map((t, i) => (
-                  <TriggerBar
-                    key={t.trigger}
-                    label={t.trigger}
-                    pct={t.pct}
-                    color={TRIGGER_COLORS[i % TRIGGER_COLORS.length]}
-                    last={i === topTriggers.length - 1}
-                  />
-                ))}
               </div>
 
               <div className="nm-card">
                 <div className="nm-meta" style={{ marginBottom: 10 }}>Today's question</div>
                 {dailyQuestions.length === 0 ? (
-                  <div className="nm-meta-data">Your daily questions will appear after your first reflection.</div>
+                  <div className="nm-meta-data" style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.5 }}>Your question is on its way — something thoughtful is being prepared for you.</div>
                 ) : pendingQuestions.length === 0 ? (
                   <div className="nm-meta-data" style={{ color: 'var(--teal)' }}>You've answered all of today's questions. See you tomorrow.</div>
                 ) : currentQuestion ? (
@@ -292,7 +355,7 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
                     </div>
                   </>
                 ) : (
-                  <div className="nm-meta-data">Your next question will appear after your first reflection.</div>
+                  <div className="nm-meta-data">Your next question will appear shortly.</div>
                 )}
               </div>
             </div>

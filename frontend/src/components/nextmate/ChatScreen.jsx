@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
 import { useChatSocket } from '../../hooks/useChatSocket';
-import { getThreadMessages, listLoops, chatSocketUrl } from '../../lib/api';
+import {
+  getThreadMessages, listLoops, chatSocketUrl,
+  getThreadSummary, finalizeThreadSummary,
+  listJournalBooks, createJournalBook,
+  saveThreadSummaryAsJournalEntry,
+} from '../../lib/api';
+
+const NEW_BOOK_OPTION = '__new__';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 
@@ -124,21 +131,6 @@ const ThinkingDots = () => (
   </div>
 );
 
-const StatLine = ({ label, value, teal }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 11.5 }}>
-    <span className="nm-tag">{label}</span>
-    <span
-      style={{
-        fontFamily: 'var(--font-mono)',
-        fontSize: 11,
-        color: teal ? 'var(--teal)' : 'var(--ink-2)',
-      }}
-    >
-      {value}
-    </span>
-  </div>
-);
-
 export const ChatScreen = ({
   onNav,
   threadId,
@@ -146,9 +138,19 @@ export const ChatScreen = ({
   onMessageDone,
   context,
   initialMessage,
+  onAuthExpired,
 }) => {
   const [draft, setDraft] = useState('');
   const [loops, setLoops] = useState([]);
+  const [threadSummary, setThreadSummary] = useState(null);
+  const [showSaveToJournal, setShowSaveToJournal] = useState(false);
+  const [loadingJournalBooks, setLoadingJournalBooks] = useState(false);
+  const [journalBooks, setJournalBooks] = useState([]);
+  const [journalTargetBookId, setJournalTargetBookId] = useState('');
+  const [newJournalBookName, setNewJournalBookName] = useState('');
+  const [savingToJournal, setSavingToJournal] = useState(false);
+  const [journalSaveMessage, setJournalSaveMessage] = useState('');
+  const [journalSaveError, setJournalSaveError] = useState(false);
   const [recording, setRecording] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [voiceError, setVoiceError] = useState('');
@@ -211,6 +213,7 @@ export const ChatScreen = ({
       if (onMessageDone) onMessageDone();
     },
     context,
+    onAuthExpired,
   });
 
   // Load available voices (browser voices load asynchronously)
@@ -508,15 +511,85 @@ export const ChatScreen = ({
     refreshLoops();
   }, []);
 
+  const refreshThreadSummary = () => {
+    if (!threadId) { setThreadSummary(null); return; }
+    getThreadSummary(threadId)
+      .then((data) => setThreadSummary(data && data.summary_text ? data : null))
+      .catch(() => setThreadSummary(null));
+  };
+
+  useEffect(() => { refreshThreadSummary(); }, [threadId]);
+
+  useEffect(() => {
+    setShowSaveToJournal(false);
+    setJournalTargetBookId('');
+    setNewJournalBookName('');
+    setJournalSaveMessage('');
+    setJournalSaveError(false);
+  }, [threadId]);
+
+  const toggleSaveToJournal = (checked) => {
+    setShowSaveToJournal(checked);
+    setJournalSaveMessage('');
+    setJournalSaveError(false);
+    if (checked && journalBooks.length === 0 && !loadingJournalBooks) {
+      setLoadingJournalBooks(true);
+      listJournalBooks()
+        .then((data) => {
+          const list = data.books || [];
+          setJournalBooks(list);
+          setJournalTargetBookId(list[0] ? String(list[0].id) : NEW_BOOK_OPTION);
+        })
+        .catch(() => { setJournalBooks([]); setJournalTargetBookId(NEW_BOOK_OPTION); })
+        .finally(() => setLoadingJournalBooks(false));
+    }
+  };
+
+  const handleSaveSummaryToJournal = async () => {
+    if (!threadSummary?.summary_text) return;
+    setSavingToJournal(true); setJournalSaveMessage(''); setJournalSaveError(false);
+    try {
+      let bookId = journalTargetBookId;
+      let bookName = journalBooks.find((b) => String(b.id) === String(bookId))?.name;
+      if (bookId === NEW_BOOK_OPTION) {
+        const name = newJournalBookName.trim();
+        if (!name) throw new Error('Name the new book first.');
+        const created = await createJournalBook({ name, color: '' });
+        bookId = created.book.id; bookName = created.book.name;
+        setJournalBooks((prev) => [...prev, created.book]);
+        setJournalTargetBookId(String(bookId));
+        setNewJournalBookName('');
+      }
+      await saveThreadSummaryAsJournalEntry({ thread_id: threadId, body: threadSummary.summary_text, book_id: bookId });
+      setJournalSaveMessage(`Saved to ${bookName || 'journal'}.`);
+    } catch (e) {
+      setJournalSaveError(true);
+      setJournalSaveMessage(e?.message || 'Failed to save entry.');
+    } finally {
+      setSavingToJournal(false);
+    }
+  };
+
   useEffect(() => {
     if (!streaming) {
       refreshLoops();
+      refreshThreadSummary();
       const t1 = setTimeout(refreshLoops, 3000);
       const t2 = setTimeout(refreshLoops, 8000);
       const t3 = setTimeout(refreshLoops, 15000);
       return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
     }
   }, [streaming]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && threadId) {
+        finalizeThreadSummary(threadId).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [threadId]);
 
   const activeLoops = loops.filter((l) => l.state === 'active');
   const topLoop = activeLoops[0];
@@ -759,11 +832,65 @@ export const ChatScreen = ({
           )}
 
           <div className="nm-hr dotted" />
-          <div className="nm-eyebrow" style={{ marginBottom: 10 }}>This thread</div>
-          <StatLine label="Messages" value={messages.length} />
-          <StatLine label="Connection" value={status} teal={status === 'open'} />
-          <StatLine label="Active loops" value={activeLoops.length} />
-          <div className="nm-hr dotted" />
+
+          {threadSummary && (
+            <>
+              <div className="nm-eyebrow" style={{ marginBottom: 10 }}>This thread, so far</div>
+              <div className="nm-card" style={{ padding: 12, marginBottom: 16 }}>
+                <div className="nm-body" style={{ fontSize: 12.5, lineHeight: 1.55 }}>{threadSummary.summary_text}</div>
+                <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 8 }}>
+                  last updated {new Date(threadSummary.updated_at).toLocaleDateString()}
+                </div>
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--rule)' }}>
+                  <label className="nm-meta" style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <span className="nm-switch">
+                      <input type="checkbox" checked={showSaveToJournal} onChange={(e) => toggleSaveToJournal(e.target.checked)} />
+                      <span className="nm-switch-slider"></span>
+                    </span>
+                    Save this summary as a journal entry
+                  </label>
+                  {showSaveToJournal && (
+                    <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                      {loadingJournalBooks ? (
+                        <div className="nm-meta" style={{ fontSize: 11 }}>Loading books…</div>
+                      ) : (
+                        <>
+                          <select
+                            value={journalTargetBookId}
+                            onChange={(e) => setJournalTargetBookId(e.target.value)}
+                            style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '4px 6px' }}
+                          >
+                            {journalBooks.map((b) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+                            <option value={NEW_BOOK_OPTION}>+ New book…</option>
+                          </select>
+                          {journalTargetBookId === NEW_BOOK_OPTION && (
+                            <input type="text" value={newJournalBookName} onChange={(e) => setNewJournalBookName(e.target.value)} placeholder="Name this book…"
+                              style={{ fontSize: 12, border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '6px 8px' }}
+                            />
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <button className="nm-btn primary" style={{ fontSize: 11.5, padding: '6px 10px' }}
+                              onClick={handleSaveSummaryToJournal}
+                              disabled={savingToJournal || !threadSummary.summary_text || (journalTargetBookId === NEW_BOOK_OPTION && !newJournalBookName.trim())}
+                            >
+                              {savingToJournal ? 'Saving…' : 'Save entry'}
+                            </button>
+                            {journalSaveMessage && (
+                              <span className="nm-meta" style={{ fontSize: 10.5, color: journalSaveError ? 'var(--accent)' : 'var(--teal)' }}>
+                                {journalSaveMessage}
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="nm-hr dotted" />
+            </>
+          )}
+
           <div className="nm-meta" style={{ lineHeight: 1.5, color: 'var(--ink-4)' }}>
             Nextmate doesn’t provide clinical advice. Safety screens run on every message.
           </div>

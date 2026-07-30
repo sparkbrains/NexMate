@@ -242,8 +242,8 @@ const StreakBlock = ({ streak }) => {
   );
 };
 
-const DayAccordion = ({ k, items, isFirst, handleDeleteEntry, handleUpdateEntry }) => {
-  const [open, setOpen] = useState(isFirst);
+const DayAccordion = ({ k, items, handleDeleteEntry, handleUpdateEntry }) => {
+  const [open, setOpen] = useState(false);
   return (
     <div className="nm-day-block" style={{ border: '1px solid var(--rule-soft)', borderRadius: 8, padding: '12px 16px', marginBottom: 16, background: 'var(--surface)' }}>
       <div 
@@ -768,19 +768,20 @@ export const JournalScreen = ({ user }) => {
                       <div className="nm-meta">{entries.length} kept</div>
                     </div>
 
-                    {entriesByDate.map(([date, items], i) => {
-                      const k = dayKindLabel(date);
-                      return (
-                        <DayAccordion 
-                          key={date}
-                          k={k}
-                          items={items}
-                          isFirst={i === 0}
-                          handleDeleteEntry={handleDeleteEntry}
-                          handleUpdateEntry={handleUpdateEntry}
-                        />
-                      );
-                    })}
+                    <div style={{ height: 160, overflowY: 'auto', paddingRight: 4, border: '1px solid var(--rule-soft)', borderRadius: 8 }}>
+                      {entriesByDate.map(([date, items], i) => {
+                        const k = dayKindLabel(date);
+                        return (
+                          <DayAccordion
+                            key={date}
+                            k={k}
+                            items={items}
+                            handleDeleteEntry={handleDeleteEntry}
+                            handleUpdateEntry={handleUpdateEntry}
+                          />
+                        );
+                      })}
+                    </div>
                   </>
                 )}
               </>

@@ -683,6 +683,7 @@ export const InsightsScreen = () => {
             <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />
           </div>
 
+          {false && /* Discovered Patterns, Subconscious Themes, Month in Extremes — hidden for now */ (
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
             {/* Discovered Patterns */}
             <div className="nm-card" style={{ display: 'flex', flexDirection: 'column' }}>
@@ -692,10 +693,7 @@ export const InsightsScreen = () => {
               </div>
             </div>
 
-            {/* Themes & Extremes */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              
-              {/* Subconscious Themes */}
               <div className="nm-card" style={{ background: 'var(--surface-0)', border: '1px solid var(--rule-soft)' }}>
                 <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Subconscious Themes</div>
                 {topCoreThemes.length > 0 ? (
@@ -711,12 +709,9 @@ export const InsightsScreen = () => {
                 )}
               </div>
 
-              {/* Month in Extremes */}
               <div className="nm-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'linear-gradient(135deg, rgba(78, 205, 196, 0.05), rgba(108, 92, 231, 0.05))', border: '1px solid var(--rule-soft)' }}>
                 <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Month in Extremes</div>
-                
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, flex: 1 }}>
-                  {/* Peak Day */}
                   <div style={{ background: 'var(--surface-0)', padding: 12, borderRadius: 8, border: '1px solid var(--accent)', borderOpacity: 0.3, display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <div className="nm-meta" style={{ color: 'var(--accent)' }}>Peak Intensity</div>
@@ -726,8 +721,6 @@ export const InsightsScreen = () => {
                       {peakSummary ? `"${peakSummary}"` : 'No summary available.'}
                     </div>
                   </div>
-
-                  {/* Low Day */}
                   <div style={{ background: 'var(--surface-0)', padding: 12, borderRadius: 8, border: '1px solid var(--teal)', borderOpacity: 0.3, display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <div className="nm-meta" style={{ color: 'var(--teal)' }}>Lowest Intensity</div>
@@ -739,9 +732,9 @@ export const InsightsScreen = () => {
                   </div>
                 </div>
               </div>
-              
             </div>
           </div>
+          )}
 
           {loading && totalEntries === 0 && (
             <div className="nm-meta" style={{ textAlign: 'center', marginTop: 24 }}>Loading insights…</div>
