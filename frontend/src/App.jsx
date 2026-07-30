@@ -9,6 +9,7 @@ import { JournalScreen } from './components/nextmate/JournalScreen';
 import PricingScreen from './components/nextmate/PricingScreen';
 import { LandingPage } from './components/nextmate/LandingPage';
 import { ProfilePage } from './components/nextmate/ProfilePage';
+import { SupportWidget } from './components/nextmate/SupportWidget';
 import { clearSession, deleteThread as deleteThreadApi, getMe, getToken, getUser, listThreads, logout as apiLogout } from './lib/api';
 import { AppContext } from './context';
 
@@ -102,6 +103,14 @@ export default function App() {
     navigateTo('today');
   };
 
+  const onAuthExpired = () => {
+    setUser(null);
+    setThreads([]);
+    setThreadId(null);
+    setChatParams(null);
+    navigateTo('today');
+  };
+
   if (!user) {
     if (window.location.pathname === '/pricing') {
       return (
@@ -124,6 +133,7 @@ export default function App() {
         threadTitle={chatParams?.threadTitle || activeThread?.title}
         initialMessage={chatParams?.initialMessage}
         onMessageDone={refreshThreads}
+        onAuthExpired={onAuthExpired}
       />
     );
   } else if (route === 'journal') {
@@ -177,6 +187,7 @@ export default function App() {
         />
         {screen}
         <PromptPackPop />
+        <SupportWidget />
       </div>
     </AppContext.Provider>
   );

@@ -286,6 +286,7 @@ export function listJournalEntries(bookId = null) {
   return request(`/api/journal${qs}`);
 }
 
+// Regular, hand-written journal entry (from the Journal screen).
 export function createJournalEntry({ body, mood_emoji = '', mood_label = '', entry_date = null, translated = '', auto_translate = false, book_id = null, allow_loop_detection = true }) {
   return request('/api/journal', {
     method: 'POST',
@@ -330,4 +331,32 @@ export async function answerDailyQuestion(questionId) {
 
 export async function getDailyQuestionContext(questionId) {
   return request(`/api/dashboard/daily-question/${encodeURIComponent(questionId)}/context`);
+}
+
+export async function transcribeAudio(blob) {
+  const token = getToken();
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE_URL}/api/transcribe`, { method: 'POST', headers, body: blob });
+  const text = await res.text();
+  let data = null;
+  if (text) { try { data = JSON.parse(text); } catch { data = { raw: text }; } }
+  if (!res.ok) {
+    const detail = (data && (data.detail || data.message)) || res.statusText || 'Transcription failed';
+    const err = new Error(typeof detail === 'string' ? detail : 'Transcription failed');
+    err.status = res.status; err.data = data; throw err;
+  }
+  return data;
+}
+
+export function getThreadSummary(threadId) {
+  return request(`/api/threads/${encodeURIComponent(threadId)}/summary`);
+}
+
+export function finalizeThreadSummary(threadId) {
+  return request(`/api/threads/${encodeURIComponent(threadId)}/finalize-summary`, { method: 'POST' });
+}
+
+export function saveThreadSummaryAsJournalEntry({ body, thread_id, book_id = null }) {
+  return request('/api/journal/from-thread-summary', { method: 'POST', body: { body, thread_id, book_id } });
 }
