@@ -60,9 +60,6 @@ def init_postgres() -> None:
                     id BIGSERIAL PRIMARY KEY,
                     email TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
-                    name TEXT,
-                    age INTEGER,
-                    subscription_tier TEXT DEFAULT 'Bronze',
                     created_at TIMESTAMPTZ NOT NULL
                 )
                 """
@@ -163,6 +160,25 @@ def init_postgres() -> None:
                 ADD COLUMN IF NOT EXISTS triggers JSONB NOT NULL DEFAULT '[]'::jsonb
                 """
             )
+            # source_thread_id ties a journal entry back to the chat thread it was
+            # generated from (via /api/journal/from-thread-summary). It stays NULL
+            # for manually-created entries. The partial unique index below is what
+            # lets upsert_journal_entry_for_thread() do a true ON CONFLICT upsert,
+            # so re-saving a summary for the same thread updates that one row
+            # instead of creating a duplicate entry.
+            cur.execute(
+                """
+                ALTER TABLE journal_logs
+                ADD COLUMN IF NOT EXISTS source_thread_id TEXT
+                """
+            )
+            cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_logs_thread_dedupe
+                ON journal_logs(user_id, source_thread_id)
+                WHERE source_thread_id IS NOT NULL
+                """
+            )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_journal_logs_user_date ON journal_logs(user_id, entry_date DESC)"
             )
@@ -243,25 +259,34 @@ def init_postgres() -> None:
                 ON loops(user_id, thread_id)
                 """
             )
-            # Add columns for existing installations
+            # Add loop_id and last_reflected_at columns if they don't exist (for existing installations)
             cur.execute(
                 """
                 ALTER TABLE threads
-                ADD COLUMN IF NOT EXISTS loop_id UUID,
-                ADD COLUMN IF NOT EXISTS last_reflected_at TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS loop_id UUID
+                """
+            )
+            cur.execute(
+                """
+                ALTER TABLE threads
+                ADD COLUMN IF NOT EXISTS last_reflected_at TIMESTAMPTZ
+                """
+            )
+            # Add daily_question_id column if it doesn't exist (for existing
+            # installations) — tags a thread as having been created to
+            # answer a specific daily question, independent of its title.
+            cur.execute(
+                """
+                ALTER TABLE threads
                 ADD COLUMN IF NOT EXISTS daily_question_id BIGINT
                 """
             )
-
             cur.execute(
     """
     CREATE TABLE IF NOT EXISTS pending_signups (
         email TEXT PRIMARY KEY,
         password_hash TEXT NOT NULL,
         otp_hash TEXT NOT NULL,
-        name TEXT,
-        age INTEGER,
-        subscription_tier TEXT DEFAULT 'Bronze',
         attempts INT NOT NULL DEFAULT 0,
         expires_at TIMESTAMPTZ NOT NULL,
         last_sent_at TIMESTAMPTZ NOT NULL,
@@ -307,6 +332,7 @@ def init_postgres() -> None:
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_prompt_pack_answers_user ON prompt_pack_answers(user_id, answered_date DESC)"
             )
+
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_profile_summary (
@@ -326,6 +352,7 @@ def init_postgres() -> None:
                 ADD COLUMN IF NOT EXISTS covers_through_date DATE
                 """
             )
+            # Create index on loop_id after ensuring column exists
             try:
                 cur.execute(
                     """
@@ -349,3 +376,25 @@ def init_postgres() -> None:
 
             cur.execute("CREATE INDEX IF NOT EXISTS idx_threads_user_updated ON threads(user_id, updated_at DESC)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_loops_user_last_detected ON loops(user_id, last_detected_at DESC)")
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS support_chat_logs (
+                    id BIGSERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    user_id BIGINT,
+                    query TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_support_chat_logs_session ON support_chat_logs(session_id, created_at)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_support_chat_logs_created ON support_chat_logs(created_at DESC)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_support_chat_logs_user ON support_chat_logs(user_id) WHERE user_id IS NOT NULL"
+            )

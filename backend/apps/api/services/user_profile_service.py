@@ -9,7 +9,7 @@ from nextmate_agent.utils.llm import ainvoke_with_logging, get_chat_model
 
 logger = logging.getLogger(__name__)
 
-MIN_ANSWERS_TO_GENERATE = 3
+MIN_ANSWERS_TO_GENERATE = 0
 
 # On the very first generation for a user (no cached profile yet), how
 # far back to bootstrap from -- same as the old full-regeneration
@@ -113,7 +113,7 @@ it is never shown to the user directly.
 
 Write 2-4 sentences covering: their core values, how they tend to cope with stress, their relationship
 style, and any recurring patterns or themes across their answers. Be specific and grounded in what they
-actually said - do not invent details. Write in third person ("They value...", "They tend to...").
+actually said - do not invent details. Write in (" You value...", "You tend to...").
 Return ONLY the profile text, no headers, no markdown, no preamble."""
 
     user_prompt = f"Prompt-pack answers:\n\n{answers_text}\n\nWrite the profile now."

@@ -1,22 +1,29 @@
-"""Thread-level compaction, via two independent mechanisms:
+"""Thread-level compaction, via three mechanisms:
 
-1. TOKEN-THRESHOLD (compact_thread / should_compact) -- mid-conversation,
-   fires while a thread is ACTIVELY being chatted in, once its chat_history
-   estimate crosses THREAD_SUMMARY_TRIGGER_TOKENS. Purpose: bound
-   generate_reply/choose_response_mode prompt size for very long single
-   sessions. Trims the live chat_history via the __replace__ state marker.
+1. TOKEN-THRESHOLD (compact_thread) -- mid-conversation, runs every turn
+   for the CURRENTLY ACTIVE thread. compact_thread internally no-ops
+   (returns the prior summary and chat_history unchanged) whenever
+   chat_history isn't longer than keep_last_turns*2 messages, so this
+   doesn't summarize prematurely -- it just no longer requires a token
+   count to ALSO be crossed on top of that. Trims the live chat_history
+   via the __replace__ state marker.
 
 2. IDLE-SWEEP (summarize_stale_threads) -- runs opportunistically on every
    turn, for OTHER threads belonging to the same user (never the current
    one). Once a thread has gone quiet for IDLE window and has messages not
    yet folded into its summary, this summarizes just the delta and merges it
-   into that thread's persisted summary. This is what actually populates
-   thread_summaries for SHORT threads that never trip the token threshold --
-   without it, cross-thread recall silently never has anything to surface.
+   into that thread's persisted summary.
 
-   Reads directly from thread_messages (DB), never touches LangGraph state
-   for the thread being summarized -- the current thread's live chat_history
-   is completely unaffected by this running.
+3. ON-DEMAND (generate_summary_now) -- called from GET /api/threads/{id}/summary
+   when no summary exists yet or new messages have arrived since the last
+   one, so a thread's summary doesn't depend on timing luck (whether it
+   happened to cross the size threshold, or whether another thread's
+   activity happened to trigger an idle-sweep for it). Reads directly from
+   thread_messages and reuses the same prompt/model as the other two.
+
+   All three read directly from thread_messages (DB) or the live
+   chat_history passed in -- summarize_stale_threads and generate_summary_now
+   never touch LangGraph state for the thread being summarized.
 """
 import re
 from datetime import datetime, timezone
@@ -72,6 +79,21 @@ def get_thread_summary(user_id: int, thread_id: str) -> dict[str, Any] | None:
     }
 
 
+def _get_summary_updated_at_raw(user_id: int, thread_id: str) -> datetime | None:
+    """Same lookup as get_thread_summary, but returns updated_at as a raw
+    datetime instead of an isoformatted string -- needed so it can be
+    passed straight into _fetch_unsummarized_messages' `since` parameter
+    (a timestamptz comparison in SQL) without a string/type mismatch."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT updated_at FROM thread_summaries WHERE user_id = %s AND thread_id = %s",
+                (user_id, thread_id),
+            )
+            row = cur.fetchone()
+    return row["updated_at"] if row else None
+
+
 def save_thread_summary(
     user_id: int, thread_id: str, summary_text: str, new_turns_folded: int
 ) -> None:
@@ -94,6 +116,10 @@ def save_thread_summary(
 
 
 def should_compact(chat_history: list[dict], trigger_tokens: int | None = None) -> bool:
+    """No longer called from manage_thread_summary_node (that gate was
+    removed so compaction is attempted every turn -- see nodes.py), but
+    kept here in case other callers still want a cheap token-based check
+    without invoking compact_thread itself."""
     if not chat_history:
         return False
     if trigger_tokens is None:
@@ -112,6 +138,11 @@ def compact_thread(
     except the last `keep_last_turns` turns, merges into prior_summary,
     persists, and returns (new_summary_text, trimmed_chat_history). Only
     called for the CURRENTLY ACTIVE thread, from manage_thread_summary_node.
+
+    No longer gated by a token threshold -- called every turn. The only
+    remaining gate is structural: if chat_history isn't longer than
+    keep_last_turns*2 messages, there's nothing to fold yet, so this
+    returns the input unchanged.
     """
     settings = get_settings()
     if keep_last_turns is None:
@@ -134,7 +165,7 @@ def compact_thread(
         ],
         "compact_thread_summary",
         thread_id,
-    )                                                                     
+    )
 
     new_summary = (raw or "").strip()
     if not new_summary or _NO_CONTENT_PATTERN.search(new_summary):
@@ -146,6 +177,21 @@ def compact_thread(
     return new_summary, remaining
 
 
+# thread_messages.thread_id has historically sometimes been written in the
+# composite checkpoint format ("user:1:thread:<uuid>") instead of the raw
+# UUID -- normalize it inline so a malformed row can't crash the whole query,
+# and so composite/clean rows for the same underlying thread get merged
+# under one identity instead of being treated as two different threads.
+_NORMALIZE_THREAD_ID_SQL = """
+    CASE
+        WHEN tm.thread_id ~ '^user:[0-9]+:thread:[0-9a-fA-F-]{36}$'
+            THEN split_part(tm.thread_id, ':', 4)
+        ELSE tm.thread_id
+    END
+"""
+_VALID_UUID_REGEX = r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+
+
 def find_stale_threads(
     user_id: int,
     exclude_thread_id: str | None,
@@ -155,24 +201,34 @@ def find_stale_threads(
     """Find OTHER threads for this user that have gone quiet (no message in
     idle_minutes) and have messages not yet reflected in their thread_summary
     (either no summary exists, or new messages arrived after the last one).
+
+    Tolerant of malformed thread_id values in thread_messages (composite
+    checkpoint strings that leaked in instead of raw UUIDs) -- rows that
+    don't normalize to a valid UUID are silently excluded rather than
+    crashing the query. See the UPDATE cleanup for fixing this at the source.
     """
-    query = """
-        SELECT tm.thread_id,
-               MAX(tm.created_at) AS last_message_at,
+    query = f"""
+        WITH normalized AS (
+            SELECT {_NORMALIZE_THREAD_ID_SQL} AS thread_id, tm.created_at
+            FROM thread_messages tm
+            WHERE tm.user_id = %s
+        )
+        SELECT n.thread_id,
+               MAX(n.created_at) AS last_message_at,
                ts.updated_at AS summary_updated_at
-        FROM thread_messages tm
-        LEFT JOIN thread_summaries ts ON ts.thread_id = tm.thread_id::uuid
-        WHERE tm.user_id = %s
+        FROM normalized n
+        LEFT JOIN thread_summaries ts ON ts.thread_id = n.thread_id::uuid
+        WHERE n.thread_id ~ %s
     """
-    params: list[Any] = [user_id]
+    params: list[Any] = [user_id, _VALID_UUID_REGEX]
     if exclude_thread_id:
-        query += " AND tm.thread_id != %s"
+        query += " AND n.thread_id != %s"
         params.append(exclude_thread_id)
     query += """
-        GROUP BY tm.thread_id, ts.updated_at
-        HAVING MAX(tm.created_at) < now() - (%s || ' minutes')::interval
-           AND (ts.updated_at IS NULL OR MAX(tm.created_at) > ts.updated_at)
-        ORDER BY MAX(tm.created_at) ASC
+        GROUP BY n.thread_id, ts.updated_at
+        HAVING MAX(n.created_at) < now() - (%s || ' minutes')::interval
+           AND (ts.updated_at IS NULL OR MAX(n.created_at) > ts.updated_at)
+        ORDER BY MAX(n.created_at) ASC
         LIMIT %s
     """
     params.extend([str(idle_minutes), max_threads])
@@ -195,22 +251,26 @@ def find_stale_threads(
 def _fetch_unsummarized_messages(
     user_id: int, thread_id: str, since: datetime | None
 ) -> list[dict[str, str]]:
+    # Matches both the clean UUID and, defensively, the composite checkpoint
+    # format ("user:<id>:thread:<uuid>") in case some rows for this thread
+    # were written that way before the cleanup migration/UPDATE ran.
+    composite_id = f"user:{user_id}:thread:{thread_id}"
     if since is not None:
         query = """
             SELECT role, content
             FROM thread_messages
-            WHERE user_id = %s AND thread_id = %s AND created_at > %s
+            WHERE user_id = %s AND thread_id IN (%s, %s) AND created_at > %s
             ORDER BY created_at ASC
         """
-        params = (user_id, thread_id, since)
+        params = (user_id, thread_id, composite_id, since)
     else:
         query = """
             SELECT role, content
             FROM thread_messages
-            WHERE user_id = %s AND thread_id = %s
+            WHERE user_id = %s AND thread_id IN (%s, %s)
             ORDER BY created_at ASC
         """
-        params = (user_id, thread_id)
+        params = (user_id, thread_id, composite_id)
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -220,13 +280,83 @@ def _fetch_unsummarized_messages(
     return [{"role": str(r["role"]), "content": str(r["content"])} for r in rows]
 
 
+def generate_summary_now(user_id: int, thread_id: str) -> dict[str, Any] | None:
+    """On-demand summarization for GET /api/threads/{id}/summary.
+
+    Folds in whatever messages haven't been reflected in the persisted
+    summary yet -- either the whole thread (if no summary exists at all)
+    or just the delta since the last summary update -- so a thread's
+    summary isn't at the mercy of whether it happened to cross
+    compact_thread's size gate or whether summarize_stale_threads' idle
+    sweep happened to run for it yet. Reuses the exact same prompt/model
+    as those two mechanisms.
+
+    Returns the (possibly unchanged) persisted summary dict, or None if
+    the thread has no messages and no prior summary at all.
+    """
+    if not thread_id:
+        return None
+
+    since = _get_summary_updated_at_raw(user_id, thread_id)
+    new_messages = _fetch_unsummarized_messages(user_id, thread_id, since)
+
+    if not new_messages:
+        # Nothing new to fold in -- return whatever's already persisted
+        # (possibly None, for a thread with no messages at all).
+        return get_thread_summary(user_id, thread_id)
+
+    # Cheap pre-filter, same threshold as summarize_stale_threads: skip the
+    # LLM call for trivially short/filler content. Doesn't persist anything,
+    # so a later call (once there's more content) will re-evaluate.
+    combined_chars = sum(len(m.get("content", "")) for m in new_messages)
+    if combined_chars < _MIN_SUBSTANTIVE_CHARS:
+        return get_thread_summary(user_id, thread_id)
+
+    existing = get_thread_summary(user_id, thread_id)
+    prior_summary_text = existing["summary_text"] if existing else ""
+
+    llm = get_fast_chat_model()
+    prompt = build_thread_summary_prompt(prior_summary=prior_summary_text, messages=new_messages)
+    raw, usage = invoke_with_logging(
+        llm,
+        [
+            {"role": "system", "content": THREAD_SUMMARY_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "on_demand_thread_summary",
+        thread_id,
+    )
+
+    new_summary = (raw or "").strip()
+
+    # Reject empty responses AND valid-but-useless boilerplate, same as
+    # the other two mechanisms -- fall back to whatever was already
+    # persisted rather than overwriting it with nothing useful.
+    if not new_summary or _NO_CONTENT_PATTERN.search(new_summary):
+        return existing
+
+    save_thread_summary(
+        user_id, thread_id, new_summary, new_turns_folded=len(new_messages) // 2
+    )
+    return get_thread_summary(user_id, thread_id)
+
+
 def summarize_stale_threads(
     user_id: int,
     exclude_thread_id: str | None,
     idle_minutes: int | None = None,
     max_threads: int | None = None,
 ) -> int:
+    """Opportunistic idle-sweep. Call on every turn for the CURRENTLY active
+    thread -- it summarizes OTHER threads that have gone idle, never the
+    current one. Safe to call every turn: find_stale_threads' HAVING clause
+    means threads already fully summarized simply won't match, so this is a
+    cheap no-op query on most calls. Capped per call (max_threads) so a user
+    with many idle threads doesn't trigger a burst of LLM calls on one turn --
+    remaining stale threads just get picked up on a later call.
 
+    Returns the number of threads actually summarized this call.
+    """
     settings = get_settings()
     if idle_minutes is None:
         idle_minutes = settings.idle_thread_summary_minutes
@@ -240,12 +370,16 @@ def summarize_stale_threads(
     summarized_count = 0
     for entry in stale:
         thread_id = entry["thread_id"]
-        since = entry["summary_updated_at"]
+        since = entry["summary_updated_at"]  # None if no prior summary
 
         new_messages = _fetch_unsummarized_messages(user_id, thread_id, since)
         if not new_messages:
             continue
 
+        # Cheap pre-filter: skip trivially short/filler content without
+        # spending an LLM call. Doesn't mark anything as summarized, so a
+        # thread that later accumulates more content will be re-evaluated
+        # (combined with new messages) on the next sweep.
         combined_chars = sum(len(m.get("content", "")) for m in new_messages)
         if combined_chars < _MIN_SUBSTANTIVE_CHARS:
             continue
@@ -267,6 +401,9 @@ def summarize_stale_threads(
 
         new_summary = (raw or "").strip()
 
+        # Reject empty responses AND valid-but-useless boilerplate ("there's
+        # no conversation to summarize") -- neither should be persisted as if
+        # it were a real summary. Thread stays eligible for a later sweep.
         if not new_summary or _NO_CONTENT_PATTERN.search(new_summary):
             continue
 

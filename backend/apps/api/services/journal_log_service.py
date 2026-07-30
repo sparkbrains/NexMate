@@ -15,6 +15,7 @@ def _entry_to_dict(row: dict[str, Any]) -> dict[str, Any]:
         "mood_label": row.get("mood_label") or "",
         "body": row.get("body") or "",
         "translated": row.get("translated") or "",
+        "source_thread_id": row.get("source_thread_id"),
         "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
         "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
     }
@@ -74,17 +75,16 @@ def delete_book(user_id: int, book_id: int) -> bool:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM journal_logs WHERE user_id = %s AND book_id = %s",
+                "UPDATE journal_logs SET book_id = NULL WHERE user_id = %s AND book_id = %s",
                 (user_id, book_id),
             )
             cur.execute(
                 "DELETE FROM journal_books WHERE user_id = %s AND id = %s",
                 (user_id, book_id),
             )
-            deleted = cur.rowcount > 0
-        if deleted:
-            conn.commit()
-        return deleted
+            ok = cur.rowcount > 0
+        conn.commit()
+    return ok
 
 
 def compute_streak(user_id: int) -> dict[str, Any]:
@@ -167,7 +167,8 @@ def ensure_default_book(user_id: int) -> dict[str, Any]:
 
 def list_journal_entries(user_id: int, book_id: int | None = None, limit: int = 200) -> list[dict[str, Any]]:
     query = """
-        SELECT id, book_id, entry_date, mood_emoji, mood_label, body, translated, created_at, updated_at
+        SELECT id, book_id, entry_date, mood_emoji, mood_label, body, translated,
+               source_thread_id, created_at, updated_at
         FROM journal_logs
         WHERE user_id = %s
     """
@@ -189,11 +190,28 @@ def get_journal_entry(user_id: int, entry_id: int) -> dict[str, Any] | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, book_id, entry_date, mood_emoji, mood_label, body, translated, created_at, updated_at
+                SELECT id, book_id, entry_date, mood_emoji, mood_label, body, translated,
+                       source_thread_id, created_at, updated_at
                 FROM journal_logs
                 WHERE user_id = %s AND id = %s
                 """,
                 (user_id, entry_id),
+            )
+            row = cur.fetchone()
+    return _entry_to_dict(row) if row else None
+
+
+def get_journal_entry_by_thread(user_id: int, thread_id: str) -> dict[str, Any] | None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, book_id, entry_date, mood_emoji, mood_label, body, translated,
+                       source_thread_id, created_at, updated_at
+                FROM journal_logs
+                WHERE user_id = %s AND source_thread_id = %s
+                """,
+                (user_id, thread_id),
             )
             row = cur.fetchone()
     return _entry_to_dict(row) if row else None
@@ -217,9 +235,59 @@ def create_journal_entry(
                 INSERT INTO journal_logs
                     (user_id, book_id, entry_date, mood_emoji, mood_label, body, translated, created_at, updated_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, book_id, entry_date, mood_emoji, mood_label, body, translated, created_at, updated_at
+                RETURNING id, book_id, entry_date, mood_emoji, mood_label, body, translated,
+                          source_thread_id, created_at, updated_at
                 """,
                 (user_id, book_id, entry_date, mood_emoji, mood_label, body, translated, now, now),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return _entry_to_dict(row)
+
+
+def upsert_journal_entry_for_thread(
+    user_id: int,
+    thread_id: str,
+    *,
+    entry_date: date_type,
+    mood_emoji: str,
+    mood_label: str,
+    body: str,
+    translated: str = "",
+    book_id: int | None = None,
+) -> dict[str, Any]:
+    """Create the journal entry sourced from this thread's summary, or update
+    it in place if one already exists for this thread -- so saving again
+    (e.g. after the summary changes, or a stray double-click) edits the same
+    row instead of creating a duplicate.
+
+    Relies on the partial unique index on (user_id, source_thread_id) so this
+    is a true atomic upsert, not a check-then-insert with a race window.
+    entry_date is deliberately excluded from the UPDATE SET -- the original
+    creation date is kept even when the body/book_id change later.
+    """
+    now = utc_now()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO journal_logs
+                    (user_id, book_id, entry_date, mood_emoji, mood_label, body,
+                     translated, source_thread_id, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (user_id, source_thread_id) WHERE source_thread_id IS NOT NULL
+                DO UPDATE SET
+                    book_id = EXCLUDED.book_id,
+                    mood_emoji = EXCLUDED.mood_emoji,
+                    mood_label = EXCLUDED.mood_label,
+                    body = EXCLUDED.body,
+                    translated = EXCLUDED.translated,
+                    updated_at = EXCLUDED.updated_at
+                RETURNING id, book_id, entry_date, mood_emoji, mood_label, body, translated,
+                          source_thread_id, created_at, updated_at
+                """,
+                (user_id, book_id, entry_date, mood_emoji, mood_label, body,
+                 translated, thread_id, now, now),
             )
             row = cur.fetchone()
         conn.commit()
@@ -258,7 +326,8 @@ def update_journal_entry(
                 f"""
                 UPDATE journal_logs SET {', '.join(fields)}
                 WHERE user_id = %s AND id = %s
-                RETURNING id, book_id, entry_date, mood_emoji, mood_label, body, translated, created_at, updated_at
+                RETURNING id, book_id, entry_date, mood_emoji, mood_label, body, translated,
+                          source_thread_id, created_at, updated_at
                 """,
                 tuple(values),
             )
