@@ -9,25 +9,10 @@ import { InsightsScreen } from './components/nextmate/DataScreens';
 import { JournalScreen } from './components/nextmate/JournalScreen';
 import { AuthGate } from './components/nextmate/AuthGate';
 import { ProfilePage } from './components/nextmate/ProfilePage';
+import { SupportWidget } from './components/nextmate/SupportWidget';
 import { clearSession, deleteThread as deleteThreadApi, getToken, getUser, listThreads } from './lib/api';
 import { AppContext } from './context';
 
-const onLogout = () => {
-    clearSession();
-    setUser(null);
-    setThreads([]);
-    setThreadId(null);
-    setChatParams(null);
-    navigateTo('today');
-  };
-
-  const onAuthExpired = () => {
-    setUser(null);
-    setThreads([]);
-    setThreadId(null);
-    setChatParams(null);
-    navigateTo('today');
-  };
 const newThreadId = () =>
   (crypto.randomUUID ? crypto.randomUUID() : `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
@@ -118,6 +103,14 @@ export default function App() {
     navigateTo('today');
   };
 
+  const onAuthExpired = () => {
+    setUser(null);
+    setThreads([]);
+    setThreadId(null);
+    setChatParams(null);
+    navigateTo('today');
+  };
+
   if (!user) return <AuthGate onAuth={setUser} />;
 
   const activeThread = threads.find((t) => t.thread_id === threadId);
@@ -184,6 +177,7 @@ export default function App() {
         />
         {screen}
         <PromptPackPop />
+        <SupportWidget />
       </div>
     </AppContext.Provider>
   );

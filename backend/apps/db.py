@@ -376,3 +376,30 @@ def init_postgres() -> None:
 
             cur.execute("CREATE INDEX IF NOT EXISTS idx_threads_user_updated ON threads(user_id, updated_at DESC)")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_loops_user_last_detected ON loops(user_id, last_detected_at DESC)")
+
+            # Support widget conversation log. session_id groups every
+            # query/answer pair from one open widget session together.
+            # user_id is nullable -- the support widget is intentionally
+            # usable without being logged in (see support.py), so most
+            # rows won't have one.
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS support_chat_logs (
+                    id BIGSERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    user_id BIGINT,
+                    query TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_support_chat_logs_session ON support_chat_logs(session_id, created_at)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_support_chat_logs_created ON support_chat_logs(created_at DESC)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_support_chat_logs_user ON support_chat_logs(user_id) WHERE user_id IS NOT NULL"
+            )

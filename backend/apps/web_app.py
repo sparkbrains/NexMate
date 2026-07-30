@@ -18,6 +18,7 @@ from apps.api.routers.prompt_pack import router as prompt_pack_router
 from apps.api.routers.ws import router as ws_router
 from apps.api.routers.profile import router as profile_router
 from apps.api.services.auth_service import init_auth_db, seed_dummy_users_from_env
+from apps.api.routers.support import router as support_router
 app = FastAPI(title="NextMate Web")
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
 app.add_middleware(
@@ -36,6 +37,7 @@ app.include_router(loops_router)
 app.include_router(journal_router)
 app.include_router(ws_router)
 app.include_router(profile_router)
+app.include_router(support_router)
 @app.on_event("startup")
 async def startup() -> None:
     init_auth_db()
