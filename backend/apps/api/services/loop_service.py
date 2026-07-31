@@ -410,13 +410,14 @@ def _validate_cross_thread_loop_recurrence(
         
         entry_belief_words = get_words(beliefs)
         entry_trigger_words = get_words(triggers)
-        
-        # Require at least some meaningful word overlap, or if empty, assume match (for testing)
-        belief_hit = len(loop_belief_words & entry_belief_words) > 0 if loop_belief_words and entry_belief_words else True
-        trigger_hit = len(loop_trigger_words & entry_trigger_words) > 0 if loop_trigger_words and entry_trigger_words else True
-        
-        # If words overlap, or if it's the current thread which we know triggered it
-        if belief_hit or trigger_hit or entry in current_entries:
+
+        # Require actual word overlap on BOTH belief and trigger -- an empty
+        # word set (extraction failed) or a one-sided match is not evidence
+        # of the "same belief + trigger combination" this function promises.
+        belief_hit = len(loop_belief_words & entry_belief_words) > 0
+        trigger_hit = len(loop_trigger_words & entry_trigger_words) > 0
+
+        if belief_hit and trigger_hit:
             matches.append({
                 "date": entry.get("created_at", ""),
                 "summary": entry.get("core_theme", "") or entry.get("summary", ""),

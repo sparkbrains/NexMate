@@ -12,41 +12,9 @@ import {
 } from '../../lib/api';
 import WelcomeBookImg from '../../assets/ic_welcome_book.png';
 import { TemplateModal } from './TemplateModal';
+import { PAPER_STYLES } from '../../lib/templates';
 
-const PAPER_STYLES = {
-  bullet: {
-    backgroundColor: '#fbfaf8',
-    backgroundImage: 'radial-gradient(#c8c8c8 1px, transparent 1px)',
-    backgroundSize: '24px 24px',
-    backgroundPosition: '0 0',
-    color: '#2d3436',
-  },
-  coffee: {
-    backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5)), url("https://images.unsplash.com/photo-1586075010923-2dd4570fb338?auto=format&fit=crop&w=1200&q=80")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
-  woody: {
-    backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6)), url("https://images.unsplash.com/photo-1546484396-fb3fc6f95f98?auto=format&fit=crop&w=1200&q=80")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
-  lined: {
-    backgroundColor: '#fbfaf8',
-    backgroundImage: 'repeating-linear-gradient(transparent, transparent 31px, #e2e2e2 31px, #e2e2e2 32px)',
-    backgroundSize: '100% 32px',
-    backgroundPosition: '0 8px',
-    color: '#2d3436',
-  },
-  clock: {
-    backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.7)), url("https://images.unsplash.com/photo-1501139083538-0139583c060f?auto=format&fit=crop&w=1200&q=80")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  }
-};
+
 
 const MOODS = [
   { emoji: '😄', label: 'great' },
@@ -476,8 +444,11 @@ export const JournalScreen = ({ user }) => {
   const displayName = user?.email ? user.email.split('@')[0].replace(/^\w/, (c) => c.toUpperCase()) : 'Girish';
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
-  const handleUseTemplate = (html) => {
+  const handleUseTemplate = (html, theme) => {
     setBody(html);
+    if (theme) {
+      setBgImage(theme);
+    }
     if (editorRef.current) {
       editorRef.current.innerHTML = html;
     }

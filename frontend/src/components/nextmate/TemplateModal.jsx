@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TEMPLATE_CATEGORIES } from '../../lib/templates';
+import { TEMPLATE_CATEGORIES, PAPER_STYLES } from '../../lib/templates';
 import { Icon } from './Shell';
 
 export const TemplateModal = ({ isOpen, onClose, onUseTemplate }) => {
@@ -25,8 +25,8 @@ export const TemplateModal = ({ isOpen, onClose, onUseTemplate }) => {
     }
   }, [isOpen]);
 
-  const updateSelectedTitle = (newTitle) => {
-    const updated = { ...selectedTemplate, title: newTitle };
+  const updateSelectedField = (field, value) => {
+    const updated = { ...selectedTemplate, [field]: value };
     setSelectedTemplate(updated);
     if (updated.id.startsWith('custom-')) {
       const idx = myTemplates.findIndex(t => t.id === updated.id);
@@ -188,11 +188,23 @@ export const TemplateModal = ({ isOpen, onClose, onUseTemplate }) => {
                       <input 
                         type="text" 
                         value={selectedTemplate.title}
-                        onChange={(e) => updateSelectedTitle(e.target.value)}
+                        onChange={(e) => updateSelectedField('title', e.target.value)}
                         style={{ textAlign: 'center', fontSize: 20, fontWeight: 'bold', background: 'transparent', border: 'none', borderBottom: '1px dashed var(--rule)', outline: 'none', color: 'var(--ink)' }}
                       />
                     ) : selectedTemplate.title}
                   </h2>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                    <select
+                      value={selectedTemplate.theme || ''}
+                      onChange={(e) => updateSelectedField('theme', e.target.value)}
+                      style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer' }}
+                    >
+                      <option value="">Default Theme</option>
+                      {Object.keys(PAPER_STYLES).map(k => (
+                        <option key={k} value={k}>{k.charAt(0).toUpperCase() + k.slice(1).replace('-', ' ')}</option>
+                      ))}
+                    </select>
+                  </div>
                   <div style={{
                     border: isCustom ? '1px solid var(--rule)' : 'none',
                     borderRadius: 6,
@@ -262,10 +274,13 @@ export const TemplateModal = ({ isOpen, onClose, onUseTemplate }) => {
                       suppressContentEditableWarning={true}
                       dangerouslySetInnerHTML={{ __html: selectedTemplate.html }} 
                       style={{ 
-                        background: 'var(--surface-0)', padding: 30, 
+                        background: selectedTemplate.theme && PAPER_STYLES[selectedTemplate.theme] ? undefined : 'var(--surface-0)', 
+                        padding: 30, 
                         minHeight: isCustom ? 200 : 'auto', 
                         outline: 'none',
-                        boxShadow: !isCustom ? '0 2px 10px rgba(0,0,0,0.02)' : 'none' 
+                        boxShadow: !isCustom ? '0 2px 10px rgba(0,0,0,0.02)' : 'none',
+                        borderRadius: 8,
+                        ...(selectedTemplate.theme ? PAPER_STYLES[selectedTemplate.theme] || {} : {})
                       }}
                     />
                   </div>
@@ -307,7 +322,7 @@ export const TemplateModal = ({ isOpen, onClose, onUseTemplate }) => {
                       if (isCustom && editorRef.current) {
                         finalHtml = editorRef.current.innerHTML;
                       }
-                      onUseTemplate(finalHtml);
+                      onUseTemplate(finalHtml, selectedTemplate.theme);
                       onClose();
                     }}
                     className="nm-btn primary"
