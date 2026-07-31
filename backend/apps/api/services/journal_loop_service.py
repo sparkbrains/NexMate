@@ -137,12 +137,19 @@ def extract_features_and_detect_loops(user_id: int, entry_id: int) -> None:
 
     summary_data = parse_json_object(raw_summary if isinstance(raw_summary, str) else "")
     core_theme = str(summary_data.get("core_theme", "")).strip()
+
+    # Enforce single core_belief/trigger per entry -- the LLM is prompted for
+    # at most one, but keep only the first item as a safety net regardless
+    # of what it actually returns.
     core_beliefs = summary_data.get("core_beliefs", [])
     if not isinstance(core_beliefs, list):
-        core_beliefs = []
+        core_beliefs = [core_beliefs] if core_beliefs else []
+    core_beliefs = core_beliefs[:1]
+
     triggers = summary_data.get("triggers", [])
     if not isinstance(triggers, list):
-        triggers = []
+        triggers = [triggers] if triggers else []
+    triggers = triggers[:1]
 
     # 3. Update the database
     with get_connection(autocommit=True) as conn:

@@ -781,7 +781,6 @@ def choose_response_mode_node(state: NextMateState, config: RunnableConfig) -> N
 
     memory_context = state.get("memory_context", "No prior memory available yet.")
     detected_loops = state.get("detected_loops", "")
-    existing_mode = state.get("response_mode", "")
     explicit_advice = state.get("explicit_advice_request", False)
     stored_loops = state.get("stored_loops", [])
     active_loop = state.get("active_loop")
@@ -830,29 +829,35 @@ def choose_response_mode_node(state: NextMateState, config: RunnableConfig) -> N
             "reopened_loop_ids": [],
         }
 
-    if existing_mode in ("loop_alert", "pattern_reflect") and detected_loops and len(chat_history) <= 1:
-        log_node(
-            thread_id=thread_id,
-            node_name="choose_response_mode",
-            inputs={"user_input": user_input, "memory_context": memory_context, "detected_loops": detected_loops},
-            outputs={"response_mode": existing_mode, "response_mode_history": [existing_mode]},
-            extra={"reason": f"loop detected on first turn — mode locked by detect_loops_node ({existing_mode})"},
-        )
-        return {
-            "explicit_advice_request": False,
-            "toxic_language_detected": False,
-            "prompt_injection_detected": False,
-            "pii_detected": False,
-            "crisis_detected": False,
-            "response_mode": existing_mode,
-            "response_mode_history": [existing_mode],
-            "reopened_loop_ids": [],
-        }
+    # NOTE: previously, a loop flagged by detect_loops_node this turn
+    # (existing_mode in loop_alert/pattern_reflect) hard-locked the reply
+    # mode on the first turn of ANY thread, with zero regard for what the
+    # user's current message actually said -- detect_loops_node can flag a
+    # loop purely from historical cross-thread evidence, so even a bare
+    # "hi" in a brand new chat got steered straight into loop_alert. That
+    # lock has been removed: existing_mode/detected_loops still flow into
+    # build_mode_selection_prompt below as context (see "Detected patterns
+    # (this turn)"), so the classifier can still choose loop_alert /
+    # pattern_reflect when the actual message content warrants it, but it's
+    # no longer forced blind to what the user just said.
+
+    # Format chat history for the resurface check and the mode selection
+    # classifier (last 6 messages for classification speed).
+    recent_history = chat_history[-6:]
+    if recent_history:
+        history_lines: list[str] = []
+        for msg in recent_history:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            history_lines.append(f"{role}: {content}")
+        history_context = "\n".join(history_lines)
+    else:
+        history_context = "No previous messages in this thread yet."
 
     resurface_debug = None
     if stored_loops and user_input:
         llm = get_fast_chat_model()
-        resurface_prompt = build_loop_resurface_check_prompt(user_input, stored_loops)
+        resurface_prompt = build_loop_resurface_check_prompt(user_input, stored_loops, history_context)
         resurface_raw, resurface_usage = invoke_with_logging(
             llm,
             [
@@ -930,18 +935,6 @@ def choose_response_mode_node(state: NextMateState, config: RunnableConfig) -> N
     if "loop_alert" in response_mode_history:
         if "loop_alert" in allowed_modes:
             allowed_modes.remove("loop_alert")
-
-    # Format chat history for the mode selection classifier (last 6 messages for classification speed)
-    recent_history = chat_history[-6:]
-    if recent_history:
-        history_lines: list[str] = []
-        for msg in recent_history:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            history_lines.append(f"{role}: {content}")
-        history_context = "\n".join(history_lines)
-    else:
-        history_context = "No previous messages in this thread yet."
 
     debug_history = [msg.get("content", "") for msg in recent_history[-3:]]
     llm = get_fast_chat_model()
@@ -1223,17 +1216,25 @@ def persist_summary_node(state: NextMateState, config: RunnableConfig) -> NextMa
         return {}
 
     created_at = _parse_created_at(summary.get("created_at"))
-    mood = str(summary.get("mood", "unknown")).strip() or "unknown"
+    raw_mood = summary.get("mood", "unknown")
+    if isinstance(raw_mood, list):
+        raw_mood = raw_mood[0] if raw_mood else "unknown"
+    mood = str(raw_mood).strip() or "unknown"
     core_theme = str(summary.get("core_theme", "")).strip()
     next_focus = str(summary.get("next_focus", "")).strip()
 
+    # Enforce single core_belief/trigger per turn -- the LLM is prompted for
+    # at most one, but keep only the first item as a safety net regardless
+    # of what it actually returns.
     core_beliefs = summary.get("core_beliefs", [])
     if not isinstance(core_beliefs, list):
-        core_beliefs = []
+        core_beliefs = [core_beliefs] if core_beliefs else []
+    core_beliefs = core_beliefs[:1]
 
     triggers = summary.get("triggers", [])
     if not isinstance(triggers, list):
-        triggers = []
+        triggers = [triggers] if triggers else []
+    triggers = triggers[:1]
 
     key_facts = summary.get("key_facts", [])
     if not isinstance(key_facts, list):
