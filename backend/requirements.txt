@@ -14,3 +14,4 @@ tiktoken
 google-genai==2.13.0
 groq
 python-docx
+openpyxl

@@ -31,6 +31,7 @@ export const Icon = ({ name, size = 14, style }) => {
     moon: <><path d="M13 9.5A5.5 5.5 0 016.5 3a5.5 5.5 0 100 11A5.5 5.5 0 0013 9.5z" /></>,
     logout: <><rect x="2" y="4" width="9" height="10" rx="1" /><path d="M10 10l4-2-4-2M7 8h7" /></>,
     user: <><circle cx="8" cy="5.5" r="2.5" /><path d="M2.8 14a5.2 5.2 0 0110.4 0" /></>,
+    lock: <><rect x="3.5" y="7" width="9" height="7" rx="1.2" /><path d="M5.5 7V4.8a2.5 2.5 0 015 0V7" /></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={style}>
@@ -203,6 +204,7 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
         <div className="nm-nav-section">Workspace</div>
         <NavItem icon="home" label="Today" k="today" active={active} onNav={onNav} />
         <NavItem icon="book" label="Journal" k="journal" active={active} onNav={onNav} />
+        <NavItem icon="sparkle" label="Prompt Packs" k="prompt-packs" active={active} onNav={onNav} />
         <NavItem icon="loops" label="Loops" k="loops" active={active} onNav={onNav} />
         <NavItem icon="insights" label="Insights" k="insights" active={active} onNav={onNav} />
 

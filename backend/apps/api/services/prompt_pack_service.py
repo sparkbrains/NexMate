@@ -1,51 +1,55 @@
 from datetime import date
+from pathlib import Path
 from typing import Any
+
+from openpyxl import load_workbook
 
 from apps.db import get_connection, utc_now
 
 
-# Stable `id` per prompt so answers stay correctly attributed even if the
-# list is reordered or edited later. Add new prompts freely -- rotation
-# just cycles through whatever's currently in the pack.
-PROMPT_PACK: list[dict[str, str]] = [
-    {"id": "values_uncompromising", "category": "values",
-     "text": "What's one value you'd never compromise on, even under pressure?"},
-    {"id": "coping_first_instinct", "category": "coping",
-     "text": "When things get overwhelming, what's your first instinct — push through, pull back, or shut down?"},
-    {"id": "relationships_recharge", "category": "relationships",
-     "text": "Do you recharge more by being around people, or by being alone?"},
-    {"id": "growth_hardest_lesson", "category": "growth",
-     "text": "What's a lesson you learned the hard way that you're grateful for now?"},
-    {"id": "values_proudest", "category": "values",
-     "text": "What's something you did recently that you're quietly proud of?"},
-    {"id": "coping_ask_for_help", "category": "coping",
-     "text": "How easy is it for you to ask for help when you need it?"},
-    {"id": "relationships_trust", "category": "relationships",
-     "text": "What makes you trust someone — is it consistency, honesty, or something else?"},
-    {"id": "growth_avoiding", "category": "growth",
-     "text": "Is there something you've been avoiding lately? What's stopping you?"},
-    {"id": "values_definition_success", "category": "values",
-     "text": "How do you personally define success, separate from what others expect?"},
-    {"id": "coping_criticism", "category": "coping",
-     "text": "How do you usually react when someone criticizes you?"},
-    {"id": "relationships_conflict", "category": "relationships",
-     "text": "Do you tend to confront conflict directly, or let it settle on its own?"},
-    {"id": "growth_who_you_were", "category": "growth",
-     "text": "What's one way you're different from who you were a year ago?"},
-    {"id": "values_non_negotiable_time", "category": "values",
-     "text": "What's something you always make time for, no matter how busy you are?"},
-    {"id": "coping_stress_signal", "category": "coping",
-     "text": "What's usually the first sign that you're getting stressed, before you even notice it consciously?"},
-    {"id": "relationships_boundaries", "category": "relationships",
-     "text": "How comfortable are you setting boundaries with people close to you?"},
-]
+# The prompt pack lives in data/prompt_pack.xlsx (columns: id, category,
+# text) rather than in code, so it can be edited/extended without a
+# deploy. Stable `id` per row so answers stay correctly attributed even
+# if rows are reordered or edited later -- rotation just cycles through
+# whatever's currently in the sheet. Regenerate/extend it with
+# scripts/generate_prompt_pack_xlsx.py.
+_PROMPT_PACK_XLSX = Path(__file__).resolve().parents[3] / "data" / "prompt_pack.xlsx"
+
+_prompt_pack_cache: list[dict[str, str]] | None = None
+
+
+def _load_prompt_pack() -> list[dict[str, str]]:
+    global _prompt_pack_cache
+    if _prompt_pack_cache is not None:
+        return _prompt_pack_cache
+
+    if not _PROMPT_PACK_XLSX.exists():
+        raise RuntimeError(f"Prompt pack file not found: {_PROMPT_PACK_XLSX}")
+
+    wb = load_workbook(_PROMPT_PACK_XLSX, read_only=True, data_only=True)
+    try:
+        ws = wb["Prompts"] if "Prompts" in wb.sheetnames else wb.active
+        pack = [
+            {"id": str(row[0]).strip(), "category": str(row[1]).strip(), "text": str(row[2]).strip()}
+            for row in ws.iter_rows(min_row=2, values_only=True)
+            if row and row[0] and row[1] and row[2]
+        ]
+    finally:
+        wb.close()
+
+    if not pack:
+        raise RuntimeError(f"No prompts found in {_PROMPT_PACK_XLSX}")
+
+    _prompt_pack_cache = pack
+    return pack
 
 
 def get_prompt_for_date(d: date) -> dict[str, str]:
     """Deterministic day -> prompt mapping. Same prompt for everyone on a
     given calendar day, cycles through the whole pack, wraps around."""
-    idx = d.toordinal() % len(PROMPT_PACK)
-    return PROMPT_PACK[idx]
+    pack = _load_prompt_pack()
+    idx = d.toordinal() % len(pack)
+    return pack[idx]
 
 
 def get_todays_prompt(user_id: int) -> dict[str, Any]:
@@ -121,6 +125,57 @@ async def save_prompt_answer(user_id: int, prompt_id: str, answer_text: str) -> 
         "answer_text": cleaned,
         "created_at": row["created_at"].isoformat(),
     }
+
+def list_all_prompts(user_id: int) -> dict[str, Any]:
+    """Every prompt in the pack, grouped by category, with this user's
+    answer (if any) merged in -- for the Prompt Packs tab, which shows
+    the whole pack rather than just today's single prompt."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT prompt_id, answer_text, answered_date
+                FROM prompt_pack_answers
+                WHERE user_id = %s
+                ORDER BY answered_date DESC
+                """,
+                (user_id,),
+            )
+            rows = cur.fetchall()
+
+    # Most recent answer wins if a prompt was ever answered more than once
+    # (rotation wraps after 15 days, so this is possible over time).
+    answered_by_prompt: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        if r["prompt_id"] not in answered_by_prompt:
+            answered_by_prompt[r["prompt_id"]] = {
+                "answer_text": r["answer_text"],
+                "answered_date": r["answered_date"].isoformat(),
+            }
+
+    pack = _load_prompt_pack()
+    categories: dict[str, list[dict[str, Any]]] = {}
+    for p in pack:
+        ans = answered_by_prompt.get(p["id"])
+        entry = {
+            "prompt_id": p["id"],
+            "prompt_text": p["text"],
+            "category": p["category"],
+            "answered": ans is not None,
+            "answer_text": ans["answer_text"] if ans else None,
+            "answered_date": ans["answered_date"] if ans else None,
+        }
+        categories.setdefault(p["category"], []).append(entry)
+
+    return {
+        "categories": [
+            {"category": cat, "prompts": prompts}
+            for cat, prompts in categories.items()
+        ],
+        "total": len(pack),
+        "answered_count": len(answered_by_prompt),
+    }
+
 
 def list_prompt_answers(user_id: int, limit: int = 90) -> list[dict[str, Any]]:
     """Recent answers, most recent first -- for a future 'your answers over
