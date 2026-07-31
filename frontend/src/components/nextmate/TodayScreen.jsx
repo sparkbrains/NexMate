@@ -61,25 +61,76 @@ const WeekDots = ({ days }) => (
   </div>
 );
 
-const TriggerBubbles = ({ triggers, colors }) => (
-  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', paddingTop: 4 }}>
-    {triggers.map((t, i) => {
-      const size = 52 + (t.pct / 100) * 48;
-      return (
-        <div key={t.trigger} style={{
-          width: size, height: size, borderRadius: '50%',
-          background: colors[i % colors.length],
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexDirection: 'column', gap: 2, flexShrink: 0,
-          boxShadow: `0 2px 8px ${colors[i % colors.length]}55`,
-        }}>
-          <span style={{ fontSize: Math.max(8, size * 0.16), color: '#fff', fontFamily: 'var(--font-mono)', textAlign: 'center', padding: '0 4px', lineHeight: 1.2, wordBreak: 'break-word' }}>{t.trigger}</span>
-          <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.75)', fontFamily: 'var(--font-mono)' }}>{t.pct}%</span>
-        </div>
-      );
-    })}
-  </div>
-);
+const TriggerBubbles = ({ triggers, colors }) => {
+  // Positions relative to the center of the container
+  const scatterOffsets = [
+    { x: -100, y: -25 },
+    { x: -35, y: 35 },
+    { x: 35, y: -30 },
+    { x: 100, y: 25 },
+    { x: 0, y: 0 }
+  ];
+
+  // Calculate average X to perfectly center the cluster regardless of how many triggers there are
+  const count = triggers.length;
+  let sumX = 0;
+  for (let i = 0; i < count; i++) {
+    sumX += scatterOffsets[i % scatterOffsets.length].x;
+  }
+  const avgX = count > 0 ? sumX / count : 0;
+
+  return (
+    <div style={{ position: 'relative', height: 200, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '10px 0' }}>
+      {triggers.map((t, i) => {
+        const size = 70 + (t.pct / 100) * 40; // min 70px, max 110px
+        const offset = scatterOffsets[i % scatterOffsets.length];
+        
+        // Apply the centering correction
+        const cx = offset.x - avgX;
+        const cy = offset.y;
+
+        return (
+          <div 
+            key={t.trigger} 
+            title={`${t.trigger} - ${t.pct}%`}
+            className="nm-trigger-bubble"
+            style={{
+              '--offset-x': `${cx}px`,
+              '--offset-y': `${cy}px`,
+              width: size, height: size, borderRadius: '50%',
+              background: colors[i % colors.length],
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexDirection: 'column', flexShrink: 0,
+              boxShadow: `0 6px 16px ${colors[i % colors.length]}66`,
+              zIndex: 10 - i, // left items stay on top
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              cursor: 'pointer'
+            }}
+          >
+            <span style={{ 
+              fontSize: Math.max(11, size * 0.15), 
+              color: '#fff', 
+              fontFamily: 'var(--font-mono)', 
+              textAlign: 'center', 
+              padding: '0 12px', 
+              width: '100%',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis'
+            }}>
+              {t.trigger}
+            </span>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.95)', fontFamily: 'var(--font-mono)', marginTop: 4, fontWeight: 'bold' }}>
+              {t.pct}%
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 const TriggerBar = ({ label, pct, color, last }) => (
   <div style={{ marginBottom: last ? 0 : 10 }}>

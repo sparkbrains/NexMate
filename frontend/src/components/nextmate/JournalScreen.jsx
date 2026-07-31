@@ -13,6 +13,41 @@ import {
 import WelcomeBookImg from '../../assets/ic_welcome_book.png';
 import { TemplateModal } from './TemplateModal';
 
+const PAPER_STYLES = {
+  bullet: {
+    backgroundColor: '#fbfaf8',
+    backgroundImage: 'radial-gradient(#c8c8c8 1px, transparent 1px)',
+    backgroundSize: '24px 24px',
+    backgroundPosition: '0 0',
+    color: '#2d3436',
+  },
+  coffee: {
+    backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.5)), url("https://images.unsplash.com/photo-1586075010923-2dd4570fb338?auto=format&fit=crop&w=1200&q=80")',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    color: '#1a1a1a',
+  },
+  woody: {
+    backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6)), url("https://images.unsplash.com/photo-1546484396-fb3fc6f95f98?auto=format&fit=crop&w=1200&q=80")',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    color: '#1a1a1a',
+  },
+  lined: {
+    backgroundColor: '#fbfaf8',
+    backgroundImage: 'repeating-linear-gradient(transparent, transparent 31px, #e2e2e2 31px, #e2e2e2 32px)',
+    backgroundSize: '100% 32px',
+    backgroundPosition: '0 8px',
+    color: '#2d3436',
+  },
+  clock: {
+    backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.7)), url("https://images.unsplash.com/photo-1501139083538-0139583c060f?auto=format&fit=crop&w=1200&q=80")',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    color: '#1a1a1a',
+  }
+};
+
 const MOODS = [
   { emoji: '😄', label: 'great' },
   { emoji: '🙂', label: 'good' },
@@ -63,7 +98,7 @@ const Entry = ({ entry, onDelete, onUpdate }) => {
   return (
     <div className="nm-entry">
       <div className="nm-entry-mark">
-        <span className="nm-entry-emoji">{entry.mood_emoji || '·'}</span>
+        <span className="nm-entry-emoji">{entry.mood_emoji || '✨'}</span>
         {entry.mood_label && <span className="nm-entry-mood">{entry.mood_label}</span>}
       </div>
       <div style={{ flex: 1 }}>
@@ -356,8 +391,8 @@ export const JournalScreen = ({ user }) => {
     setSaving(true);
     try {
       const plainBody = editorRef.current?.innerHTML || body;
-      const finalBody = bgImage 
-        ? `<div style="background-image: url('${bgImage}'); background-size: cover; background-position: center; padding: 20px; border-radius: 8px;">${plainBody}</div>`
+      const finalBody = bgImage && PAPER_STYLES[bgImage]
+        ? `<div style="${Object.entries(PAPER_STYLES[bgImage]).map(([k,v])=>`${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';')}; padding: 20px; border-radius: 8px;">${plainBody}</div>`
         : plainBody;
 
       await createJournalEntry({
@@ -526,9 +561,7 @@ export const JournalScreen = ({ user }) => {
                   <button className="nm-btn" style={{ width: '100%', justifyContent: 'center', marginBottom: 8 }} onClick={() => setShowNewBook(true)}>
                     <Icon name="plus" size={12} /> New book
                   </button>
-                  <button className="nm-btn ghost" style={{ width: '100%', justifyContent: 'center', border: '1px solid var(--rule)' }} onClick={() => setShowTemplateModal(true)}>
-                    <Icon name="plus" size={12} /> Template Gallery
-                  </button>
+
                 </>
               )}
             </div>
@@ -633,13 +666,18 @@ export const JournalScreen = ({ user }) => {
                       <select onMouseDown={(e) => e.stopPropagation()}
                         onChange={(e) => { setBgImage(e.target.value); e.target.value = ''; }}
                         defaultValue=""
-                        style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer', maxWidth: 110 }}>
-                        <option value="" disabled>Background</option>
-                        <option value="https://images.unsplash.com/photo-1508614999368-9260051292e5?w=1200&q=80">Clock (Priority)</option>
-                        <option value="https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=1200&q=80">Nature</option>
-                        <option value="https://images.unsplash.com/photo-1507608616759-54f48f0af0ee?w=1200&q=80">Rain</option>
+                        style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer', maxWidth: 120 }}>
+                        <option value="" disabled>🎨 Theme</option>
+                        <option value="bullet">Dot Grid (Bullet)</option>
+                        <option value="lined">Ruled Notebook</option>
+                        <option value="coffee">Coffee Stained</option>
+                        <option value="woody">Woody Texture</option>
+                        <option value="clock">Vintage Clock</option>
                         <option value="">None</option>
                       </select>
+                      <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowTemplateModal(true)}>
+                        Templates
+                      </button>
                       <button type="button" title="Download PDF" onClick={(e) => {
                         const wrapper = e.currentTarget.closest('.nm-compose');
                         if (wrapper) wrapper.classList.add('print-target');
@@ -711,14 +749,15 @@ export const JournalScreen = ({ user }) => {
                       data-placeholder={`Today, in your ${activeBook.name.toLowerCase()} book…`}
                       style={{
                         minHeight: 160,
-                        padding: bgImage ? '24px 28px' : '14px 18px',
+                        padding: '14px 18px',
                         fontFamily: 'var(--font-serif)',
                         fontSize: 16,
                         lineHeight: '28px',
                         color: 'var(--ink)',
                         outline: 'none',
-                        background: bgImage ? `url('${bgImage}') center/cover` : '#e5d7fd80',
-                        borderRadius: bgImage ? 8 : 0,
+                        background: bgImage ? undefined : '#e5d7fd80',
+                        borderRadius: 0,
+                        ...(bgImage ? PAPER_STYLES[bgImage] || {} : {}),
                       }}
                     />
                   </div>

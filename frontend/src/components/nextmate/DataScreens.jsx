@@ -327,6 +327,28 @@ const EmotionMixBars = ({ trend, granularity, emotions }) => {
   );
 };
 
+const CustomRadarTick = ({ payload, x, y, textAnchor, stroke, radius }) => {
+  const text = payload.value;
+  let lines = [text];
+  if (text.toLowerCase() === 'overwhelmed and pressured') {
+    lines = ['Overwhelmed', 'and pressured'];
+  } else if (text.length > 14 && text.includes(' ')) {
+    const splitParts = text.split(' ');
+    const mid = Math.floor(splitParts.length / 2);
+    lines = [splitParts.slice(0, mid).join(' '), splitParts.slice(mid).join(' ')];
+  }
+
+  return (
+    <text x={x} y={y} textAnchor={textAnchor} fill="var(--ink-2)" fontSize={11} fontFamily="var(--font-display)">
+      {lines.map((line, index) => (
+        <tspan x={x} dy={index === 0 ? "0" : "1.2em"} key={index}>
+          {line}
+        </tspan>
+      ))}
+    </text>
+  );
+};
+
 const EmotionalSpectrum = ({ moods }) => {
   if (!moods || moods.length === 0) return <div className="nm-meta" style={{ padding: 30 }}>Not enough mood data yet.</div>;
   
@@ -339,18 +361,22 @@ const EmotionalSpectrum = ({ moods }) => {
 
   return (
     <div style={{ height: 260, width: '100%', marginTop: 8 }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data}>
-          <PolarGrid stroke="var(--rule-soft)" />
-          <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--ink-2)', fontSize: 11, fontFamily: 'var(--font-display)' }} />
-          <PolarRadiusAxis angle={30} domain={[0, 'dataMax']} tick={false} axisLine={false} />
+      <div style={{ overflow: 'auto', height: '100%' }}>
+        <div style={{ minWidth: 420, height: '100%', padding: '0 10px' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <RadarChart cx="50%" cy="50%" outerRadius="55%" data={data}>
+              <PolarGrid stroke="var(--rule-soft)" />
+              <PolarAngleAxis dataKey="subject" tick={<CustomRadarTick />} />
+              <PolarRadiusAxis angle={30} domain={[0, 'dataMax']} tick={false} axisLine={false} />
           <Radar name="Mood" dataKey="A" stroke="var(--teal)" fill="var(--teal)" fillOpacity={0.4} />
-          <Tooltip 
-            contentStyle={{ background: 'var(--surface-0)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
-            itemStyle={{ color: 'var(--teal)' }}
-          />
-        </RadarChart>
-      </ResponsiveContainer>
+              <Tooltip 
+                contentStyle={{ background: 'var(--surface-0)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+                itemStyle={{ color: 'var(--teal)' }}
+              />
+            </RadarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
     </div>
   );
 };
@@ -359,11 +385,11 @@ const EmotionalBandwidth = ({ distribution }) => {
   if (!distribution || distribution.length === 0) return <div className="nm-meta" style={{ padding: 30 }}>No intensity data yet.</div>;
 
   return (
-    <div style={{ height: 200, width: '100%', marginTop: 13 }}>
+    <div style={{ height: 230, width: '100%', marginTop: 13 }}>
       <div style={{ overflow: 'auto', height: '100%' }}>
-        <div style={{ minWidth: 500, minHeight: 220, height: '100%' }}>
+        <div style={{ minWidth: 450, minHeight: 280, height: '100%' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={distribution} margin={{ top: 17, right: 10, left: 45, bottom: 25 }}>
+            <AreaChart data={distribution} margin={{ top: 17, right: 10, left: 55, bottom: 25 }}>
               <defs>
                 <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.8}/>
@@ -371,7 +397,7 @@ const EmotionalBandwidth = ({ distribution }) => {
                 </linearGradient>
               </defs>
               <XAxis dataKey="intensity" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Intensity (1-10)', position: 'insideBottom', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
-              <YAxis tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Frequency (Days)', angle: -90, position: 'insideLeft', offset: -15, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <YAxis tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Frequency (Days)', angle: -90, position: 'insideLeft', offset: -5, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
               <Tooltip 
                 contentStyle={{ background: 'var(--surface-0)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
                 formatter={(value) => [value, 'Frequency']}
@@ -397,11 +423,11 @@ const CognitiveLoad = ({ trend, granularity }) => {
   }));
 
   return (
-    <div style={{ height: 260, width: '100%', marginTop: 8 }}>
+    <div style={{ height: 280, width: '100%', marginTop: 8 }}>
       <div style={{ overflow: 'auto', height: '100%' }}>
-        <div style={{ minWidth: 600, minHeight: 280, height: '100%' }}>
+        <div style={{ minWidth: 500, minHeight: 320, height: '100%' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 27, right: 20, left: 20, bottom: 40 }}>
+            <ComposedChart data={data} margin={{ top: 27, right: 20, left: 30, bottom: 40 }}>
               <defs>
                 <linearGradient id="barColor" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--teal)" stopOpacity={0.8}/>
@@ -620,7 +646,7 @@ export const InsightsScreen = () => {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div className="nm-meta" style={{ marginBottom: 6 }}>Avg Intensity</div>
+                    <div className="nm-meta" style={{ marginBottom: 6 }}>Avg Intensity of all emotions</div>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, justifyContent: 'flex-end' }}>
                       <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 600, color: 'var(--ink)' }}>{growthCur?.avg_intensity ?? '—'}</div>
                       {intensityDelta != null && (
