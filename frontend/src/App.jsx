@@ -6,6 +6,7 @@ import { ChatScreen } from './components/nextmate/ChatScreen';
 import { LoopsScreen } from './components/nextmate/LoopsScreen';
 import { InsightsScreen } from './components/nextmate/DataScreens';
 import { JournalScreen } from './components/nextmate/JournalScreen';
+import { PromptPacksScreen } from './components/nextmate/PromptPacksScreen';
 import PricingScreen from './components/nextmate/PricingScreen';
 import { LandingPage } from './components/nextmate/LandingPage';
 import { ProfilePage } from './components/nextmate/ProfilePage';
@@ -138,6 +139,8 @@ export default function App() {
     );
   } else if (route === 'journal') {
     screen = <JournalScreen user={user} />;
+  } else if (route === 'prompt-packs') {
+    screen = <PromptPacksScreen />;
   } else if (route === 'loops') {
     screen = (
       <LoopsScreen

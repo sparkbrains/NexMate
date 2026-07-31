@@ -246,6 +246,10 @@ export function getPromptHistory() {
   return request('/api/dashboard/prompt-pack/history');
 }
 
+export function getAllPromptPacks() {
+  return request('/api/dashboard/prompt-pack/all');
+}
+
 export function listLoops() {
   return request('/api/loops');
 }
