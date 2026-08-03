@@ -11,6 +11,7 @@ import PricingScreen from './components/nextmate/PricingScreen';
 import { LandingPage } from './components/nextmate/LandingPage';
 import { ProfilePage } from './components/nextmate/ProfilePage';
 import { SupportWidget } from './components/nextmate/SupportWidget';
+import { JournalReminderToast } from './components/nextmate/JournalReminderToast';
 import { clearSession, deleteThread as deleteThreadApi, getMe, getToken, getUser, listThreads, logout as apiLogout, persistUser } from './lib/api';
 import { AppContext } from './context';
 import { useJournalReminder } from './hooks/useJournalReminder';
@@ -33,7 +34,7 @@ export default function App() {
       .catch(() => { clearSession(); setUser(null); });
   }, []);
 
-  useJournalReminder(user);
+  const { reminder, dismissReminder } = useJournalReminder(user);
 
   // Theme state — auth screen always light; restore saved theme after login
   const [theme, setTheme] = useState(() => {
@@ -199,6 +200,11 @@ export default function App() {
         {screen}
         <PromptPackPop />
         <SupportWidget />
+        <JournalReminderToast
+          reminder={reminder}
+          onDismiss={dismissReminder}
+          onJournal={() => { dismissReminder(); navigateTo('journal'); }}
+        />
       </div>
     </AppContext.Provider>
   );
