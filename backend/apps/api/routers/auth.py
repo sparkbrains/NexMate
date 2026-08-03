@@ -17,6 +17,7 @@ from apps.api.services.auth_service import (
     resend_password_reset_otp,
     resend_signup_otp,
     reset_password,
+    update_reminder_settings,
     verify_password_reset_otp,
     verify_signup_otp,
 )
@@ -33,6 +34,8 @@ def _user_payload(user: User) -> dict[str, Any]:
         "name": user.name,
         "age": user.age,
         "subscription_tier": user.subscription_tier,
+        "reminder_enabled": user.reminder_enabled,
+        "reminder_time": user.reminder_time,
     }
 
 
@@ -116,6 +119,20 @@ def logout(current_user: User = Depends(get_current_user), payload: dict[str, An
 @router.get("/me")
 def me(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     return {"user": _user_payload(current_user)}
+
+@router.patch("/reminder")
+def update_reminder(
+    payload: dict[str, Any] = Body(...),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    enabled = bool(payload.get("enabled", False))
+    reminder_time = str(payload.get("reminder_time", "20:00"))
+    try:
+        user = update_reminder_settings(current_user.id, enabled, reminder_time)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"user": _user_payload(user)}
+
 
 @router.get("/profile/summary")
 async def get_profile_summary(current_user: User = Depends(get_current_user)) -> dict[str, Any]:

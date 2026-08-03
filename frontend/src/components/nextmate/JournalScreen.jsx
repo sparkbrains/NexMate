@@ -297,6 +297,115 @@ export const JournalScreen = ({ user }) => {
   const [newBookColor, setNewBookColor] = useState(BOOK_COLORS[0]);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [bgImage, setBgImage] = useState('');
+  const [showStickerPanel, setShowStickerPanel] = useState(false);
+  const [stickers, setStickers] = useState([]); // { id, src, x, y, w, rotate }
+  const [selectedSticker, setSelectedSticker] = useState(null);
+  const [textBlocks, setTextBlocks] = useState([]); // { id, text, x, y, rotate }
+  const [selectedBlock, setSelectedBlock] = useState(null);
+  const [textColor, setTextColor] = useState('#000000');
+  const [hlColor, setHlColor] = useState('#fff176');
+  const [customThemeUrl, setCustomThemeUrl] = useState('');
+  const customThemeInputRef = useRef(null);
+  const editorWrapRef = useRef(null);
+
+  const STICKERS = [
+    '/stickers/sticker-1.jpg', '/stickers/sticker-2.jpg', '/stickers/sticker-3.jpg',
+    '/stickers/sticker-4.jpg', '/stickers/sticker-5.jpg', '/stickers/sticker-flowers.jpg',
+    '/stickers/sticker-butterfly.jpg', '/stickers/sticker-music.jpg',
+    '/stickers/sticker-6.png', '/stickers/sticker-7.png', '/stickers/sticker-8.png',
+    '/stickers/sticker-9.png', '/stickers/Sticker-10.png', '/stickers/sticker-11.png',
+  ];
+
+  const addSticker = (src) => {
+    const id = Date.now();
+    setStickers(prev => [...prev, { id, src, x: 20, y: 20, w: 90, rotate: 0 }]);
+    setSelectedSticker(id);
+    setShowStickerPanel(false);
+  };
+
+  const resizeSticker = (id, delta) => {
+    setStickers(prev => prev.map(s => s.id === id ? { ...s, w: Math.max(40, Math.min(300, s.w + delta)) } : s));
+  };
+
+  const rotateSticker = (id, delta) => {
+    setStickers(prev => prev.map(s => s.id === id ? { ...s, rotate: (s.rotate || 0) + delta } : s));
+  };
+
+  const removeSticker = (id) => {
+    setStickers(prev => prev.filter(s => s.id !== id));
+    setSelectedSticker(null);
+  };
+
+  const addTextBlock = () => {
+    const id = Date.now();
+    setTextBlocks(prev => [...prev, { id, text: 'Your text here', x: 40, y: 40, rotate: 0 }]);
+    setSelectedBlock(id);
+  };
+
+  const updateTextBlock = (id, fields) => setTextBlocks(prev => prev.map(b => b.id === id ? { ...b, ...fields } : b));
+
+  const removeTextBlock = (id) => { setTextBlocks(prev => prev.filter(b => b.id !== id)); setSelectedBlock(null); };
+
+  const blockDragState = useRef(null);
+
+  const onBlockMouseDown = (e, id) => {
+    if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'BUTTON') return;
+    e.preventDefault();
+    blockDragState.current = { id, startX: e.clientX, startY: e.clientY };
+    const onMove = (me) => {
+      if (!blockDragState.current) return;
+      const dx = me.clientX - blockDragState.current.startX;
+      const dy = me.clientY - blockDragState.current.startY;
+      setTextBlocks(prev => prev.map(b => b.id === id ? { ...b, x: b.x + dx, y: b.y + dy } : b));
+      blockDragState.current.startX = me.clientX;
+      blockDragState.current.startY = me.clientY;
+    };
+    const onUp = () => { blockDragState.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const handleCustomThemeUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setCustomThemeUrl(url);
+    setBgImage('__custom__');
+  };
+
+  const dragState = useRef(null);
+  const savedRangeRef = useRef(null);
+
+  const saveSelection = () => {
+    const sel = window.getSelection();
+    return sel?.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+  };
+
+  const restoreSelection = (range) => {
+    if (!range) return;
+    editorRef.current?.focus();
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  };
+
+  const onStickerMouseDown = (e, id) => {
+    e.preventDefault();
+    const rect = editorWrapRef.current.getBoundingClientRect();
+    dragState.current = { id, startX: e.clientX, startY: e.clientY, rect };
+    const onMove = (me) => {
+      if (!dragState.current) return;
+      const dx = me.clientX - dragState.current.startX;
+      const dy = me.clientY - dragState.current.startY;
+      setStickers(prev => prev.map(s => s.id === id ? { ...s, x: s.x + dx, y: s.y + dy } : s));
+      dragState.current.startX = me.clientX;
+      dragState.current.startY = me.clientY;
+    };
+    const onUp = () => { dragState.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
 
   const selectedMood = useMemo(() => moodFor(moodLabel), [moodLabel]);
   const activeBook = useMemo(() => books.find((b) => b.id === activeBookId), [books, activeBookId]);
@@ -359,7 +468,9 @@ export const JournalScreen = ({ user }) => {
     setSaving(true);
     try {
       const plainBody = editorRef.current?.innerHTML || body;
-      const finalBody = bgImage && PAPER_STYLES[bgImage]
+      const finalBody = bgImage === '__custom__'
+        ? `<div style="background-image:url(${customThemeUrl});background-size:cover;background-position:center;padding:20px;border-radius:8px;">${plainBody}</div>`
+        : bgImage && PAPER_STYLES[bgImage]
         ? `<div style="${Object.entries(PAPER_STYLES[bgImage]).map(([k,v])=>`${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';')}; padding: 20px; border-radius: 8px;">${plainBody}</div>`
         : plainBody;
 
@@ -622,6 +733,23 @@ export const JournalScreen = ({ user }) => {
                         </button>
                       ))}
                       <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
+                      <label title="Text color" style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', padding: '2px 5px', borderRadius: 4, fontSize: 12, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)' }}>
+                        <span style={{ borderBottom: `3px solid ${textColor}`, lineHeight: 1.1 }}>A</span>
+                        <input type="color" value={textColor} style={{ width: 16, height: 16, border: 'none', padding: 0, cursor: 'pointer', background: 'none' }}
+                          onMouseDown={() => { savedRangeRef.current = saveSelection(); }}
+                          onChange={(e) => { setTextColor(e.target.value); restoreSelection(savedRangeRef.current); document.execCommand('foreColor', false, e.target.value); }} />
+                      </label>
+                      <button type="button" title="Remove text color" onMouseDown={(e) => { e.preventDefault(); restoreSelection(savedRangeRef.current); document.execCommand('foreColor', false, 'inherit'); }}
+                        className="nm-btn ghost" style={{ padding: '2px 5px', fontSize: 11 }}>A⊘</button>
+                      <label title="Highlight" style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', padding: '2px 5px', borderRadius: 4, fontSize: 12, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: hlColor }}>
+                        <span style={{ color: '#333', mixBlendMode: 'multiply' }}>H</span>
+                        <input type="color" value={hlColor} style={{ width: 16, height: 16, border: 'none', padding: 0, cursor: 'pointer', background: 'none' }}
+                          onMouseDown={() => { savedRangeRef.current = saveSelection(); }}
+                          onChange={(e) => { setHlColor(e.target.value); restoreSelection(savedRangeRef.current); document.execCommand('backColor', false, e.target.value); }} />
+                      </label>
+                      <button type="button" title="Remove highlight" onMouseDown={(e) => { e.preventDefault(); restoreSelection(savedRangeRef.current); document.execCommand('backColor', false, 'transparent'); }}
+                        className="nm-btn ghost" style={{ padding: '2px 5px', fontSize: 11 }}>H⊘</button>
+                      <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
                       {[
                         { cmd: 'justifyLeft', label: '⬛▭▭' },
                         { cmd: 'justifyCenter', label: '▭⬛▭' },
@@ -642,12 +770,30 @@ export const JournalScreen = ({ user }) => {
                         <option value="bullet">Dot Grid (Bullet)</option>
                         <option value="lined">Ruled Notebook</option>
                         <option value="coffee">Coffee Stained</option>
-                        <option value="woody">Woody Texture</option>
-                        <option value="clock">Vintage Clock</option>
+                        <option value="newspaper">Newspaper</option>
+                        <option value="tulips">Tulips</option>
+                        <option value="blue-floral">Blue Floral</option>
+                        <option value="blue-paper">Blue Paper</option>
+                        <option value="aesthetic">Aesthetic</option>
+                        <option value="pastel">Pastel</option>
+                        <option value="vintage-aesthetic">Vintage Aesthetic</option>
+                        <option value="minimal">Minimal</option>
+                        <option value="grid-paper">Grid Paper</option>
+                        <option value="moon">Moon</option>
                         <option value="">None</option>
                       </select>
+                      <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => customThemeInputRef.current?.click()}>
+                        📁 Upload
+                      </button>
+                      <input ref={customThemeInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCustomThemeUpload} />
                       <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowTemplateModal(true)}>
                         Templates
+                      </button>
+                      <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={addTextBlock}>
+                        ✚ Text
+                      </button>
+                      <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowStickerPanel(p => !p)}>
+                        🎀 Stickers
                       </button>
                       <button type="button" title="Download PDF" onClick={(e) => {
                         const wrapper = e.currentTarget.closest('.nm-compose');
@@ -658,36 +804,10 @@ export const JournalScreen = ({ user }) => {
                         <Icon name="download" size={13} /> PDF
                       </button>
                       <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
-                      <button type="button" onMouseDown={(e) => {
-                        e.preventDefault();
-                        const ed = editorRef.current;
-                        if (!ed) return;
-                        ed.focus();
-                        const sel = window.getSelection();
-                        const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
-                        const li = document.createElement('li');
-                        li.innerHTML = '\u200b';
-                        const ul = document.createElement('ul');
-                        ul.appendChild(li);
-                        if (range) { range.deleteContents(); range.insertNode(ul); range.setStart(li, 1); range.collapse(true); sel.removeAllRanges(); sel.addRange(range); }
-                        else ed.appendChild(ul);
-                        setBody(ed.innerText);
-                      }} className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>• List</button>
-                      <button type="button" onMouseDown={(e) => {
-                        e.preventDefault();
-                        const ed = editorRef.current;
-                        if (!ed) return;
-                        ed.focus();
-                        const sel = window.getSelection();
-                        const range = sel?.rangeCount ? sel.getRangeAt(0) : null;
-                        const li = document.createElement('li');
-                        li.innerHTML = '\u200b';
-                        const ol = document.createElement('ol');
-                        ol.appendChild(li);
-                        if (range) { range.deleteContents(); range.insertNode(ol); range.setStart(li, 1); range.collapse(true); sel.removeAllRanges(); sel.addRange(range); }
-                        else ed.appendChild(ol);
-                        setBody(ed.innerText);
-                      }} className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>1. List</button>
+                      <button type="button" onMouseDown={(e) => { e.preventDefault(); editorRef.current?.focus(); document.execCommand('insertUnorderedList'); }}
+                        className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>≡ Bullets</button>
+                      <button type="button" onMouseDown={(e) => { e.preventDefault(); editorRef.current?.focus(); document.execCommand('insertOrderedList'); }}
+                        className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}># Numbers</button>
                       <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
                       <select onMouseDown={(e) => e.stopPropagation()}
                         onChange={(e) => { document.execCommand('fontSize', false, e.target.value); e.target.value = ''; }}
@@ -711,12 +831,59 @@ export const JournalScreen = ({ user }) => {
                         <option value="Verdana">Verdana</option>
                       </select>
                     </div>
-                    {/* Editable area */}
+                    {/* Sticker picker panel */}
+                    {showStickerPanel && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--rule)', background: 'var(--surface-2)' }}>
+                        {STICKERS.map((src, i) => (
+                          <img key={i} src={src} alt="sticker" onClick={() => addSticker(src)}
+                            style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', border: '2px solid transparent', transition: 'border 0.15s' }}
+                            onMouseEnter={e => e.target.style.border = '2px solid var(--accent)'}
+                            onMouseLeave={e => e.target.style.border = '2px solid transparent'}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {/* Editable area with draggable stickers */}
+                    <div ref={editorWrapRef} style={{ position: 'relative',
+                      ...(bgImage === '__custom__' ? { backgroundImage: `url(${customThemeUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' } : {})
+                    }} onClick={(e) => { if (e.target === editorWrapRef.current) setSelectedSticker(null); }}>
+                      {stickers.map(s => {
+                        const isSelected = selectedSticker === s.id;
+                        return (
+                          <div key={s.id}
+                            style={{ position: 'absolute', left: s.x, top: s.y, zIndex: 10, userSelect: 'none', transform: `rotate(${s.rotate || 0}deg)` }}
+                            onMouseDown={(e) => { e.stopPropagation(); setSelectedSticker(s.id); }}
+                          >
+                            {isSelected && (
+                              <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 3, background: 'rgba(0,0,0,0.75)', borderRadius: 8, padding: '3px 6px', whiteSpace: 'nowrap', zIndex: 20 }}>
+                                <button onMouseDown={(e) => { e.stopPropagation(); resizeSticker(s.id, -15); }}
+                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>−</button>
+                                <button onMouseDown={(e) => { e.stopPropagation(); resizeSticker(s.id, 15); }}
+                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>+</button>
+                                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: '0 2px' }}>|</span>
+                                <button onMouseDown={(e) => { e.stopPropagation(); rotateSticker(s.id, -15); }}
+                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>↺</button>
+                                <button onMouseDown={(e) => { e.stopPropagation(); rotateSticker(s.id, 15); }}
+                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>↻</button>
+                                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: '0 2px' }}>|</span>
+                                <button onMouseDown={(e) => { e.stopPropagation(); removeSticker(s.id); }}
+                                  style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>✕</button>
+                              </div>
+                            )}
+                            <img src={s.src} alt="sticker"
+                              onMouseDown={(e) => onStickerMouseDown(e, s.id)}
+                              style={{ width: s.w, height: s.w, objectFit: 'cover', borderRadius: 8, cursor: 'grab', display: 'block',
+                                boxShadow: isSelected ? '0 0 0 2px var(--accent), 0 2px 8px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.15)' }}
+                            />
+                          </div>
+                        );
+                      })}
                     <div
                       ref={editorRef}
                       contentEditable
                       suppressContentEditableWarning
                       onInput={(e) => setBody(e.currentTarget.innerText)}
+                      onClick={() => { setSelectedSticker(null); setSelectedBlock(null); }}
                       data-placeholder={`Today, in your ${activeBook.name.toLowerCase()} book…`}
                       style={{
                         minHeight: 160,
@@ -728,9 +895,34 @@ export const JournalScreen = ({ user }) => {
                         outline: 'none',
                         background: bgImage ? undefined : '#e5d7fd80',
                         borderRadius: 0,
-                        ...(bgImage ? PAPER_STYLES[bgImage] || {} : {}),
+                        ...(bgImage === '__custom__' ? { background: 'transparent' } : bgImage ? PAPER_STYLES[bgImage] || {} : {}),
                       }}
-                    />
+                    ></div>
+                      {textBlocks.map(b => {
+                        const isSel = selectedBlock === b.id;
+                        return (
+                          <div key={b.id}
+                            style={{ position: 'absolute', left: b.x, top: b.y, zIndex: 11, userSelect: 'none', transform: `rotate(${b.rotate || 0}deg)`, cursor: 'move' }}
+                            onMouseDown={(e) => { setSelectedBlock(b.id); setSelectedSticker(null); onBlockMouseDown(e, b.id); }}
+                          >
+                            {isSel && (
+                              <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 3, background: 'rgba(0,0,0,0.75)', borderRadius: 8, padding: '3px 6px', whiteSpace: 'nowrap', zIndex: 22 }}>
+                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { rotate: (b.rotate || 0) - 15 }); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>↺</button>
+                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { rotate: (b.rotate || 0) + 15 }); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>↻</button>
+                                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: '0 2px' }}>|</span>
+                                <button onMouseDown={(e) => { e.stopPropagation(); removeTextBlock(b.id); }} style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>✕</button>
+                              </div>
+                            )}
+                            <textarea
+                              defaultValue={b.text}
+                              onBlur={(e) => updateTextBlock(b.id, { text: e.target.value })}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ background: 'rgba(255,255,255,0.85)', border: isSel ? '1.5px dashed var(--accent)' : '1.5px dashed rgba(0,0,0,0.2)', borderRadius: 6, padding: '6px 10px', fontSize: 15, fontFamily: 'var(--font-serif)', color: 'var(--ink)', resize: 'both', minWidth: 100, minHeight: 36, outline: 'none', cursor: 'text', boxShadow: isSel ? '0 2px 10px rgba(0,0,0,0.15)' : 'none' }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Options */}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getUser, getMe, changePassword, deleteAccount, getUserProfileSummary } from '../../lib/api';
+import { getUser, getMe, changePassword, deleteAccount, getUserProfileSummary, updateReminderSettings } from '../../lib/api';
 import { Icon, TopBar } from './Shell';
 
 function capitalize(s) {
@@ -22,12 +22,18 @@ function formatMemberSince(iso) {
 // JournalScreen / LoopsScreen do, using the same nm-main / nm-content
 // wrapper classes so it takes the right-hand pane instead of the
 // sidebar's column.
-export function ProfilePage({ onLogout }) {
+export function ProfilePage({ onLogout, onUserUpdate }) {
   const [user, setUser] = useState(() => getUser());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
   const [summary, setSummary] = useState('');
   const [summaryLoading, setSummaryLoading] = useState(true);
+
+  // journal reminder state
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState('20:00');
+  const [reminderSaving, setReminderSaving] = useState(false);
+  const [reminderErr, setReminderErr] = useState(null);
 
   // change-password modal state
   const [pwModal, setPwModal] = useState(false);
@@ -76,7 +82,11 @@ export function ProfilePage({ onLogout }) {
     (async () => {
       try {
         const data = await getMe();
-        if (!cancelled) setUser(data.user);
+        if (!cancelled) {
+          setUser(data.user);
+          setReminderEnabled(!!data.user?.reminder_enabled);
+          setReminderTime(data.user?.reminder_time || '20:00');
+        }
         const summaryData = await getUserProfileSummary();
         if (!cancelled) { setSummary(summaryData.summary); setSummaryLoading(false); }
       } catch {
@@ -87,6 +97,43 @@ export function ProfilePage({ onLogout }) {
     })();
     return () => { cancelled = true; };
   }, []);
+
+  const saveReminderSettings = async (nextEnabled, nextTime) => {
+    setReminderSaving(true);
+    setReminderErr(null);
+    try {
+      if (nextEnabled && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        const permission = await Notification.requestPermission();
+        if (permission !== 'granted') {
+          setReminderErr('Allow notifications in your browser to turn reminders on.');
+          setReminderEnabled(false);
+          return;
+        }
+      }
+      if (nextEnabled && typeof Notification !== 'undefined' && Notification.permission === 'denied') {
+        setReminderErr('Notifications are blocked for this site in your browser settings.');
+        setReminderEnabled(false);
+        return;
+      }
+      const data = await updateReminderSettings(nextEnabled, nextTime);
+      setUser(data.user);
+      onUserUpdate && onUserUpdate(data.user);
+    } catch (e) {
+      setReminderErr(e.message || 'Failed to update reminder settings.');
+    } finally {
+      setReminderSaving(false);
+    }
+  };
+
+  const handleReminderToggle = (checked) => {
+    setReminderEnabled(checked);
+    saveReminderSettings(checked, reminderTime);
+  };
+
+  const handleReminderTimeChange = (value) => {
+    setReminderTime(value);
+    if (reminderEnabled) saveReminderSettings(true, value);
+  };
 
   const fields = [
     { label: 'Name', value: user?.name || '—' },
@@ -152,7 +199,40 @@ export function ProfilePage({ onLogout }) {
             {summaryLoading ? 'Loading...' : (summary || 'Answer a few daily prompts and your summary will appear here.')}
           </div>
 
-          <div className="nm-eyebrow" style={{ marginBottom: 14 }}>
+          <div className="nm-eyebrow" style={{ marginBottom: 14 }}>Journal Reminder</div>
+          <div className="nm-card soft" style={{ padding: '16px 24px', marginBottom: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+                <span className="nm-switch">
+                  <input
+                    type="checkbox"
+                    checked={reminderEnabled}
+                    disabled={reminderSaving}
+                    onChange={(e) => handleReminderToggle(e.target.checked)}
+                  />
+                  <span className="nm-switch-slider"></span>
+                </span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: 14 }}>
+                  Remind me to journal
+                </span>
+              </label>
+              <input
+                type="time"
+                value={reminderTime}
+                disabled={!reminderEnabled || reminderSaving}
+                onChange={(e) => handleReminderTimeChange(e.target.value)}
+                style={{ background: 'var(--surface-2, var(--ink-6))', border: '1px solid var(--rule)', borderRadius: 6, color: 'var(--ink)', fontFamily: 'var(--font-display)', fontSize: 14, padding: '6px 10px', outline: 'none' }}
+              />
+            </div>
+            <div className="nm-meta" style={{ marginTop: 10 }}>
+              A notification pops up at this time if you haven't journaled yet today — only while this app is open in a browser tab.
+            </div>
+            {reminderErr && (
+              <div style={{ color: 'var(--accent)', fontSize: 12, marginTop: 8 }}>{reminderErr}</div>
+            )}
+          </div>
+
+          <div className="nm-eyebrow" style={{ marginBottom: 14, marginTop: 24 }}>
             Account Actions
           </div>
 

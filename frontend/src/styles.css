@@ -971,7 +971,7 @@ body {
   position: relative;
 }
 .nm-journal-shelf {
-  width: 340px;
+  width: 240px;
   flex-shrink: 0;
   /* border-right: 1px solid var(--rule);
   background: linear-gradient(180deg, var(--paper) 0%, var(--surface-2) 100%); */

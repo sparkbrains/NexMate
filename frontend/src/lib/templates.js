@@ -12,24 +12,12 @@ export const PAPER_STYLES = {
     backgroundPosition: 'center',
     color: '#1a1a1a',
   },
-  woody: {
-    backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.6)), url("https://images.unsplash.com/photo-1546484396-fb3fc6f95f98?auto=format&fit=crop&w=1200&q=80")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
   lined: {
     backgroundColor: '#fbfaf8',
     backgroundImage: 'repeating-linear-gradient(transparent, transparent 31px, #e2e2e2 31px, #e2e2e2 32px)',
     backgroundSize: '100% 32px',
     backgroundPosition: '0 8px',
     color: '#2d3436',
-  },
-  clock: {
-    backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.7)), url("https://images.unsplash.com/photo-1501139083538-0139583c060f?auto=format&fit=crop&w=1200&q=80")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
   },
   newspaper: {
     backgroundImage: 'url("/themes/theme-newspaper.jpg")',
@@ -54,7 +42,43 @@ export const PAPER_STYLES = {
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     color: '#1a1a1a',
-  }
+  },
+  aesthetic: {
+    backgroundImage: 'url("/themes/theme-aesthetic.jpg")',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    color: '#1a1a1a',
+  },
+  pastel: {
+    backgroundImage: 'url("/themes/theme-pastel.jpg")',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    color: '#1a1a1a',
+  },
+  'vintage-aesthetic': {
+    backgroundImage: 'url("/themes/theme-vintage-aesthetic.jpg")',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    color: '#1a1a1a',
+  },
+  minimal: {
+    backgroundImage: 'url("/themes/theme-minimal.jpg")',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    color: '#1a1a1a',
+  },
+  'grid-paper': {
+    backgroundImage: 'url("/themes/theme-grid-paper.jpg")',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    color: '#1a1a1a',
+  },
+  moon: {
+    backgroundImage: 'url("/themes/theme-moon.jpg")',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    color: '#1a1a1a',
+  },
 };
 
 export const TEMPLATE_CATEGORIES = [

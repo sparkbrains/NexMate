@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 import secrets
 import smtplib
 from dataclasses import dataclass
@@ -32,10 +33,14 @@ class User:
     name: str = ""
     age: int | None = None
     subscription_tier: str = "paid"
+    reminder_enabled: bool = False
+    reminder_time: str = "20:00"
 
 
 MIN_AGE = 13
 MAX_AGE = 120
+
+REMINDER_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 
 
 def _validate_name(name: str) -> str:
@@ -44,6 +49,13 @@ def _validate_name(name: str) -> str:
         raise ValueError("Name is required")
     if len(cleaned) > 200:
         raise ValueError("Name is too long")
+    return cleaned
+
+
+def _validate_reminder_time(value: str) -> str:
+    cleaned = value.strip()
+    if not REMINDER_TIME_RE.match(cleaned):
+        raise ValueError("reminder_time must be in HH:MM 24-hour format")
     return cleaned
 
 
@@ -130,7 +142,11 @@ def authenticate_user(email: str, password: str) -> User | None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, email, password_hash, created_at, name, age, subscription_tier FROM users WHERE email = %s",
+                """
+                SELECT id, email, password_hash, created_at, name, age, subscription_tier,
+                       reminder_enabled, reminder_time
+                FROM users WHERE email = %s
+                """,
                 (cleaned_email,),
             )
             row = cur.fetchone()
@@ -146,6 +162,8 @@ def authenticate_user(email: str, password: str) -> User | None:
         name=str(row.get("name") or ""),
         age=row.get("age"),
         subscription_tier=str(row.get("subscription_tier") or "paid"),
+        reminder_enabled=bool(row.get("reminder_enabled") or False),
+        reminder_time=str(row.get("reminder_time") or "20:00"),
     )
 
 
@@ -174,7 +192,8 @@ def get_user_by_token(token: str) -> User | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT u.id, u.email, u.created_at, u.name, u.age, u.subscription_tier, s.expires_at
+                SELECT u.id, u.email, u.created_at, u.name, u.age, u.subscription_tier,
+                       u.reminder_enabled, u.reminder_time, s.expires_at
                 FROM sessions s
                 JOIN users u ON s.user_id = u.id
                 WHERE s.token = %s
@@ -198,6 +217,8 @@ def get_user_by_token(token: str) -> User | None:
         name=str(row.get("name") or ""),
         age=row.get("age"),
         subscription_tier=str(row.get("subscription_tier") or "paid"),
+        reminder_enabled=bool(row.get("reminder_enabled") or False),
+        reminder_time=str(row.get("reminder_time") or "20:00"),
     )
 
 
@@ -618,6 +639,37 @@ def change_password(user_id: int, current_password: str, new_password: str) -> N
             cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (new_hash, user_id))
             cur.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
         conn.commit()
+
+
+def update_reminder_settings(user_id: int, enabled: bool, reminder_time: str) -> User:
+    cleaned_time = _validate_reminder_time(reminder_time)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE users SET reminder_enabled = %s, reminder_time = %s
+                WHERE id = %s
+                RETURNING id, email, created_at, name, age, subscription_tier,
+                          reminder_enabled, reminder_time
+                """,
+                (bool(enabled), cleaned_time, user_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("Account not found")
+        conn.commit()
+
+    return User(
+        id=int(row["id"]),
+        email=str(row["email"]),
+        created_at=row["created_at"].isoformat(),
+        name=str(row.get("name") or ""),
+        age=row.get("age"),
+        subscription_tier=str(row.get("subscription_tier") or "paid"),
+        reminder_enabled=bool(row.get("reminder_enabled") or False),
+        reminder_time=str(row.get("reminder_time") or "20:00"),
+    )
 
 
 def delete_user(user_id: int, password: str) -> None:
