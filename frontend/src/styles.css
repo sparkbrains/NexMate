@@ -531,6 +531,31 @@ body {
   font-size: 24px;
 }
 
+.nm-reminder-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 9999;
+  width: min(340px, calc(100vw - 48px));
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+.nm-reminder-toast-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.nm-reminder-toast-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
 .nm-pp-overlay {
   position: fixed;
   inset: 0;

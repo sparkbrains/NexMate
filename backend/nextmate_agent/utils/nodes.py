@@ -347,6 +347,14 @@ def build_memory_context_node(state: NextMateState) -> NextMateState:
 
         memory_context = "\n".join(lines)
 
+    user_profile = state.get("user_profile", "")
+    if user_profile:
+        memory_context = (
+            "Known context about this person (from their own reflections — "
+            "background only, do not quote it directly in your reply):\n"
+            f"{user_profile}\n\n{memory_context}"
+        )
+
     thread_summary = state.get("thread_summary", "")
     if thread_summary:
         memory_context += f"\n\nEarlier in this conversation (summarized):\n{thread_summary}"
@@ -362,19 +370,27 @@ def build_memory_context_node(state: NextMateState) -> NextMateState:
             cross_lines.append(f"- ({row['updated_at']}) {row['summary_text']}")
         memory_context += "\n" + "\n".join(cross_lines)
 
-    stored_loops = state.get("stored_loops", [])
-    if stored_loops:
-        loop_lines = ["\nPreviously identified patterns:"]
-        for loop in stored_loops:
-            loop_lines.append(
-                f"- {loop['loop_name']} ({loop['valence']}, seen {loop['detection_count']}x): {loop['description']}"
-            )
-        memory_context += "\n" + "\n".join(loop_lines)
+    # NOTE: stored_loops is deliberately NOT baked into memory_context here.
+    # choose_response_mode_node runs dedicated classifiers (resurface-check +
+    # mode-selection) whose job is to decide whether a stored pattern is
+    # actually relevant to what the user just said. Both of those already
+    # receive stored_loops via their own explicit param (see
+    # build_mode_selection_prompt), and generate_reply_node only forwards
+    # stored_loops to the reply model when that decision came back
+    # pattern_reflect/loop_alert. Embedding the full loop list here would
+    # leak it into every reply unconditionally, regardless of what mode was
+    # chosen -- giving the model ammunition to bring up "loops" on turns
+    # that have nothing to do with any of them (e.g. a bare "hi").
 
     log_node(
         thread_id=thread_id,
         node_name="build_memory_context",
-        inputs={"total_entries": len(entries), "window_size": settings.memory_window, "used_entries": len(window)},
+        inputs={
+            "total_entries": len(entries),
+            "window_size": settings.memory_window,
+            "used_entries": len(window),
+            "has_user_profile": bool(user_profile),
+        },
         outputs={"memory_context": memory_context},
     )
     return {"memory_context": memory_context}
@@ -872,38 +888,60 @@ def choose_response_mode_node(state: NextMateState, config: RunnableConfig) -> N
 
         if resurface_result.get("matches_loop") and resurface_result.get("matched_loop_name"):
             matched_name = resurface_result["matched_loop_name"]
-            reason = resurface_result.get("reason", "")
-            matched_loop_text = f"- [RESURFACED PATTERN] {matched_name}: {reason}"
-            reopened_loop_id = None
-            reopen_success = False
-            for stored in stored_loops:
-                if stored.get("loop_name") == matched_name:
-                    reopen_success = reopen_loop(stored.get("loop_id"), user_id)
-                    reopened_loop_id = stored.get("loop_id") if reopen_success else None
-                    break
-            log_node(
-                thread_id=thread_id,
-                node_name="choose_response_mode",
-                inputs={"user_input": user_input, "memory_context": memory_context, "stored_loops_count": len(stored_loops)},
-                outputs={"response_mode": "pattern_reflect", "detected_loops": matched_loop_text, "response_mode_history": ["pattern_reflect"], "reopened_loop_ids": [reopened_loop_id] if reopened_loop_id else []},
-                extra={
-                    "reason": f"LLM resurface check matched: {matched_name}",
-                    "raw_llm_response": resurface_raw,
-                    "reopened_loop_id": reopened_loop_id,
-                    "reopen_success": reopen_success,
-                },
-            )
-            return {
-                "explicit_advice_request": False,
-                "toxic_language_detected": False,
-                "prompt_injection_detected": False,
-                "pii_detected": False,
-                "crisis_detected": False,
-                "response_mode": "pattern_reflect",
-                "detected_loops": matched_loop_text,
-                "response_mode_history": ["pattern_reflect"],
-                "reopened_loop_ids": [reopened_loop_id] if reopened_loop_id else [],
-            }
+
+            # If this thread is already a dedicated reflection thread for
+            # this exact loop (active_loop), matching it again here isn't a
+            # fresh resurfacing -- it's just the same ongoing conversation
+            # about the loop it was opened for. Treating every message of
+            # that conversation as a new "occurrence" inflated
+            # detection_count once per turn, and force-returning
+            # pattern_reflect here also skipped the allowed_modes exclusion
+            # below (943-953), so the reply kept getting regenerated in
+            # pattern_reflect mode turn after turn -- producing the same
+            # reflective phrasing on repeat. Falling through to the general
+            # classifier lets the thread move on to other modes once the
+            # loop has actually been discussed.
+            if active_loop and matched_name == active_loop.get("loop_name"):
+                log_node(
+                    thread_id=thread_id,
+                    node_name="choose_response_mode_resurface_check",
+                    inputs={"user_input": user_input, "stored_loops_count": len(stored_loops)},
+                    outputs={"matches_loop": True, "matched_loop_name": matched_name, "skipped_as_active_loop": True},
+                    extra={"raw_llm_response": resurface_raw},
+                )
+            else:
+                reason = resurface_result.get("reason", "")
+                matched_loop_text = f"- [RESURFACED PATTERN] {matched_name}: {reason}"
+                reopened_loop_id = None
+                reopen_success = False
+                for stored in stored_loops:
+                    if stored.get("loop_name") == matched_name:
+                        reopen_success = reopen_loop(stored.get("loop_id"), user_id)
+                        reopened_loop_id = stored.get("loop_id") if reopen_success else None
+                        break
+                log_node(
+                    thread_id=thread_id,
+                    node_name="choose_response_mode",
+                    inputs={"user_input": user_input, "memory_context": memory_context, "stored_loops_count": len(stored_loops)},
+                    outputs={"response_mode": "pattern_reflect", "detected_loops": matched_loop_text, "response_mode_history": ["pattern_reflect"], "reopened_loop_ids": [reopened_loop_id] if reopened_loop_id else []},
+                    extra={
+                        "reason": f"LLM resurface check matched: {matched_name}",
+                        "raw_llm_response": resurface_raw,
+                        "reopened_loop_id": reopened_loop_id,
+                        "reopen_success": reopen_success,
+                    },
+                )
+                return {
+                    "explicit_advice_request": False,
+                    "toxic_language_detected": False,
+                    "prompt_injection_detected": False,
+                    "pii_detected": False,
+                    "crisis_detected": False,
+                    "response_mode": "pattern_reflect",
+                    "detected_loops": matched_loop_text,
+                    "response_mode_history": ["pattern_reflect"],
+                    "reopened_loop_ids": [reopened_loop_id] if reopened_loop_id else [],
+                }
         else:
             # NOTE: previously this branch logged nothing when the resurface
             # check ran but didn't match -- the turn would silently fall
@@ -1118,9 +1156,19 @@ def generate_reply_node(state: NextMateState) -> NextMateState:
 
     debug_history = [msg.get("content", "") for msg in recent_history[-3:]]
     detected_loops = state.get("detected_loops", "")
-    stored_loops = state.get("stored_loops", [])
     response_mode = state.get("response_mode", "")
     active_loop = state.get("active_loop")
+
+    # Only surface the user's stored pattern history to the reply model when
+    # choose_response_mode_node's classifiers actually decided this turn is
+    # about one of them (pattern_reflect/loop_alert). For every other mode,
+    # omit it entirely -- CHAT_SYSTEM_PROMPT's "only mention if relevant"
+    # instruction is a soft guardrail the model doesn't reliably follow, so
+    # the fix is to not hand it the data at all on unrelated turns (e.g. a
+    # bare "hi" in a brand new thread).
+    stored_loops = (
+        state.get("stored_loops", []) if response_mode in ("pattern_reflect", "loop_alert") else []
+    )
 
     content = build_chat_user_prompt(
         user_input=user_input,

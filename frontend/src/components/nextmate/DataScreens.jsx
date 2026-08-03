@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
-import { getDashboardInsights } from '../../lib/api';
+import { getDashboardInsights, getKnowledgeGraph } from '../../lib/api';
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -191,6 +191,347 @@ const LoopSummary = ({ loops }) => {  if (!loops || loops.length === 0) {
           </div>
         </div>
       ))}
+    </div>
+  );
+};
+
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+
+const GRAPH_ASPECT = 720 / 440;
+
+const fitGraphView = (cw, ch) => {
+  const w = Math.max(cw, ch * GRAPH_ASPECT);
+  const h = w / GRAPH_ASPECT;
+  return { x: (cw - w) / 2, y: (ch - h) / 2, w, h };
+};
+
+const KnowledgeGraph = ({ graph }) => {
+  const [hoveredId, setHoveredId] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const nodes = graph?.nodes || [];
+  const edges = graph?.edges || [];
+  const activeId = hoveredId || selectedId;
+
+  const neighborIds = useMemo(() => {
+    if (!activeId) return null;
+    const set = new Set([activeId]);
+    edges.forEach((e) => {
+      if (e.source === activeId) set.add(e.target);
+      if (e.target === activeId) set.add(e.source);
+    });
+    return set;
+  }, [activeId, edges]);
+
+  // Stable per-node index (for idle-float seeding) independent of paint order below,
+  // so re-sorting for z-index on hover doesn't reshuffle each node's drift phase.
+  const nodeIndex = useMemo(() => new Map(nodes.map((n, i) => [n.id, i])), [nodes]);
+
+  // Dimmed nodes/edges must not visually cover the highlighted ones, so paint the
+  // active node and its neighbors last (on top) instead of relying on data order.
+  const orderedNodes = useMemo(() => {
+    if (!activeId || !neighborIds) return nodes;
+    const rank = (n) => (n.id === activeId ? 2 : neighborIds.has(n.id) ? 1 : 0);
+    return [...nodes].sort((a, b) => rank(a) - rank(b));
+  }, [nodes, activeId, neighborIds]);
+
+  const orderedEdges = useMemo(() => {
+    if (!activeId || !neighborIds) return edges;
+    const rank = (e) => (neighborIds.has(e.source) && neighborIds.has(e.target) ? 1 : 0);
+    return [...edges].sort((a, b) => rank(a) - rank(b));
+  }, [edges, activeId, neighborIds]);
+
+  const hashEdge = (e) => {
+    const key = `${e.source}|${e.target}`;
+    let h = 0;
+    for (let k = 0; k < key.length; k++) h = (h * 31 + key.charCodeAt(k)) | 0;
+    return h;
+  };
+
+  // Give nodes real breathing room instead of packing everything into one small box;
+  // the fixed viewBox below becomes a pannable/zoomable window into this larger canvas.
+  // Kept modest (unlike the old 3200x2000 ceiling) so the normalized layout isn't
+  // stretched thin across empty space, which read as tiny/distant nodes with long edges.
+  const CW = clamp(640 + nodes.length * 18, 640, 1400);
+  const CH = clamp(440 + nodes.length * 12, 440, 900);
+  const PAD = 70;
+
+  const svgWrapRef = useRef(null);
+  const dragRef = useRef(null);
+  const suppressClickRef = useRef(false);
+  const [view, setView] = useState(() => fitGraphView(CW, CH));
+  const fitView = useMemo(() => fitGraphView(CW, CH), [CW, CH]);
+  const minViewW = 220;
+  const maxViewW = fitView.w * 1.5;
+
+  useEffect(() => {
+    setView(fitView);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [CW, CH]);
+
+  const clampView = (v) => {
+    const marginX = v.w * 0.5;
+    const marginY = v.h * 0.5;
+    return {
+      ...v,
+      x: clamp(v.x, -marginX, CW - v.w + marginX),
+      y: clamp(v.y, -marginY, CH - v.h + marginY),
+    };
+  };
+
+  useEffect(() => {
+    const el = svgWrapRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) / rect.width;
+      const my = (e.clientY - rect.top) / rect.height;
+      setView((v) => {
+        const factor = e.deltaY < 0 ? 0.88 : 1.12;
+        const newW = clamp(v.w * factor, minViewW, maxViewW);
+        const newH = newW / GRAPH_ASPECT;
+        const cx = v.x + mx * v.w;
+        const cy = v.y + my * v.h;
+        return clampView({ x: cx - mx * newW, y: cy - my * newH, w: newW, h: newH });
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [CW, CH, minViewW, maxViewW]);
+
+  const zoomBy = (factor) => {
+    setView((v) => {
+      const newW = clamp(v.w * factor, minViewW, maxViewW);
+      const newH = newW / GRAPH_ASPECT;
+      const cx = v.x + v.w / 2;
+      const cy = v.y + v.h / 2;
+      return clampView({ x: cx - newW / 2, y: cy - newH / 2, w: newW, h: newH });
+    });
+  };
+  const resetView = () => setView(fitView);
+
+  const handlePointerDown = (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, viewX: view.x, viewY: view.y, moved: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const handlePointerMove = (e) => {
+    const drag = dragRef.current;
+    if (!drag || !svgWrapRef.current) return;
+    const rect = svgWrapRef.current.getBoundingClientRect();
+    const dxScreen = e.clientX - drag.startX;
+    const dyScreen = e.clientY - drag.startY;
+    if (Math.abs(dxScreen) > 3 || Math.abs(dyScreen) > 3) drag.moved = true;
+    const dx = -dxScreen * (view.w / rect.width);
+    const dy = -dyScreen * (view.h / rect.height);
+    setView(clampView({ ...view, x: drag.viewX + dx, y: drag.viewY + dy }));
+  };
+  const handlePointerUp = () => {
+    if (dragRef.current?.moved) suppressClickRef.current = true;
+    dragRef.current = null;
+  };
+
+  if (!nodes.length) {
+    return (
+      <div className="nm-meta" style={{ padding: 20, fontStyle: 'italic' }}>
+        Not enough data yet to map how your triggers and core beliefs connect.
+      </div>
+    );
+  }
+
+  const nodeById = Object.fromEntries(nodes.map((n) => [n.id, n]));
+  const px = (x) => PAD + x * (CW - PAD * 2);
+  const py = (y) => PAD + y * (CH - PAD * 2);
+  const nodeRadius = (n) => 9 + n.size * 19;
+
+  const badgeNode = selectedId ? nodeById[selectedId] : null;
+  let badge = null;
+  if (badgeNode) {
+    const r = nodeRadius(badgeNode);
+    const rectW = clamp(badgeNode.label.length * 6.4 + 28, 150, 260);
+    const rectH = 44;
+    const cx = clamp(px(badgeNode.x), view.x + rectW / 2 + 4, view.x + view.w - rectW / 2 - 4);
+    const spaceAbove = py(badgeNode.y) - r - rectH - 8;
+    const rectY = spaceAbove > 4 ? spaceAbove : py(badgeNode.y) + r + 8;
+    badge = { cx, rectY, rectW, rectH, node: badgeNode };
+  }
+
+  return (
+    <div>
+      <div ref={svgWrapRef} style={{ position: 'relative' }}>
+        <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 1, display: 'flex', gap: 4 }}>
+          <button type="button" onClick={() => zoomBy(0.8)} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
+          <button type="button" onClick={() => zoomBy(1.25)} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
+          <button type="button" onClick={resetView} className="nm-graph-zoom-btn" aria-label="Reset view">⤢</button>
+        </div>
+        <svg
+          width="100%"
+          viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
+          className="nm-graph-canvas"
+          style={{ display: 'block', touchAction: 'none' }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          onClick={() => {
+            if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+            setSelectedId(null);
+          }}
+        >
+        <defs>
+          <radialGradient id="nm-grad-trigger" cx="35%" cy="30%" r="75%">
+            <stop offset="0%" stopColor="var(--clay)" stopOpacity="1" />
+            <stop offset="100%" stopColor="var(--clay)" stopOpacity="0.55" />
+          </radialGradient>
+          <radialGradient id="nm-grad-belief" cx="35%" cy="30%" r="75%">
+            <stop offset="0%" stopColor="var(--plum)" stopOpacity="1" />
+            <stop offset="100%" stopColor="var(--plum)" stopOpacity="0.55" />
+          </radialGradient>
+        </defs>
+
+        {orderedEdges.map((e) => {
+          const s = nodeById[e.source];
+          const t = nodeById[e.target];
+          if (!s || !t) return null;
+          const x1 = px(s.x), y1 = py(s.y), x2 = px(t.x), y2 = py(t.y);
+          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+          const dx = x2 - x1, dy = y2 - y1;
+          const len = Math.hypot(dx, dy) || 1;
+          const sign = (hashEdge(e) % 2 === 0) ? 1 : -1;
+          const bow = sign * (10 + e.strength * 12);
+          const cx = mx + (-dy / len) * bow;
+          const cy = my + (dx / len) * bow;
+          const dimmed = neighborIds && !(neighborIds.has(e.source) && neighborIds.has(e.target));
+          return (
+            <path
+              key={`${e.source}->${e.target}`}
+              d={`M ${x1},${y1} Q ${cx},${cy} ${x2},${y2}`}
+              fill="none"
+              className={e.is_loop ? 'nm-graph-edge-loop' : undefined}
+              stroke={e.is_loop ? 'var(--loop-strong)' : 'var(--rule)'}
+              strokeWidth={1 + e.strength * 3.5 + (e.is_loop ? 1 : 0)}
+              strokeLinecap="round"
+              style={{
+                opacity: dimmed ? 0.05 : e.is_loop ? 0.9 : 0.32 + e.strength * 0.35,
+                filter: e.is_loop && !dimmed ? 'drop-shadow(0 0 4px var(--loop-strong))' : undefined,
+                transition: 'opacity 0.2s ease',
+              }}
+            />
+          );
+        })}
+
+        {orderedNodes.map((n) => {
+          const i = nodeIndex.get(n.id);
+          const dimmed = neighborIds && !neighborIds.has(n.id);
+          const isHovered = hoveredId === n.id;
+          const isSelected = selectedId === n.id;
+          const r = nodeRadius(n) + (isHovered || isSelected ? 2.5 : 0);
+          const isTrigger = n.type === 'trigger';
+          const tint = isTrigger ? 'var(--clay)' : 'var(--plum)';
+          // Without a selection, only the most prominent nodes label themselves so the
+          // graph doesn't start out with every node's text stacked on its neighbors.
+          // With a selection, only the active node + its direct links get text.
+          const showLabel = isHovered || isSelected
+            || (neighborIds ? neighborIds.has(n.id) : n.size >= 0.85);
+          // Deterministic per-node drift so each node quietly orbits its own spot at idle,
+          // instead of the whole graph sitting perfectly still.
+          const floatAngle = (i * 47) % 360;
+          const floatAmp = 3 + (i % 4);
+          const fx = Math.cos((floatAngle * Math.PI) / 180) * floatAmp;
+          const fy = Math.sin((floatAngle * Math.PI) / 180) * floatAmp;
+          const floatDur = 5.5 + (i % 5) * 0.7;
+          const floatDelay = -((i * 0.37) % floatDur);
+          const labelText = n.label.length > 24 ? `${n.label.slice(0, 22)}…` : n.label;
+          const labelW = clamp(labelText.length * 5.6 + 10, 24, 200);
+          return (
+            <g
+              key={n.id}
+              className="nm-graph-orbit"
+              style={{
+                '--fx': `${fx}px`,
+                '--fy': `${fy}px`,
+                '--fdur': `${floatDur}s`,
+                animationDelay: `${floatDelay}s`,
+                animationPlayState: isHovered || isSelected ? 'paused' : 'running',
+              }}
+            >
+              <g
+                className={`nm-graph-node${isSelected ? ' selected' : ''}`}
+                style={{ cursor: 'pointer', animationDelay: `${Math.min(i * 25, 400)}ms`, opacity: dimmed ? 0.15 : 1 }}
+                onMouseEnter={() => setHoveredId(n.id)}
+                onMouseLeave={() => setHoveredId(null)}
+                onClick={(e) => { e.stopPropagation(); setSelectedId((cur) => (cur === n.id ? null : n.id)); }}
+              >
+                <circle
+                  className="nm-graph-halo"
+                  cx={px(n.x)} cy={py(n.y)} r={r * 1.6}
+                  fill="none" stroke={tint} strokeWidth={2}
+                />
+                <circle
+                  className="nm-graph-dot"
+                  cx={px(n.x)} cy={py(n.y)} r={r}
+                  fill={`url(#${isTrigger ? 'nm-grad-trigger' : 'nm-grad-belief'})`}
+                  stroke={isHovered || isSelected ? 'var(--accent)' : 'var(--surface)'}
+                  strokeWidth={isHovered || isSelected ? 2.5 : 1.5}
+                  style={{ color: tint }}
+                />
+                {showLabel && (
+                  <g style={{ pointerEvents: 'none' }}>
+                    <rect
+                      x={px(n.x) - labelW / 2} y={py(n.y) - r - 20}
+                      width={labelW} height={14} rx={4}
+                      fill="var(--surface)" opacity={0.88}
+                    />
+                    <text
+                      x={px(n.x)} y={py(n.y) - r - 9.5}
+                      textAnchor="middle"
+                      style={{ fontSize: 10.5, fontFamily: 'var(--font-display)', fill: 'var(--ink)' }}
+                    >
+                      {labelText}
+                    </text>
+                  </g>
+                )}
+              </g>
+            </g>
+          );
+        })}
+
+        {badge && (
+          <g style={{ pointerEvents: 'none' }}>
+            <rect
+              x={badge.cx - badge.rectW / 2} y={badge.rectY}
+              width={badge.rectW} height={badge.rectH} rx={9}
+              fill="var(--surface)" stroke="var(--rule)" strokeWidth={1}
+              style={{ filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.22))' }}
+            />
+            <text x={badge.cx} y={badge.rectY + 18} textAnchor="middle"
+              style={{ fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-display)', fill: 'var(--ink)' }}>
+              {badge.node.label.length > 30 ? `${badge.node.label.slice(0, 28)}…` : badge.node.label}
+            </text>
+            <text x={badge.cx} y={badge.rectY + 33} textAnchor="middle"
+              style={{ fontSize: 10, fontFamily: 'var(--font-sans)', fill: 'var(--ink-3)' }}>
+              {badge.node.frequency}× mentioned · {badge.node.degree} link{badge.node.degree === 1 ? '' : 's'}
+            </text>
+          </g>
+        )}
+        </svg>
+      </div>
+      <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--clay)', flexShrink: 0 }} />
+          <span className="nm-meta">Trigger</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--plum)', flexShrink: 0 }} />
+          <span className="nm-meta">Core belief</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
+          <span style={{ width: 16, height: 2, background: 'var(--loop-strong)', flexShrink: 0 }} />
+          <span className="nm-meta">Confirmed loop</span>
+        </div>
+        <span className="nm-meta" style={{ fontStyle: 'italic', marginLeft: 'auto', color: 'var(--ink-3)' }}>Scroll to zoom · drag to pan · click a node for details</span>
+      </div>
     </div>
   );
 };
@@ -466,6 +807,7 @@ export const InsightsScreen = () => {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [knowledgeGraph, setKnowledgeGraph] = useState(null);
 
   const days = useMemo(() => RANGES.find((r) => r.k === rangeKey)?.d ?? 30, [rangeKey]);
 
@@ -478,6 +820,14 @@ export const InsightsScreen = () => {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [days]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getKnowledgeGraph()
+      .then((data) => { if (!cancelled) setKnowledgeGraph(data); })
+      .catch(() => { /* graph is a bonus visualization; fail silently */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // Slice emotion_trend to the granularity window
   const visibleTrend = useMemo(() => {
@@ -707,6 +1057,14 @@ export const InsightsScreen = () => {
               <div className="nm-eyebrow">Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
             </div>
             <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />
+          </div>
+
+          <div className="nm-card" style={{ marginBottom: 14 }}>
+            <div style={{ marginBottom: 4 }}>
+              <div className="nm-eyebrow">Knowledge Graph</div>
+              <div className="nm-h3" style={{ marginTop: 4 }}>How your triggers and core beliefs connect</div>
+            </div>
+            <KnowledgeGraph graph={knowledgeGraph} />
           </div>
 
           {false && /* Discovered Patterns, Subconscious Themes, Month in Extremes — hidden for now */ (

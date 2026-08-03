@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getJournalStreak } from '../lib/api';
 
 const CHECK_INTERVAL_MS = 60 * 1000;
@@ -9,18 +9,20 @@ function shownKey(userId, date) {
 
 // Lives at the app root (not inside any one screen) so the reminder fires
 // no matter which tab of the app the user is currently on -- Today,
-// Journal, Loops, etc. Only ever checks/notifies while this tab is open;
-// see ProfilePage for the permission-request flow.
+// Journal, Loops, etc. The in-app toast (returned as `reminder`) is the
+// source of truth and shows regardless of Notification permission or tab
+// focus -- browsers/OSes routinely suppress the native Notification banner
+// while the tab is focused, so that's only ever a bonus alert, not the
+// primary one. See ProfilePage for the permission-request flow.
 export function useJournalReminder(user) {
+  const [reminder, setReminder] = useState(null);
+
   useEffect(() => {
-    if (!user?.id || !user.reminder_enabled) return;
-    if (typeof Notification === 'undefined') return;
+    if (!user?.id || !user.reminder_enabled) return undefined;
 
     let cancelled = false;
 
     const check = async () => {
-      if (Notification.permission !== 'granted') return;
-
       const [hh, mm] = String(user.reminder_time || '20:00').split(':').map(Number);
       const now = new Date();
       const target = new Date();
@@ -37,12 +39,16 @@ export function useJournalReminder(user) {
           localStorage.setItem(key, '1');
           return;
         }
-        const body = streak?.current > 0
-          ? `You're on a ${streak.current}-day streak -- don't lose it. Take a minute to write.`
-          : "You haven't journaled today. Take a minute to write.";
-        const notification = new Notification('Time to journal', { body, tag: 'nextmate-journal-reminder' });
-        notification.onclick = () => { window.focus(); notification.close(); };
         localStorage.setItem(key, '1');
+        setReminder({ streak });
+
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          const body = streak?.current > 0
+            ? `You're on a ${streak.current}-day streak -- don't lose it. Take a minute to write.`
+            : "You haven't journaled today. Take a minute to write.";
+          const notification = new Notification('Time to journal', { body, tag: 'nextmate-journal-reminder' });
+          notification.onclick = () => { window.focus(); notification.close(); };
+        }
       } catch {
         /* backend unreachable -- try again on the next tick */
       }
@@ -52,4 +58,8 @@ export function useJournalReminder(user) {
     const id = setInterval(check, CHECK_INTERVAL_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, [user?.id, user?.reminder_enabled, user?.reminder_time]);
+
+  const dismissReminder = useCallback(() => setReminder(null), []);
+
+  return { reminder, dismissReminder };
 }
