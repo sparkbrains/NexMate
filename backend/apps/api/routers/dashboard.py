@@ -6,6 +6,7 @@ from apps.api.services.dashboard_service import (
     get_dashboard_insights,
     get_dashboard_kpis,
 )
+from apps.api.services.knowledge_graph_service import build_knowledge_graph
 from apps.api.services.daily_question_service import (
     mark_question_answered,
     get_thread_context_for_question,
@@ -27,6 +28,11 @@ async def insights(
 ) -> dict:
     insights_data = await get_dashboard_insights(current_user.id, days=days)
     return {"insights": insights_data}
+
+
+@router.get("/knowledge-graph")
+def knowledge_graph(current_user: User = Depends(get_current_user)) -> dict:
+    return build_knowledge_graph(current_user.id)
 
 
 @router.post("/daily-question/{question_id}/answer")

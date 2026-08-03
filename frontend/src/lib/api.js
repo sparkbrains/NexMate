@@ -245,6 +245,10 @@ export function getDashboardInsights(days = 30) {
   return request(`/api/dashboard/insights?days=${encodeURIComponent(days)}`);
 }
 
+export function getKnowledgeGraph() {
+  return request('/api/dashboard/knowledge-graph');
+}
+
 export function getUserProfileSummary() {
   return request('/api/profile/summary');
 }
