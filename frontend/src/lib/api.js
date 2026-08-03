@@ -207,6 +207,24 @@ export async function deleteAccount(password) {
   return data;
 }
 
+// Persists an updated user object into local storage without touching the
+// token -- used after profile actions (e.g. reminder settings) so a page
+// refresh doesn't momentarily show stale values before getMe() resolves.
+export function persistUser(user) {
+  try {
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+  } catch {
+    /* ignore quota / disabled storage */
+  }
+}
+
+export function updateReminderSettings(enabled, reminderTime) {
+  return request('/api/auth/reminder', {
+    method: 'PATCH',
+    body: { enabled, reminder_time: reminderTime },
+  });
+}
+
 export function listThreads() {
   return request('/api/threads');
 }

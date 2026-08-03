@@ -11,8 +11,9 @@ import PricingScreen from './components/nextmate/PricingScreen';
 import { LandingPage } from './components/nextmate/LandingPage';
 import { ProfilePage } from './components/nextmate/ProfilePage';
 import { SupportWidget } from './components/nextmate/SupportWidget';
-import { clearSession, deleteThread as deleteThreadApi, getMe, getToken, getUser, listThreads, logout as apiLogout } from './lib/api';
+import { clearSession, deleteThread as deleteThreadApi, getMe, getToken, getUser, listThreads, logout as apiLogout, persistUser } from './lib/api';
 import { AppContext } from './context';
+import { useJournalReminder } from './hooks/useJournalReminder';
 
 const newThreadId = () =>
   (crypto.randomUUID ? crypto.randomUUID() : `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
@@ -28,9 +29,11 @@ export default function App() {
   useEffect(() => {
     if (!getToken()) return;
     getMe()
-      .then((data) => setUser(data.user))
+      .then((data) => { setUser(data.user); persistUser(data.user); })
       .catch(() => { clearSession(); setUser(null); });
   }, []);
+
+  useJournalReminder(user);
 
   // Theme state — auth screen always light; restore saved theme after login
   const [theme, setTheme] = useState(() => {
@@ -156,7 +159,12 @@ export default function App() {
   } else if (route === 'insights') {
     screen = <InsightsScreen />;
   } else if (route === 'profile') {
-    screen = <ProfilePage onLogout={onLogout} />;
+    screen = (
+      <ProfilePage
+        onLogout={onLogout}
+        onUserUpdate={(updated) => { setUser(updated); persistUser(updated); }}
+      />
+    );
   } else {
     screen = (
       <TodayScreen
