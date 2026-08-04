@@ -574,6 +574,6 @@ async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]
             "mastery_pct": pattern_mastery_pct,
         },
         "echo": echo,
-        "daily_question": None,
+        "daily_question": await get_or_create_daily_question(user_id),
         "thread_summaries": thread_summaries,
     }

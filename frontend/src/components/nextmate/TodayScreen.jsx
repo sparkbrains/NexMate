@@ -346,16 +346,16 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
               <div>
                 <div className="nm-eyebrow" style={{ marginBottom: 16 }}>This week</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 54, lineHeight: 1, letterSpacing: '-0.03em' }}>{daysWithEntries}</div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 54, fontWeight: 600, lineHeight: 1, letterSpacing: '-0.018em' }}>{daysWithEntries}</div>
                   <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--ink)' }}>of 7</div>
                 </div>
                 <div className="nm-body">days with reflections</div>
               </div>
-              
+
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <WeekDots days={weekDays} />
               </div>
-              
+
               <div>
                 <div className="nm-hr" style={{ margin: '20px 0 14px' }} />
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -375,41 +375,41 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div className="nm-card">
-                <div className="nm-meta" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
-                {topTriggers.length === 0 ? (
-                  <div className="nm-meta-data">No triggers detected yet.</div>
-                ) : (
+            <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <div className="nm-meta" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
+              {topTriggers.length === 0 ? (
+                <div className="nm-meta-data">No triggers detected yet.</div>
+              ) : (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                   <TriggerBubbles triggers={topTriggers} colors={TRIGGER_COLORS} />
-                )}
-              </div>
-
-              <div className="nm-card">
-                <div className="nm-meta" style={{ marginBottom: 10 }}>Today's question</div>
-                {dailyQuestions.length === 0 ? (
-                  <div className="nm-meta-data" style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.5 }}>Your question is on its way — something thoughtful is being prepared for you.</div>
-                ) : pendingQuestions.length === 0 ? (
-                  <div className="nm-meta-data" style={{ color: 'var(--teal)' }}>You've answered all of today's questions. See you tomorrow.</div>
-                ) : currentQuestion ? (
-                  <>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, lineHeight: 1.4, color: 'var(--ink)', letterSpacing: '-0.005em' }}>
-                      {currentQuestion.question_text}
-                    </div>
-                    <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-                      <button className="nm-btn" onClick={() => handleAnswerQuestion(currentQuestion)} disabled={answeringQuestion}>
-                        {answeringQuestion ? 'Loading...' : 'Answer'} <Icon name="arrow" size={11} />
-                      </button>
-                      {pendingQuestions.length > 1 && (
-                        <button className="nm-btn ghost" onClick={handleSkipQuestion}>Skip</button>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <div className="nm-meta-data">Your next question will appear shortly.</div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
+          </div>
+
+          <div className="nm-card" style={{ marginBottom: 16 }}>
+            <div className="nm-meta" style={{ marginBottom: 10 }}>Today's question</div>
+            {dailyQuestions.length === 0 ? (
+              <div className="nm-meta-data" style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.5 }}>Your question is on its way — something thoughtful is being prepared for you.</div>
+            ) : pendingQuestions.length === 0 ? (
+              <div className="nm-meta-data" style={{ color: 'var(--teal)' }}>You've answered all of today's questions. See you tomorrow.</div>
+            ) : currentQuestion ? (
+              <>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, lineHeight: 1.4, color: 'var(--ink)', letterSpacing: '-0.005em' }}>
+                  {currentQuestion.question_text}
+                </div>
+                <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
+                  <button className="nm-btn" onClick={() => handleAnswerQuestion(currentQuestion)} disabled={answeringQuestion}>
+                    {answeringQuestion ? 'Loading...' : 'Answer'} <Icon name="arrow" size={11} />
+                  </button>
+                  {pendingQuestions.length > 1 && (
+                    <button className="nm-btn ghost" onClick={handleSkipQuestion}>Skip</button>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="nm-meta-data">Your next question will appear shortly.</div>
+            )}
           </div>
         </div>
       </div>

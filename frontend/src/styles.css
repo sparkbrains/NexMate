@@ -102,8 +102,8 @@ body {
 .nm-brand-name {
   font-family: var(--font-display);
   font-size: 20px;
-  font-weight: 500;
-  letter-spacing: -0.015em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   font-feature-settings: "ss01";
   color: var(--paper);
 }
@@ -420,8 +420,8 @@ body {
   font-family: var(--font-display);
   font-size: 42px;
   line-height: 1.05;
-  letter-spacing: -0.025em;
-  font-weight: 400;
+  letter-spacing: -0.015em;
+  font-weight: 500;
   margin: 0;
   font-feature-settings: "ss01", "liga";
 }
@@ -551,6 +551,7 @@ body {
 }
 .nm-reminder-toast-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   margin-top: 14px;
@@ -941,8 +942,9 @@ body {
 .nm-numeral {
   font-family: var(--font-display);
   font-size: 56px;
+  font-weight: 600;
   line-height: 0.9;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.02em;
   color: var(--ink);
   font-feature-settings: "lnum", "ss01";
 }
@@ -1210,8 +1212,9 @@ body {
 .nm-streak-num {
   font-family: var(--font-display);
   font-size: 36px;
+  font-weight: 600;
   line-height: 1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.018em;
   color: var(--ink);
   font-feature-settings: "lnum";
 }
@@ -1290,8 +1293,9 @@ body {
 .nm-journal-numeral {
   font-family: var(--font-display);
   font-size: 72px;
+  font-weight: 600;
   line-height: 0.85;
-  letter-spacing: -0.04em;
+  letter-spacing: -0.022em;
   color: var(--ink);
   font-feature-settings: "lnum", "ss01";
 }
@@ -1304,7 +1308,7 @@ body {
   font-family: var(--font-display);
   font-size: 28px;
   font-weight: 500;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.012em;
   line-height: 1.1;
   margin: 0;
 }
@@ -1473,8 +1477,9 @@ body {
 .nm-day-num {
   font-family: var(--font-display);
   font-size: 38px;
+  font-weight: 600;
   line-height: 1;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.018em;
   color: var(--ink);
   text-align: right;
   font-feature-settings: "lnum";
@@ -1600,10 +1605,10 @@ body {
 }
 .nm-empty-poem h1 {
   font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 500;
   font-size: 36px;
   line-height: 1.1;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.015em;
   margin: 0 0 16px;
 }
 .nm-empty-poem h1 em {
@@ -1691,10 +1696,10 @@ body {
 
 .nm-auth-headline {
   font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 500;
   font-size: clamp(44px, 5.5vw, 78px);
   line-height: 1.02;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.02em;
   color: var(--ink);
   margin: 0;
   max-width: 14ch;
@@ -1792,8 +1797,8 @@ body {
   font-family: var(--font-display);
   font-size: 34px;
   line-height: 1.1;
-  letter-spacing: -0.02em;
-  font-weight: 400;
+  letter-spacing: -0.012em;
+  font-weight: 500;
   margin: 0 0 4px;
 }
 .nm-auth-title em {
@@ -1862,7 +1867,8 @@ body {
   cursor: pointer;
   font-family: var(--font-display);
   font-size: 26px;
-  letter-spacing: -0.02em;
+  font-weight: 500;
+  letter-spacing: -0.012em;
   color: var(--ink);
   border-bottom: 2px solid var(--ink);
   transition:
@@ -2083,8 +2089,9 @@ body {
   margin: 0;
   font-family: var(--font-display);
   font-size: 26px;
+  font-weight: 600;
   line-height: 1.1;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.012em;
   color: var(--ink);
 }
 
