@@ -358,8 +358,8 @@ const KnowledgeGraph = ({ graph }) => {
   }
 
   return (
-    <div>
-      <div ref={svgWrapRef} style={{ position: 'relative' }}>
+    <div style={{ height: '100%', minHeight: 440 }}>
+      <div ref={svgWrapRef} style={{ position: 'relative', height: '100%', minHeight: 440 }}>
         <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 1, display: 'flex', gap: 4 }}>
           <button type="button" onClick={() => zoomBy(0.8)} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
           <button type="button" onClick={() => zoomBy(1.25)} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
@@ -1064,7 +1064,9 @@ export const InsightsScreen = () => {
               <div className="nm-eyebrow">Knowledge Graph</div>
               <div className="nm-h3" style={{ marginTop: 4 }}>How your triggers and core beliefs connect</div>
             </div>
-            <KnowledgeGraph graph={knowledgeGraph} />
+            <div style={{ position: 'relative', width: '100%', minHeight: 440, border: '1px solid var(--rule-soft)', borderRadius: 8, overflow: 'hidden', marginTop: 12 }}>
+              <KnowledgeGraph graph={knowledgeGraph} />
+            </div>
           </div>
 
           {false && /* Discovered Patterns, Subconscious Themes, Month in Extremes — hidden for now */ (

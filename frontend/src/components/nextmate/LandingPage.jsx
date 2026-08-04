@@ -27,7 +27,7 @@ export const LandingPage = ({ onAuth }) => {
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 24 }}>
           NexMate · <span style={{ color: 'var(--accent)', fontStyle: 'italic', textTransform: 'none', fontFamily: 'var(--font-display)', fontSize: 14, letterSpacing: '-0.01em' }}>a quiet place to think out loud</span>
         </div>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 64, fontWeight: 300, lineHeight: 1.1, letterSpacing: '-0.03em', color: 'var(--ink)', maxWidth: 800, marginBottom: 24 }}>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 64, fontWeight: 500, lineHeight: 1.1, letterSpacing: '-0.018em', color: 'var(--ink)', maxWidth: 800, marginBottom: 24 }}>
           Unlock your <em style={{ fontStyle: 'italic', color: 'var(--accent)' }}>subconscious</em> potential.
         </h1>
         <p style={{ fontSize: 18, lineHeight: 1.5, color: 'var(--ink-3)', maxWidth: 600, marginBottom: 40 }}>

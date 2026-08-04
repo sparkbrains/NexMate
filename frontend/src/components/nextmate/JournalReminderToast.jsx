@@ -1,4 +1,4 @@
-export const JournalReminderToast = ({ reminder, onDismiss, onJournal }) => {
+export const JournalReminderToast = ({ reminder, onDismiss, onSnooze, onJournal }) => {
   if (!reminder) return null;
 
   const { streak } = reminder;
@@ -15,6 +15,9 @@ export const JournalReminderToast = ({ reminder, onDismiss, onJournal }) => {
       <div className="nm-reminder-toast-actions">
         <button type="button" className="nm-btn ghost" onClick={onDismiss}>
           Maybe later
+        </button>
+        <button type="button" className="nm-btn ghost" onClick={onSnooze}>
+          Snooze 30m
         </button>
         <button type="button" className="nm-btn primary" onClick={onJournal}>
           Journal now

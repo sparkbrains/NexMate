@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Jura:wght@300..700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
 
 /* ─── Light mode: exact NexMat1 tokens ─── */
 :root,
@@ -39,10 +39,10 @@
   --indigo:      #4f46e5;
   --indigo-soft: #eef2ff;
 
-  --font-serif:   "Source Serif 4", "Source Serif Pro", Georgia, serif;
-  --font-sans:    "Inter", -apple-system, sans-serif;
-  --font-display: "Source Serif 4", Georgia, serif;
-  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --font-serif:   "Jura", "Inter", -apple-system, sans-serif;
+  --font-sans:    "Jura", "Inter", -apple-system, sans-serif;
+  --font-display: "Jura", "Inter", -apple-system, sans-serif;
+  --font-mono:    "Jura", "Inter", -apple-system, sans-serif;
 
   --radius:    3px;
   --radius-lg: 12px;

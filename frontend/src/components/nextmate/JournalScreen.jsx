@@ -795,13 +795,17 @@ export const JournalScreen = ({ user }) => {
                       <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowStickerPanel(p => !p)}>
                         🎀 Stickers
                       </button>
-                      <button type="button" title="Download PDF" onClick={(e) => {
-                        const wrapper = e.currentTarget.closest('.nm-compose');
-                        if (wrapper) wrapper.classList.add('print-target');
-                        window.print();
-                        if (wrapper) wrapper.classList.remove('print-target');
+                      <button type="button" title="Download as text" onClick={() => {
+                        const text = editorRef.current?.innerText || body;
+                        const blob = new Blob([text], { type: 'text/plain' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `${activeBook.name}-${entryDate}.txt`;
+                        a.click();
+                        URL.revokeObjectURL(url);
                       }} className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13, color: 'var(--ink-3)', marginLeft: 'auto' }}>
-                        <Icon name="download" size={13} /> PDF
+                        <Icon name="download" size={13} /> Download
                       </button>
                       <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
                       <button type="button" onMouseDown={(e) => { e.preventDefault(); editorRef.current?.focus(); document.execCommand('insertUnorderedList'); }}
@@ -886,8 +890,8 @@ export const JournalScreen = ({ user }) => {
                       onClick={() => { setSelectedSticker(null); setSelectedBlock(null); }}
                       data-placeholder={`Today, in your ${activeBook.name.toLowerCase()} book…`}
                       style={{
-                        minHeight: 160,
-                        padding: '14px 18px',
+                        minHeight: 500,
+                        padding: '28px 36px',
                         fontFamily: 'var(--font-serif)',
                         fontSize: 16,
                         lineHeight: '28px',

@@ -2,9 +2,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { getJournalStreak } from '../lib/api';
 
 const CHECK_INTERVAL_MS = 60 * 1000;
+const SNOOZE_MINUTES = 30;
 
 function shownKey(userId, date) {
   return `nextmate.reminder_shown.${userId}.${date.toDateString()}`;
+}
+
+function snoozeKey(userId) {
+  return `nextmate.reminder_snoozed_until.${userId}`;
 }
 
 // Lives at the app root (not inside any one screen) so the reminder fires
@@ -29,8 +34,17 @@ export function useJournalReminder(user) {
       target.setHours(hh || 0, mm || 0, 0, 0);
       if (now < target) return;
 
+      const snoozeUntilKey = snoozeKey(user.id);
+      const snoozedUntil = Number(localStorage.getItem(snoozeUntilKey) || 0);
+      const isSnoozed = snoozedUntil > now.getTime();
+      if (isSnoozed) return;
+
       const key = shownKey(user.id, now);
-      if (localStorage.getItem(key)) return;
+      // A snooze that just expired should re-show the toast even though it
+      // was already marked "shown" earlier today; a plain dismiss ("Maybe
+      // later") should not.
+      if (!snoozedUntil && localStorage.getItem(key)) return;
+      if (snoozedUntil) localStorage.removeItem(snoozeUntilKey);
 
       try {
         const { streak } = await getJournalStreak();
@@ -61,5 +75,13 @@ export function useJournalReminder(user) {
 
   const dismissReminder = useCallback(() => setReminder(null), []);
 
-  return { reminder, dismissReminder };
+  const snoozeReminder = useCallback(() => {
+    if (user?.id) {
+      const until = Date.now() + SNOOZE_MINUTES * 60 * 1000;
+      localStorage.setItem(snoozeKey(user.id), String(until));
+    }
+    setReminder(null);
+  }, [user?.id]);
+
+  return { reminder, dismissReminder, snoozeReminder };
 }

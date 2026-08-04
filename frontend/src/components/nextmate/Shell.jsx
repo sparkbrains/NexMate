@@ -109,6 +109,7 @@ const fmtWhen = (iso) => {
 
 export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onNewThread, onDeleteThread, user, onLogout }) => {
   const { sidebarOpen, setSidebarOpen } = useContext(AppContext);
+  const [collapsed, setCollapsed] = useState(false);
   const [openSections, setOpenSections] = useState({ regular: true, reflecting: false, daily: false });
   const [pendingDeleteThread, setPendingDeleteThread] = useState(null);
 
@@ -189,14 +190,16 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
         <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 45 }} />
       )}
 
-      <aside className={"nm-side" + (sidebarOpen ? " open" : "")}>
-        <div className="nm-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 20 }}>
-          <img src={LogoIco} alt="Nextmate" height={30} className="nm-logo" />
-          <button className="nm-btn ghost nm-menu-btn" style={{ padding: 4 }} onClick={() => setSidebarOpen(false)}>
-            <Icon name="close" size={16} />
+      <aside className={"nm-side" + (sidebarOpen ? " open" : "") + (collapsed ? " collapsed" : "")}>
+        <div className="nm-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: collapsed ? 8 : 20 }}>
+          {!collapsed && <img src={LogoIco} alt="Nextmate" height={30} className="nm-logo" />}
+          <button className="nm-btn ghost" style={{ padding: 4, marginLeft: collapsed ? 'auto' : 0, marginRight: collapsed ? 'auto' : 0 }} onClick={() => setCollapsed(c => !c)} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+            <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
           </button>
         </div>
 
+        {!collapsed && (
+          <>
         <button className="nm-btn accent" style={{ width: '100%', marginBottom: 16 }} onClick={() => { onNewThread && onNewThread(); setSidebarOpen(false); }}>
           <Icon name="plus" size={12} /> Begin reflection
         </button>
@@ -210,14 +213,29 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
 
         <div className="nm-nav-section" style={{ marginTop: 12 }}>Conversations</div>
 
-        <SectionHeader label="Daily Conversation" sectionKey="regular" count={regularThreads.length} />
-        {openSections.regular && renderThreadList(regularThreads, 'regular')}
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          <SectionHeader label="Daily Conversation" sectionKey="regular" count={regularThreads.length} />
+          {openSections.regular && renderThreadList(regularThreads, 'regular')}
 
-        <SectionHeader label="Reflection" sectionKey="reflecting" count={reflectingThreads.length} />
-        {openSections.reflecting && renderThreadList(reflectingThreads, 'reflecting')}
+          <SectionHeader label="Reflection" sectionKey="reflecting" count={reflectingThreads.length} />
+          {openSections.reflecting && renderThreadList(reflectingThreads, 'reflecting')}
 
-        <SectionHeader label="Daily Questions" sectionKey="daily" count={dailyThreads.length} />
-        {openSections.daily && renderThreadList(dailyThreads, 'daily')}
+          <SectionHeader label="Daily Questions" sectionKey="daily" count={dailyThreads.length} />
+          {openSections.daily && renderThreadList(dailyThreads, 'daily')}
+        </div>
+          </>
+        )}
+
+        {collapsed && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 8 }}>
+            <button className="nm-btn ghost" style={{ padding: 6 }} title="Begin reflection" onClick={() => { onNewThread?.(); setSidebarOpen(false); }}><Icon name="plus" size={16} /></button>
+            <button className={"nm-btn ghost" + (active === 'today' ? ' active' : '')} style={{ padding: 6 }} title="Today" onClick={() => onNav?.('today')}><Icon name="home" size={16} /></button>
+            <button className={"nm-btn ghost" + (active === 'journal' ? ' active' : '')} style={{ padding: 6 }} title="Journal" onClick={() => onNav?.('journal')}><Icon name="book" size={16} /></button>
+            <button className={"nm-btn ghost" + (active === 'prompt-packs' ? ' active' : '')} style={{ padding: 6 }} title="Prompt Packs" onClick={() => onNav?.('prompt-packs')}><Icon name="sparkle" size={16} /></button>
+            <button className={"nm-btn ghost" + (active === 'loops' ? ' active' : '')} style={{ padding: 6 }} title="Loops" onClick={() => onNav?.('loops')}><Icon name="loops" size={16} /></button>
+            <button className={"nm-btn ghost" + (active === 'insights' ? ' active' : '')} style={{ padding: 6 }} title="Insights" onClick={() => onNav?.('insights')}><Icon name="insights" size={16} /></button>
+          </div>
+        )}
 
         <div
           className={"nm-side-footer" + (active === 'profile' ? " active" : "")}
@@ -234,10 +252,12 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
               setSidebarOpen(false);
             }
           }}
-          style={{ cursor: 'pointer' }}
+          style={{ cursor: 'pointer', flexShrink: 0 }}
           title="View profile"
         >
           <div className="nm-avatar">{(user?.name || user?.email || '?')[0].toUpperCase()}</div>
+          {!collapsed && (
+            <>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="nm-side-footer-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || user?.email || 'Signed out'}</div>
             <div className="nm-side-footer-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name ? user?.email : 'signed in'}</div>
@@ -250,6 +270,8 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
           >
             <Icon name="logout" size={14} />
           </button>
+            </>
+          )}
         </div>
       </aside>
 

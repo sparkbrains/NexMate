@@ -34,7 +34,7 @@ export default function App() {
       .catch(() => { clearSession(); setUser(null); });
   }, []);
 
-  const { reminder, dismissReminder } = useJournalReminder(user);
+  const { reminder, dismissReminder, snoozeReminder } = useJournalReminder(user);
 
   // Theme state — auth screen always light; restore saved theme after login
   const [theme, setTheme] = useState(() => {
@@ -203,6 +203,7 @@ export default function App() {
         <JournalReminderToast
           reminder={reminder}
           onDismiss={dismissReminder}
+          onSnooze={snoozeReminder}
           onJournal={() => { dismissReminder(); navigateTo('journal'); }}
         />
       </div>

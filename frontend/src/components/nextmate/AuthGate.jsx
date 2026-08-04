@@ -75,6 +75,15 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
   const [cooldown, setCooldown] = useState(0);
   const otpRefs = useRef([]);
 
+  const pwChecks = (pw) => ({
+    len:   pw.length >= 8,
+    upper: /[A-Z]/.test(pw),
+    lower: /[a-z]/.test(pw),
+    digit: /[0-9]/.test(pw),
+    special: /[^A-Za-z0-9]/.test(pw),
+  });
+  const pwValid = (pw) => Object.values(pwChecks(pw)).every(Boolean);
+
   const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], []);
   const isLogin = mode === 'login';
   const isSignup = mode === 'signup';
@@ -113,6 +122,11 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
         const data = await login(email.trim(), password);
         onAuth(data.user);
       } else {
+        if (!pwValid(password)) {
+          setBusy(false);
+          setErr('Password must be 8+ chars with uppercase, lowercase, number and special character.');
+          return;
+        }
         // Step 1 of signup: request an OTP be sent to the email.
         // Backend stores the pending signup (email + hashed password +
         // name/age) keyed to the OTP, and only creates the user once
@@ -278,8 +292,12 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
   const submitReset = async (e) => {
     e.preventDefault();
     if (busy) return;
-    if (newPassword.length < 6) {
-      setErr('Use at least six characters.');
+    if (newPassword.length < 8) {
+      setErr('Use at least eight characters.');
+      return;
+    }
+    if (!pwValid(newPassword)) {
+      setErr('Password must have uppercase, lowercase, number and special character.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -351,7 +369,6 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
               gap: 12,
             }}
           >
-            <span>Chapter ∞ ·</span>
             <span style={{ color: 'var(--accent)', fontStyle: 'italic', textTransform: 'none', fontFamily: 'var(--font-display)', fontSize: 14, letterSpacing: '-0.01em' }}>
               a quiet place to think out loud
             </span>
@@ -485,13 +502,23 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
                 className="nm-field-input"
                 type="password"
                 autoComplete={isLogin ? 'current-password' : 'new-password'}
-                placeholder={isLogin ? '••••••••' : 'at least eight soft characters'}
+                placeholder={isLogin ? '••••••••' : 'min 8 chars · A-Z · a-z · 0-9 · symbol'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={isLogin ? undefined : 8}
               />
               <span className="nm-field-mark" />
+              {isSignup && password.length > 0 && (() => {
+                const c = pwChecks(password);
+                return (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    {[['8+ chars', c.len], ['A–Z', c.upper], ['a–z', c.lower], ['0–9', c.digit], ['symbol', c.special]].map(([label, ok]) => (
+                      <span key={label} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '2px 7px', borderRadius: 99, background: ok ? 'var(--teal)' : 'var(--rule)', color: ok ? '#fff' : 'var(--ink-3)', transition: 'all 0.2s' }}>{ok ? '✓ ' : ''}{label}</span>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
 
             {isLogin && (
@@ -643,14 +670,24 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
                 className="nm-field-input"
                 type="password"
                 autoComplete="new-password"
-                placeholder="at least six characters"
+                placeholder="min 8 chars · A-Z · a-z · 0-9 · symbol"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
                 autoFocus
               />
               <span className="nm-field-mark" />
+              {newPassword.length > 0 && (() => {
+                const c = pwChecks(newPassword);
+                return (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    {[['8+ chars', c.len], ['A–Z', c.upper], ['a–z', c.lower], ['0–9', c.digit], ['symbol', c.special]].map(([label, ok]) => (
+                      <span key={label} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '2px 7px', borderRadius: 99, background: ok ? 'var(--teal)' : 'var(--rule)', color: ok ? '#fff' : 'var(--ink-3)', transition: 'all 0.2s' }}>{ok ? '✓ ' : ''}{label}</span>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="nm-field">
@@ -664,7 +701,7 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
               />
               <span className="nm-field-mark" />
             </div>
