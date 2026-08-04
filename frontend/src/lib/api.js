@@ -225,6 +225,13 @@ export function updateReminderSettings(enabled, reminderTime) {
   });
 }
 
+export function updateProfile({ name, email, dob, subscription_tier }) {
+  return request('/api/auth/profile', {
+    method: 'PATCH',
+    body: { name, email, dob, subscription_tier },
+  });
+}
+
 export function listThreads() {
   return request('/api/threads');
 }

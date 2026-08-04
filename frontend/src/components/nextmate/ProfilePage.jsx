@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getUser, getMe, changePassword, deleteAccount, getUserProfileSummary, updateReminderSettings } from '../../lib/api';
+import { getUser, getMe, changePassword, deleteAccount, getUserProfileSummary, updateReminderSettings, updateProfile } from '../../lib/api';
 import { Icon, TopBar } from './Shell';
 
 function capitalize(s) {
@@ -15,6 +15,18 @@ function formatMemberSince(iso) {
   } catch {
     return '—';
   }
+}
+
+function ageFromDob(dob) {
+  if (!dob) return null;
+  const parts = dob.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+  const [year, month, day] = parts;
+  const today = new Date();
+  let age = today.getFullYear() - year;
+  const hasHadBirthdayThisYear = today.getMonth() + 1 > month || (today.getMonth() + 1 === month && today.getDate() >= day);
+  if (!hasHadBirthdayThisYear) age -= 1;
+  return age >= 0 ? age : null;
 }
 
 // Rendered inside the main content area when the sidebar's "profile" nav
@@ -34,6 +46,15 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
   const [reminderTime, setReminderTime] = useState('20:00');
   const [reminderSaving, setReminderSaving] = useState(false);
   const [reminderErr, setReminderErr] = useState(null);
+
+  // edit-profile modal state
+  const [editModal, setEditModal] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editDob, setEditDob] = useState('');
+  const [editPlan, setEditPlan] = useState('bronze');
+  const [editErr, setEditErr] = useState(null);
+  const [editLoading, setEditLoading] = useState(false);
 
   // change-password modal state
   const [pwModal, setPwModal] = useState(false);
@@ -61,6 +82,30 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
       setPwErr(e.message || 'Failed to change password.');
     } finally {
       setPwLoading(false);
+    }
+  };
+
+  const openEditModal = () => {
+    setEditName(user?.name || '');
+    setEditEmail(user?.email || '');
+    setEditDob(user?.dob || '');
+    setEditPlan((user?.subscription_tier || 'bronze').toLowerCase());
+    setEditErr(null);
+    setEditModal(true);
+  };
+
+  const handleEditProfile = async (e) => {
+    e.preventDefault();
+    setEditLoading(true); setEditErr(null);
+    try {
+      const data = await updateProfile({ name: editName, email: editEmail, dob: editDob || null, subscription_tier: editPlan });
+      setUser(data.user);
+      onUserUpdate && onUserUpdate(data.user);
+      setEditModal(false);
+    } catch (e) {
+      setEditErr(e.message || 'Failed to update profile.');
+    } finally {
+      setEditLoading(false);
     }
   };
 
@@ -135,10 +180,14 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
     if (reminderEnabled) saveReminderSettings(true, value);
   };
 
+  const derivedAge = ageFromDob(user?.dob);
+  const displayAge = derivedAge != null ? derivedAge : user?.age;
+
   const fields = [
     { label: 'Name', value: user?.name || '—' },
     { label: 'Email', value: user?.email || '—' },
-    { label: 'Age', value: user?.age != null ? String(user.age) : '—' },
+    { label: 'Date of birth', value: user?.dob ? formatMemberSince(user.dob) : '—' },
+    { label: 'Age', value: displayAge != null ? String(displayAge) : '—' },
     { label: 'Member since', value: formatMemberSince(user?.created_at) },
     { label: 'Plan', value: user?.subscription_tier ? capitalize(user.subscription_tier) : '—' },
   ];
@@ -163,8 +212,15 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
             </div>
           </div>
 
-          <div className="nm-eyebrow" style={{ marginBottom: 14 }}>
-            About you
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14 }}>
+            <div className="nm-eyebrow">About you</div>
+            <button
+              type="button"
+              onClick={openEditModal}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, border: '1px solid var(--rule)', background: 'transparent', color: 'var(--ink-2)', cursor: 'pointer', fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600 }}
+            >
+              <Icon name="settings" size={12} /> Edit
+            </button>
           </div>
 
           <div className="nm-card soft" style={{ padding: '4px 24px', marginBottom: 24 }}>
@@ -250,6 +306,64 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
               <Icon name="trash" size={13} /> Delete Account
             </button>
           </div>
+
+          {/* Edit Profile Modal */}
+          {editModal && (
+            <div onClick={() => setEditModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+              <div className="nm-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 380, width: '100%', padding: 24 }}>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, marginBottom: 20 }}>Edit Profile</div>
+                <form onSubmit={handleEditProfile}>
+                  <div style={{ marginBottom: 14 }}>
+                    <div className="nm-tag" style={{ marginBottom: 6 }}>Name</div>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={e => setEditName(e.target.value)}
+                      required
+                      style={{ width: '100%', boxSizing: 'border-box', background: 'var(--surface-2, var(--ink-6))', border: '1px solid var(--rule)', borderRadius: 6, color: 'var(--ink)', fontFamily: 'var(--font-display)', fontSize: 14, padding: '8px 10px', outline: 'none' }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <div className="nm-tag" style={{ marginBottom: 6 }}>Email</div>
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={e => setEditEmail(e.target.value)}
+                      required
+                      style={{ width: '100%', boxSizing: 'border-box', background: 'var(--surface-2, var(--ink-6))', border: '1px solid var(--rule)', borderRadius: 6, color: 'var(--ink)', fontFamily: 'var(--font-display)', fontSize: 14, padding: '8px 10px', outline: 'none' }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <div className="nm-tag" style={{ marginBottom: 6 }}>Date of birth</div>
+                    <input
+                      type="date"
+                      value={editDob}
+                      onChange={e => setEditDob(e.target.value)}
+                      max={new Date().toISOString().slice(0, 10)}
+                      style={{ width: '100%', boxSizing: 'border-box', background: 'var(--surface-2, var(--ink-6))', border: '1px solid var(--rule)', borderRadius: 6, color: 'var(--ink)', fontFamily: 'var(--font-display)', fontSize: 14, padding: '8px 10px', outline: 'none' }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <div className="nm-tag" style={{ marginBottom: 6 }}>Plan</div>
+                    <select
+                      value={editPlan}
+                      onChange={e => setEditPlan(e.target.value)}
+                      style={{ width: '100%', boxSizing: 'border-box', background: 'var(--surface-2, var(--ink-6))', border: '1px solid var(--rule)', borderRadius: 6, color: 'var(--ink)', fontFamily: 'var(--font-display)', fontSize: 14, padding: '8px 10px', outline: 'none' }}
+                    >
+                      <option value="bronze">Bronze</option>
+                      <option value="silver">Silver</option>
+                      <option value="gold">Gold</option>
+                    </select>
+                  </div>
+                  {editErr && <div style={{ color: 'var(--accent)', fontSize: 12, marginBottom: 12 }}>{editErr}</div>}
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button type="button" className="nm-btn ghost" onClick={() => setEditModal(false)}>Cancel</button>
+                    <button type="submit" className="nm-btn accent" disabled={editLoading}>{editLoading ? 'Saving…' : 'Save'}</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
 
           {/* Change Password Modal */}
           {pwModal && (

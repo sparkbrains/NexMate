@@ -17,6 +17,7 @@ from apps.api.services.auth_service import (
     resend_password_reset_otp,
     resend_signup_otp,
     reset_password,
+    update_profile,
     update_reminder_settings,
     verify_password_reset_otp,
     verify_signup_otp,
@@ -33,6 +34,7 @@ def _user_payload(user: User) -> dict[str, Any]:
         "created_at": user.created_at,
         "name": user.name,
         "age": user.age,
+        "dob": user.dob,
         "subscription_tier": user.subscription_tier,
         "reminder_enabled": user.reminder_enabled,
         "reminder_time": user.reminder_time,
@@ -129,6 +131,28 @@ def update_reminder(
     reminder_time = str(payload.get("reminder_time", "20:00"))
     try:
         user = update_reminder_settings(current_user.id, enabled, reminder_time)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"user": _user_payload(user)}
+
+
+@router.patch("/profile")
+def update_profile_route(
+    payload: dict[str, Any] = Body(...),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    name = str(payload.get("name", current_user.name))
+    email = str(payload.get("email", current_user.email))
+    dob = payload.get("dob", current_user.dob)
+    subscription_tier = str(payload.get("subscription_tier", current_user.subscription_tier))
+    try:
+        user = update_profile(
+            current_user.id,
+            name=name,
+            email=email,
+            dob=dob,
+            subscription_tier=subscription_tier,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"user": _user_payload(user)}

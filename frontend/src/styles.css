@@ -1475,6 +1475,37 @@ body {
   color: var(--ink-3);
 }
 
+/* ─── Journal editor toolbar (Canva-style grouped clusters) ─── */
+.nm-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  background: var(--surface);
+}
+.nm-toolbar-row + .nm-toolbar-row {
+  border-top: 1px solid var(--rule-soft);
+}
+.nm-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px 3px 8px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  position: relative;
+}
+.nm-toolbar-label {
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-right: 4px;
+  white-space: nowrap;
+}
+
 /* ─── Date headers in past entries ─── */
 .nm-day-block {
   margin-bottom: 28px;
@@ -2321,5 +2352,53 @@ body {
     transform: translateX(0);
     opacity: 1;
     pointer-events: auto;
+  }
+}
+
+/* ─── Print / "Download as PDF" ───
+   Any element flagged .print-target is isolated to the full page for
+   window.print() → "Save as PDF"; everything else is hidden. */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .print-target,
+  .print-target * {
+    visibility: visible;
+  }
+
+  .print-target {
+    /* fixed (not absolute) so this escapes every positioned ancestor — e.g. .nm-compose
+       has position:relative — and pins to the page itself instead of wherever the
+       (still visibility:hidden, still taking up layout space) ancestor chain landed it. */
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    aspect-ratio: auto !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  .print-target [contenteditable] {
+    flex: none !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+  }
+
+  .print-target textarea {
+    border: none !important;
+    background: transparent !important;
+    resize: none !important;
+    box-shadow: none !important;
   }
 }
