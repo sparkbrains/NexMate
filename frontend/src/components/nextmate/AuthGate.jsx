@@ -439,7 +439,8 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
           {(isOtp || isForgotEmail || isForgotOtp || isReset) && <span className="entry-no">no. {ENTRY_NO[mode]}</span>}
         </div>
 
-        {notice && !isLogin && <div className="nm-auth-notice">{notice}</div>}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          {notice && !isLogin && <div className="nm-auth-notice">{notice}</div>}
 
         {(isLogin || isSignup) && (
           <form onSubmit={submit} className="nm-auth-form nm-reveal" data-d="3" noValidate>
@@ -540,8 +541,8 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
             <button className="nm-auth-submit" type="submit" disabled={busy}>
               <span>
                 {busy
-                  ? (isLogin ? 'Returning' : 'Sending a code')
-                  : isLogin ? <>Return<em>.</em></> : <>Continue<em>.</em></>}
+                  ? (isLogin ? 'Signing in' : 'Sending a code')
+                  : isLogin ? <>Sign in<em>.</em></> : <>Continue<em>.</em></>}
               </span>
               <span className="arrow" aria-hidden>→</span>
             </button>
@@ -723,11 +724,16 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
           </form>
         )}
 
-        <div className="nm-reveal" data-d="5" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="nm-reveal" data-d="5" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 20 }}>
           {(isLogin || isSignup) && (
-            <button className="nm-auth-toggle" onClick={toggle} type="button">
-              {isLogin ? <>New here? <u>Make a space</u></> : <>Been here before? <u>Sign in</u></>}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ color: 'var(--ink-2)', fontSize: 14 }}>
+                {isLogin ? 'New here?' : 'Been here before?'}
+              </span>
+              <button className="nm-btn primary" style={{ background: 'var(--accent)', color: 'white', padding: '10px 20px', borderRadius: 24, fontSize: 14, fontWeight: 500 }} onClick={toggle} type="button">
+                {isLogin ? 'Make a space' : 'Sign in'}
+              </button>
+            </div>
           )}
           {isOtp && (
             <>
@@ -769,10 +775,11 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
               <u>Back to sign in</u>
             </button>
           )}
-          <div className="nm-auth-fineprint">
-            Nextmate keeps 90 days of memory.<br />
-            It doesn’t provide clinical advice — it reflects.
-          </div>
+        </div>
+        </div>
+        <div className="nm-auth-fineprint nm-reveal" data-d="5" style={{ marginTop: 'auto' }}>
+          Nextmate keeps 90 days of memory.<br />
+          It doesn’t provide clinical advice — it reflects.
         </div>
       </section>
     </div>
