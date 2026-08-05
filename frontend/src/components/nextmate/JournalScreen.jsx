@@ -33,6 +33,16 @@ const BOOK_COLORS = [
   'var(--accent)', 'var(--clay)', 'var(--gold)', 'var(--teal)', 'var(--plum)', 'var(--ink-3)',
 ];
 
+// A4 page size in px at 96dpi — the journal page renders at this fixed size always;
+// on-screen zoom is a pure CSS transform on top of it, so saved sticker/text-block
+// coordinates stay valid across window sizes and zoom levels, and print/export can
+// render it at true A4 size regardless of what zoom the user was looking at.
+const A4_WIDTH = 794;
+const A4_HEIGHT = 1123;
+const ZOOM_MIN = 0.25;
+const ZOOM_MAX = 2;
+const ZOOM_PRESETS = [0.5, 0.75, 1, 1.25, 1.5];
+
 // Curated font stack for the journal editor — mirrors the variety of a Canva-style font picker.
 const FONT_OPTIONS = [
   { label: 'Georgia', value: 'Georgia, serif' },
@@ -290,6 +300,11 @@ export const JournalScreen = ({ user }) => {
   const [customThemeUrl, setCustomThemeUrl] = useState('');
   const customThemeInputRef = useRef(null);
   const editorWrapRef = useRef(null);
+  const pageViewportRef = useRef(null);
+
+  // zoomMode is either 'fit-width' / 'fit-page', or a fixed numeric zoom (1 = 100%).
+  const [zoomMode, setZoomMode] = useState('fit-width');
+  const [zoom, setZoom] = useState(1);
 
   const STICKERS = [
     '/stickers/sticker-1.jpg', '/stickers/sticker-2.jpg', '/stickers/sticker-3.jpg',
@@ -349,8 +364,8 @@ export const JournalScreen = ({ user }) => {
     blockDragState.current = { id, startX: e.clientX, startY: e.clientY };
     const onMove = (me) => {
       if (!blockDragState.current) return;
-      const dx = me.clientX - blockDragState.current.startX;
-      const dy = me.clientY - blockDragState.current.startY;
+      const dx = (me.clientX - blockDragState.current.startX) / zoom;
+      const dy = (me.clientY - blockDragState.current.startY) / zoom;
       setTextBlocks(prev => prev.map(b => b.id === id ? { ...b, x: b.x + dx, y: b.y + dy } : b));
       blockDragState.current.startX = me.clientX;
       blockDragState.current.startY = me.clientY;
@@ -358,6 +373,35 @@ export const JournalScreen = ({ user }) => {
     const onUp = () => { blockDragState.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+  };
+
+  // Recompute zoom whenever in a "fit" mode, and whenever the viewport resizes.
+  useEffect(() => {
+    if (zoomMode !== 'fit-width' && zoomMode !== 'fit-page') {
+      setZoom(zoomMode);
+      return;
+    }
+    const el = pageViewportRef.current;
+    if (!el) return;
+    const compute = () => {
+      const pad = 48;
+      const availW = Math.max(1, el.clientWidth - pad);
+      const availH = Math.max(1, el.clientHeight - pad);
+      let z = availW / A4_WIDTH;
+      if (zoomMode === 'fit-page') z = Math.min(z, availH / A4_HEIGHT);
+      setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z)));
+    };
+    compute();
+    const ro = new ResizeObserver(compute);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [zoomMode]);
+
+  const nudgeZoom = (delta) => {
+    setZoomMode((prev) => {
+      const base = typeof prev === 'number' ? prev : zoom;
+      return Math.round(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, base + delta)) * 100) / 100;
+    });
   };
 
   const handleCustomThemeUpload = (e) => {
@@ -445,8 +489,8 @@ export const JournalScreen = ({ user }) => {
     dragState.current = { id, startX: e.clientX, startY: e.clientY, rect };
     const onMove = (me) => {
       if (!dragState.current) return;
-      const dx = me.clientX - dragState.current.startX;
-      const dy = me.clientY - dragState.current.startY;
+      const dx = (me.clientX - dragState.current.startX) / zoom;
+      const dy = (me.clientY - dragState.current.startY) / zoom;
       setStickers(prev => prev.map(s => s.id === id ? { ...s, x: s.x + dx, y: s.y + dy } : s));
       dragState.current.startX = me.clientX;
       dragState.current.startY = me.clientY;
@@ -650,14 +694,6 @@ export const JournalScreen = ({ user }) => {
         </>
       } />
       <div className="nm-journal-container">
-        <div className="nm-journal-welcome">
-          <div className="nm-journal-welcome-text">
-            <h3>Welcome back, {displayName}!</h3>
-            <p>Your daily journal is a space for clarity,<br></br> growth and self reflection.</p>
-          </div>
-          <img src={WelcomeBookImg} alt='welcome'/>
-        </div>
-
         <div className="nm-journal">
           {/* Bookshelf */}
           <aside className="nm-journal-shelf">
@@ -728,6 +764,14 @@ export const JournalScreen = ({ user }) => {
         {/* Main pane */}
         <main className="nm-journal-main">
           <div className="nm-journal-inner">
+            <div className="nm-journal-welcome">
+              <div className="nm-journal-welcome-text">
+                <h3>Welcome back, {displayName}!</h3>
+                <p>Your daily journal is a space for clarity,<br></br> growth and self reflection.</p>
+              </div>
+              <img src={WelcomeBookImg} alt='welcome'/>
+            </div>
+
             {!activeBook && !loadingBooks && (
               <div className="nm-empty-poem">
                 <div className="nm-eyebrow" style={{ marginBottom: 14 }}>An empty shelf</div>
@@ -917,6 +961,35 @@ export const JournalScreen = ({ user }) => {
                           </button>
                           <input ref={customThemeInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCustomThemeUpload} />
                         </div>
+
+                        {/* Zoom group */}
+                        <div className="nm-toolbar-group" style={{ marginLeft: 'auto' }}>
+                          <span className="nm-toolbar-label">Zoom</span>
+                          <button type="button" title="Zoom out" onClick={() => nudgeZoom(-0.1)}
+                            className="nm-btn ghost" style={{ padding: '2px 8px', fontSize: 13 }}>−</button>
+                          <select
+                            onMouseDown={(e) => e.stopPropagation()}
+                            value={typeof zoomMode === 'number' ? String(zoomMode) : zoomMode}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setZoomMode(v === 'fit-width' || v === 'fit-page' ? v : Number(v));
+                            }}
+                            style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '3px 4px', cursor: 'pointer' }}>
+                            {!ZOOM_PRESETS.includes(Math.round(zoom * 100) / 100) && typeof zoomMode === 'number' && (
+                              <option value={String(zoomMode)}>{Math.round(zoom * 100)}%</option>
+                            )}
+                            {ZOOM_PRESETS.map((p) => (
+                              <option key={p} value={String(p)}>{Math.round(p * 100)}%</option>
+                            ))}
+                            <option value="fit-width">Fit width</option>
+                            <option value="fit-page">Fit page</option>
+                          </select>
+                          <button type="button" title="Zoom in" onClick={() => nudgeZoom(0.1)}
+                            className="nm-btn ghost" style={{ padding: '2px 8px', fontSize: 13 }}>+</button>
+                          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--ink-3)', minWidth: 36, textAlign: 'right' }}>
+                            {Math.round(zoom * 100)}%
+                          </span>
+                        </div>
                       </div>
                     </div>
                     {/* Sticker picker panel */}
@@ -931,19 +1004,32 @@ export const JournalScreen = ({ user }) => {
                         ))}
                       </div>
                     )}
-                    {/* Full width editable area with draggable stickers */}
-                    <div ref={editorWrapRef} style={{
-                      position: 'relative',
-                      width: '100%',
-                      minHeight: 500,
-                      margin: '0 auto',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      overflow: 'hidden',
-                      borderRadius: 4,
-                      boxShadow: '0 10px 30px rgba(0,0,0,0.15), 0 1px 0 rgba(0,0,0,0.04)',
-                      ...(bgImage === '__custom__' ? { backgroundImage: `url(${customThemeUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' } : {})
-                    }} onClick={(e) => { if (e.target === editorWrapRef.current) setSelectedSticker(null); }}>
+                    {/* A4 page viewport — scrolls both axes so the fixed-size page stays
+                        at true proportions no matter the zoom level, like Google Docs. */}
+                    <div ref={pageViewportRef} className="nm-page-viewport" style={{
+                      overflow: 'auto',
+                      maxHeight: '75vh',
+                      background: 'var(--surface-2)',
+                      padding: '24px 0',
+                    }}>
+                      {/* Sizing slot reserves the zoomed footprint so scrollbars/centering are correct */}
+                      <div style={{ width: A4_WIDTH * zoom, height: A4_HEIGHT * zoom, margin: '0 auto' }}>
+                        <div ref={editorWrapRef} className="nm-a4-page" style={{
+                          position: 'relative',
+                          width: A4_WIDTH,
+                          height: A4_HEIGHT,
+                          transform: `scale(${zoom})`,
+                          transformOrigin: 'top left',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          overflow: 'hidden',
+                          borderRadius: 4,
+                          boxShadow: '0 10px 30px rgba(0,0,0,0.15), 0 1px 0 rgba(0,0,0,0.04)',
+                          backgroundColor: bgImage ? undefined : '#e5d7fd80',
+                          ...(bgImage === '__custom__'
+                            ? { backgroundImage: `url(${customThemeUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }
+                            : bgImage ? (PAPER_STYLES[bgImage] || {}) : {})
+                        }} onClick={(e) => { if (e.target === editorWrapRef.current) setSelectedSticker(null); }}>
                       {stickers.map(s => {
                         const isSelected = selectedSticker === s.id;
                         return (
@@ -986,15 +1072,15 @@ export const JournalScreen = ({ user }) => {
                       data-placeholder={`Today, in your ${activeBook.name.toLowerCase()} book…`}
                       style={{
                         flex: 1,
+                        overflowY: 'auto',
                         padding: '28px 36px',
                         fontFamily: 'var(--font-serif)',
                         fontSize: 16,
                         lineHeight: '28px',
                         color: 'var(--ink)',
                         outline: 'none',
-                        background: bgImage ? undefined : '#e5d7fd80',
+                        background: 'transparent',
                         borderRadius: 0,
-                        ...(bgImage === '__custom__' ? { background: 'transparent' } : bgImage ? PAPER_STYLES[bgImage] || {} : {}),
                       }}
                     ></div>
                       {textBlocks.map(b => {
@@ -1063,6 +1149,8 @@ export const JournalScreen = ({ user }) => {
                           </div>
                         );
                       })}
+                        </div>
+                      </div>
                     </div>
                   </div>
 

@@ -21,11 +21,14 @@ export const PAPER_STYLES = {
   },
 };
 
+// The journal page now renders at a fixed A4 aspect ratio (see A4_WIDTH/A4_HEIGHT in
+// JournalScreen.jsx), so a single `cover` layer fills the page cleanly without the old
+// contain+cover double-layer hack that was needed to hide empty space on a fluid-width page.
 const framedTheme = (file) => ({
-  backgroundImage: `url("/themes/${file}"), url("/themes/${file}")`,
-  backgroundSize: 'contain, cover',
-  backgroundPosition: 'center, center',
-  backgroundRepeat: 'no-repeat, no-repeat',
+  backgroundImage: `url("/themes/${file}")`,
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+  backgroundRepeat: 'no-repeat',
   color: '#1a1a1a',
 });
 

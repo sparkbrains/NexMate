@@ -2430,10 +2430,14 @@ body {
     position: fixed !important;
     left: 0 !important;
     top: 0 !important;
+    /* The on-screen page is scaled with a CSS transform for zoom (see A4_WIDTH/A4_HEIGHT
+       in JournalScreen.jsx) — printing must always be at true, un-zoomed A4 size. */
+    transform: none !important;
     margin: 0 !important;
-    width: 100% !important;
+    width: 210mm !important;
+    height: 297mm !important;
     max-width: none !important;
-    min-height: 100vh !important;
+    max-height: none !important;
     aspect-ratio: auto !important;
     box-shadow: none !important;
     overflow: visible !important;
