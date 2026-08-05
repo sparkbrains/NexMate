@@ -155,6 +155,7 @@ export const LoopsScreen = ({ onNav }) => {
     setResolving(true);
     try {
       await resolveLoop(detail.loop_id);
+      setDetail(prev => prev ? { ...prev, state: 'resolved' } : null);
       await fetchList(detail.loop_id);
     } catch (e) {
       setError(e.message || 'Failed to resolve loop');
@@ -283,13 +284,15 @@ export const LoopsScreen = ({ onNav }) => {
                 )}
 
                 <div style={{ display: 'flex', gap: 6, marginBottom: 22 }}>
-                  <button className="nm-btn accent" onClick={handleReflect} disabled={reflecting}>
-                    <Icon name="plus" size={12} /> {reflecting ? 'Creating thread…' : 'Reflect on this loop'}
-                  </button>
                   {loop.state !== 'resolved' && (
-                    <button className="nm-btn" onClick={handleResolve} disabled={resolving}>
-                      {resolving ? 'Marking…' : 'Mark resolved'}
-                    </button>
+                    <>
+                      <button className="nm-btn accent" onClick={handleReflect} disabled={reflecting}>
+                        <Icon name="plus" size={12} /> {reflecting ? 'Creating thread…' : 'Reflect on this loop'}
+                      </button>
+                      <button className="nm-btn" onClick={handleResolve} disabled={resolving}>
+                        {resolving ? 'Marking…' : 'Mark resolved'}
+                      </button>
+                    </>
                   )}
                 </div>
 

@@ -728,7 +728,7 @@ const EmotionalSpectrum = ({ moods }) => {
 
   return (
     <div style={{ position: 'relative', height: 220, width: '100%', marginTop: 8, overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: -4, right: 0, zIndex: 10, display: 'flex', gap: 4 }}>
+      <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', gap: 4 }}>
         <button type="button" onClick={() => setZoom(z => Math.min(z + 0.25, 3))} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
         <button type="button" onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
         <button type="button" onClick={() => setZoom(1)} className="nm-graph-zoom-btn" aria-label="Reset view">⤢</button>
@@ -759,7 +759,7 @@ const EmotionalBandwidth = ({ distribution }) => {
 
   return (
     <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 13, overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: -10, right: 0, zIndex: 10, display: 'flex', gap: 4 }}>
+      <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', gap: 4 }}>
         <button type="button" onClick={() => setZoom(z => Math.min(z + 0.25, 3))} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
         <button type="button" onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
         <button type="button" onClick={() => setZoom(1)} className="nm-graph-zoom-btn" aria-label="Reset view">⤢</button>
@@ -803,7 +803,7 @@ const CognitiveLoad = ({ trend, granularity }) => {
 
   return (
     <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 8, overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: -4, right: 0, zIndex: 10, display: 'flex', gap: 4 }}>
+      <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', gap: 4 }}>
         <button type="button" onClick={() => setZoom(z => Math.min(z + 0.25, 3))} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
         <button type="button" onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
         <button type="button" onClick={() => setZoom(1)} className="nm-graph-zoom-btn" aria-label="Reset view">⤢</button>
