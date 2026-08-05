@@ -21,12 +21,6 @@ export const PAPER_STYLES = {
   },
 };
 
-// The local theme art (newspaper/tulips/etc.) is a portrait "framed page" graphic —
-// tape, torn edges, stars drawn right up to the border. `cover` alone crops that
-// border away whenever the page container's aspect ratio doesn't match the source
-// image. Layering the same image twice keeps the full, uncropped artwork on top
-// (`contain`) while a `cover` copy underneath fills any leftover edge instead of
-// leaving a flat, mismatched gap.
 const framedTheme = (file) => ({
   backgroundImage: `url("/themes/${file}"), url("/themes/${file}")`,
   backgroundSize: 'contain, cover',

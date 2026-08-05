@@ -65,21 +65,6 @@ def _validate_email(email: str) -> str:
     return cleaned
 
 
-def _validate_reminder_time(value: str) -> str:
-    cleaned = value.strip()
-    if not REMINDER_TIME_RE.match(cleaned):
-        raise ValueError("reminder_time must be in HH:MM 24-hour format")
-    return cleaned
-
-
-def _validate_age(age: int) -> int:
-    if not isinstance(age, int) or isinstance(age, bool):
-        raise ValueError("Age must be a whole number")
-    if age < MIN_AGE or age > MAX_AGE:
-        raise ValueError(f"Age must be between {MIN_AGE} and {MAX_AGE}")
-    return age
-
-
 def _validate_dob(value: str) -> str:
     cleaned = value.strip()
     if not DOB_RE.match(cleaned):
@@ -100,6 +85,21 @@ def _validate_subscription_tier(tier: str) -> str:
     if cleaned not in SUBSCRIPTION_TIERS:
         raise ValueError("Plan must be one of: Bronze, Silver, Gold")
     return SUBSCRIPTION_TIERS[cleaned]
+
+
+def _validate_reminder_time(value: str) -> str:
+    cleaned = value.strip()
+    if not REMINDER_TIME_RE.match(cleaned):
+        raise ValueError("reminder_time must be in HH:MM 24-hour format")
+    return cleaned
+
+
+def _validate_age(age: int) -> int:
+    if not isinstance(age, int) or isinstance(age, bool):
+        raise ValueError("Age must be a whole number")
+    if age < MIN_AGE or age > MAX_AGE:
+        raise ValueError(f"Age must be between {MIN_AGE} and {MAX_AGE}")
+    return age
 
 
 def _utc_now() -> datetime:
@@ -718,10 +718,7 @@ def update_profile(user_id: int, name: str, email: str, dob: str | None, subscri
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id FROM users WHERE email = %s AND id != %s",
-                (cleaned_email, user_id),
-            )
+            cur.execute("SELECT id FROM users WHERE email = %s AND id != %s", (cleaned_email, user_id))
             if cur.fetchone():
                 raise ValueError("Email already registered")
 

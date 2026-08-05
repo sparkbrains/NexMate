@@ -31,8 +31,8 @@ async def insights(
 
 
 @router.get("/knowledge-graph")
-def knowledge_graph(current_user: User = Depends(get_current_user)) -> dict:
-    return build_knowledge_graph(current_user.id)
+def knowledge_graph(days: int = 30, current_user: User = Depends(get_current_user)) -> dict:
+    return build_knowledge_graph(current_user.id, days=days)
 
 
 @router.post("/daily-question/{question_id}/answer")

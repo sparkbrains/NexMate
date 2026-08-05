@@ -208,6 +208,7 @@ const fitGraphView = (cw, ch) => {
 const KnowledgeGraph = ({ graph }) => {
   const [hoveredId, setHoveredId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [isInteractive, setIsInteractive] = useState(false);
   const nodes = graph?.nodes || [];
   const edges = graph?.edges || [];
   const activeId = hoveredId || selectedId;
@@ -282,6 +283,7 @@ const KnowledgeGraph = ({ graph }) => {
     const el = svgWrapRef.current;
     if (!el) return undefined;
     const onWheel = (e) => {
+      if (!el.dataset.interactive) return; // Managed via data attribute to avoid effect re-binding
       e.preventDefault();
       const rect = el.getBoundingClientRect();
       const mx = (e.clientX - rect.left) / rect.width;
@@ -358,8 +360,31 @@ const KnowledgeGraph = ({ graph }) => {
   }
 
   return (
-    <div style={{ height: '100%', minHeight: 440 }}>
-      <div ref={svgWrapRef} style={{ position: 'relative', height: '100%', minHeight: 440 }}>
+    <div style={{ height: 320 }}>
+      <div 
+        ref={svgWrapRef} 
+        data-interactive={isInteractive ? "true" : ""}
+        style={{ position: 'relative', height: '100%' }}
+        onClick={(e) => {
+          if (!isInteractive) {
+            setIsInteractive(true);
+            e.stopPropagation(); // prevent immediate deselect if they just wanted to activate
+          }
+        }}
+        onMouseLeave={() => setIsInteractive(false)}
+      >
+        {!isInteractive && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(2px)',
+            cursor: 'pointer'
+          }}>
+            <div style={{ background: 'var(--surface-0)', padding: '10px 20px', borderRadius: 30, boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
+              Click to interact
+            </div>
+          </div>
+        )}
         <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 1, display: 'flex', gap: 4 }}>
           <button type="button" onClick={() => zoomBy(0.8)} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
           <button type="button" onClick={() => zoomBy(1.25)} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
@@ -691,6 +716,7 @@ const CustomRadarTick = ({ payload, x, y, textAnchor, stroke, radius }) => {
 };
 
 const EmotionalSpectrum = ({ moods }) => {
+  const [zoom, setZoom] = useState(1);
   if (!moods || moods.length === 0) return <div className="nm-meta" style={{ padding: 30 }}>Not enough mood data yet.</div>;
   
   // Format data for Radar Chart
@@ -701,9 +727,14 @@ const EmotionalSpectrum = ({ moods }) => {
   }));
 
   return (
-    <div style={{ height: 260, width: '100%', marginTop: 8 }}>
-      <div style={{ overflow: 'auto', height: '100%' }}>
-        <div style={{ minWidth: 420, height: '100%', padding: '0 10px' }}>
+    <div style={{ position: 'relative', height: 220, width: '100%', marginTop: 8, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: -4, right: 0, zIndex: 10, display: 'flex', gap: 4 }}>
+        <button type="button" onClick={() => setZoom(z => Math.min(z + 0.25, 3))} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
+        <button type="button" onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
+        <button type="button" onClick={() => setZoom(1)} className="nm-graph-zoom-btn" aria-label="Reset view">⤢</button>
+      </div>
+      <div style={{ height: '100%', transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.2s' }}>
+        <div style={{ height: '100%', padding: '0 10px' }}>
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart cx="50%" cy="50%" outerRadius="55%" data={data}>
               <PolarGrid stroke="var(--rule-soft)" />
@@ -723,22 +754,28 @@ const EmotionalSpectrum = ({ moods }) => {
 };
 
 const EmotionalBandwidth = ({ distribution }) => {
+  const [zoom, setZoom] = useState(1);
   if (!distribution || distribution.length === 0) return <div className="nm-meta" style={{ padding: 30 }}>No intensity data yet.</div>;
 
   return (
-    <div style={{ height: 230, width: '100%', marginTop: 13 }}>
-      <div style={{ overflow: 'auto', height: '100%' }}>
-        <div style={{ minWidth: 450, minHeight: 280, height: '100%' }}>
+    <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 13, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: -10, right: 0, zIndex: 10, display: 'flex', gap: 4 }}>
+        <button type="button" onClick={() => setZoom(z => Math.min(z + 0.25, 3))} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
+        <button type="button" onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
+        <button type="button" onClick={() => setZoom(1)} className="nm-graph-zoom-btn" aria-label="Reset view">⤢</button>
+      </div>
+      <div style={{ height: '100%', transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.2s' }}>
+        <div style={{ height: '100%' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={distribution} margin={{ top: 17, right: 10, left: 55, bottom: 25 }}>
+            <AreaChart data={distribution} margin={{ top: 117, right: 20, left: 30, bottom: 40 }}>
               <defs>
                 <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.8}/>
                   <stop offset="95%" stopColor="var(--accent)" stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <XAxis dataKey="intensity" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Intensity (1-10)', position: 'insideBottom', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
-              <YAxis tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Frequency (Days)', angle: -90, position: 'insideLeft', offset: -5, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <XAxis dataKey="intensity" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Intensity (1-10)', position: 'insideBottom', offset: -20, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <YAxis tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Frequency (Days)', angle: -90, position: 'insideLeft', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
               <Tooltip 
                 contentStyle={{ background: 'var(--surface-0)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
                 formatter={(value) => [value, 'Frequency']}
@@ -754,6 +791,7 @@ const EmotionalBandwidth = ({ distribution }) => {
 };
 
 const CognitiveLoad = ({ trend, granularity }) => {
+  const [zoom, setZoom] = useState(1);
   const n = trend?.length || 0;
   if (!n) return <div className="nm-meta" style={{ padding: 30 }}>No data yet.</div>;
 
@@ -764,9 +802,14 @@ const CognitiveLoad = ({ trend, granularity }) => {
   }));
 
   return (
-    <div style={{ height: 280, width: '100%', marginTop: 8 }}>
-      <div style={{ overflow: 'auto', height: '100%' }}>
-        <div style={{ minWidth: 500, minHeight: 320, height: '100%' }}>
+    <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 8, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: -4, right: 0, zIndex: 10, display: 'flex', gap: 4 }}>
+        <button type="button" onClick={() => setZoom(z => Math.min(z + 0.25, 3))} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
+        <button type="button" onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
+        <button type="button" onClick={() => setZoom(1)} className="nm-graph-zoom-btn" aria-label="Reset view">⤢</button>
+      </div>
+      <div style={{ height: '100%', transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.2s' }}>
+        <div style={{ height: '100%' }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data} margin={{ top: 27, right: 20, left: 30, bottom: 40 }}>
               <defs>
@@ -793,11 +836,13 @@ const CognitiveLoad = ({ trend, granularity }) => {
 };
 
 const RANGES = [
-  { k: '7d', d: 7 },
-  { k: '30d', d: 30 },
-  { k: '90d', d: 90 },
-  { k: '1y', d: 365 },
+  { k: '7d', d: 7, label: 'Week' },
+  { k: '30d', d: 30, label: 'Month' },
+  { k: '90d', d: 90, label: '90 Days' },
+  { k: '1y', d: 365, label: 'Year' },
 ];
+
+const KG_RANGES = RANGES.filter(r => r.k !== '1y');
 
 const GRANULARITY_LABELS = { day: 'Today', week: 'This week', month: 'This month' };
 
@@ -808,8 +853,10 @@ export const InsightsScreen = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [knowledgeGraph, setKnowledgeGraph] = useState(null);
+  const [kgRangeKey, setKgRangeKey] = useState('30d');
 
   const days = useMemo(() => RANGES.find((r) => r.k === rangeKey)?.d ?? 30, [rangeKey]);
+  const kgDays = useMemo(() => RANGES.find((r) => r.k === kgRangeKey)?.d ?? 30, [kgRangeKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -823,11 +870,11 @@ export const InsightsScreen = () => {
 
   useEffect(() => {
     let cancelled = false;
-    getKnowledgeGraph()
+    getKnowledgeGraph(kgDays)
       .then((data) => { if (!cancelled) setKnowledgeGraph(data); })
       .catch(() => { /* graph is a bonus visualization; fail silently */ });
     return () => { cancelled = true; };
-  }, []);
+  }, [kgDays]);
 
   // Slice emotion_trend to the granularity window
   const visibleTrend = useMemo(() => {
@@ -1053,20 +1100,31 @@ export const InsightsScreen = () => {
           </div>
 
           <div className="nm-card" style={{ marginBottom: 14 }}>
+            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div className="nm-eyebrow">Knowledge Graph</div>
+                <div className="nm-h3" style={{ marginTop: 4 }}>How your triggers and core beliefs connect</div>
+              </div>
+              <select 
+                value={kgRangeKey} 
+                onChange={(e) => setKgRangeKey(e.target.value)}
+                style={{ padding: '6px 28px 6px 12px', borderRadius: 20, border: '1px solid var(--rule)', background: 'var(--surface-0)', fontSize: 12, fontWeight: 500, color: 'var(--ink)', cursor: 'pointer' }}
+              >
+                {KG_RANGES.map(r => (
+                  <option key={r.k} value={r.k}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ position: 'relative', width: '100%', height: 320, border: '1px solid var(--rule-soft)', borderRadius: 8, overflow: 'hidden', marginTop: 12 }}>
+              <KnowledgeGraph graph={knowledgeGraph} />
+            </div>
+          </div>
+
+          <div className="nm-card" style={{ marginBottom: 14 }}>
             <div style={{ marginBottom: 14 }}>
               <div className="nm-eyebrow">Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
             </div>
             <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />
-          </div>
-
-          <div className="nm-card" style={{ marginBottom: 14 }}>
-            <div style={{ marginBottom: 4 }}>
-              <div className="nm-eyebrow">Knowledge Graph</div>
-              <div className="nm-h3" style={{ marginTop: 4 }}>How your triggers and core beliefs connect</div>
-            </div>
-            <div style={{ position: 'relative', width: '100%', minHeight: 440, border: '1px solid var(--rule-soft)', borderRadius: 8, overflow: 'hidden', marginTop: 12 }}>
-              <KnowledgeGraph graph={knowledgeGraph} />
-            </div>
           </div>
 
           {false && /* Discovered Patterns, Subconscious Themes, Month in Extremes — hidden for now */ (
