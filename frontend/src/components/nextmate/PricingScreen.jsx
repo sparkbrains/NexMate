@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const Crown = ({ color }) => (
   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
@@ -9,21 +10,20 @@ const Crown = ({ color }) => (
 );
 
 const PricingScreen = ({ isLanding }) => {
+  const navigate = useNavigate();
   return (
     <div className={isLanding ? '' : 'nm-main'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: isLanding ? '40px 20px' : '60px 20px', overflowY: isLanding ? 'visible' : 'auto', position: 'relative' }}>
-      
+
       {isLanding && (
-        <button 
-          onClick={() => window.location.href = '/'} 
+        <button
+          onClick={() => navigate('/')}
           style={{ position: 'absolute', top: 40, left: 40, background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', transition: 'color 0.2s', padding: 0 }}
           onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
           onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; }}
         >
-          ← Back
+          ←
         </button>
-      )}
-
-      <div style={{ textAlign: 'center', marginBottom: 60, marginTop: isLanding ? 40 : 0 }}>
+      )}<div style={{ textAlign: 'center', marginBottom: 60, marginTop: isLanding ? 40 : 0 }}>
         <h1 className="nm-h1" style={{ fontSize: 42, marginBottom: 16 }}>Plans & Pricing</h1>
         <p style={{ fontSize: 16, maxWidth: 600, margin: '0 auto', lineHeight: 1.6, color: 'var(--ink-3)', fontWeight: 400 }}>
           Unlock the full potential of your subconscious. Get more insights into your daily emotional loops and behavioral patterns with a premium subscription.

@@ -521,6 +521,7 @@ export const ChatScreen = ({
   useEffect(() => { refreshThreadSummary(); }, [threadId]);
 
   useEffect(() => {
+    setDraft('');
     setShowSaveToJournal(false);
     setJournalTargetBookId('');
     setNewJournalBookName('');

@@ -170,9 +170,7 @@ export const LoopsScreen = ({ onNav }) => {
       const result = await reflectOnLoop(detail.loop_id);
       if (result && result.thread_id) {
         // Open reflection thread in a new browser tab
-        const url = new URL(window.location.href);
-        url.searchParams.set('thread', result.thread_id);
-        window.open(url.toString(), '_blank');
+        window.open(`${window.location.origin}/chat/${result.thread_id}`, '_blank');
         // Optionally keep the current view unchanged or navigate elsewhere
       }
     } catch (e) {

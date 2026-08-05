@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   login,
   signupRequestOtp,
@@ -60,6 +61,7 @@ const ENTRY_NO = {
 };
 
 export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onBack }) {
+  const navigate = useNavigate();
   // mode: 'login' | 'signup' | 'otp' | 'forgot' | 'forgot-otp' | 'reset'
   const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState('');
@@ -222,7 +224,9 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
       setName('');
       setDob('');
     }
-    setMode(isLogin ? 'signup' : 'login');
+    const nextMode = isLogin ? 'signup' : 'login';
+    setMode(nextMode);
+    navigate(`/${nextMode}`);
   };
 
   const backToSignup = () => {
@@ -335,7 +339,7 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
                 onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
                 onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; }}
               >
-                ← Back
+                ←
               </button>
             )}
             <img src={LogoIco} alt="Nextmate" height="30" className="nm-logo" />

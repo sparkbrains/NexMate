@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/nextmate/Shell';
 import { PromptPackPop } from './components/nextmate/PromptPackPop';
 import { TodayScreen } from './components/nextmate/TodayScreen';
@@ -19,12 +20,24 @@ import { useJournalReminder } from './hooks/useJournalReminder';
 const newThreadId = () =>
   (crypto.randomUUID ? crypto.randomUUID() : `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
+const ROUTE_PATH = {
+  today: '/today',
+  chat: '/chat',
+  journal: '/journal',
+  'prompt-packs': '/prompt-packs',
+  loops: '/loops',
+  insights: '/insights',
+  profile: '/profile',
+};
+
 export default function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(() => (getToken() ? getUser() : null));
-  const [route, setRoute] = useState('today');
   const [threads, setThreads] = useState([]);
-  const [threadId, setThreadId] = useState(null);
-  const [chatParams, setChatParams] = useState(null);
+  const currentThreadId = location.pathname.match(/^\/chat\/([^/]+)$/)?.[1] || null;
+  const chatParams = location.state || null;
+  const activeThread = threads.find((t) => t.thread_id === currentThreadId);
 
   // Validate token on mount
   useEffect(() => {
@@ -52,19 +65,9 @@ export default function App() {
     if (user) localStorage.setItem('nextmate_theme', theme);
   }, [theme, user]);
 
-  // Initialize from URL query param (e.g., ?thread=abc123)
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tid = params.get('thread');
-    if (tid) {
-      setThreadId(tid);
-      setRoute('chat');
-    }
-  }, []);
-
-  // Close sidebar drawer on route change
+  // Close sidebar drawer on navigation
   const navigateTo = (r) => {
-    setRoute(r);
+    navigate(ROUTE_PATH[r] || '/today');
     setSidebarOpen(false);
   };
 
@@ -82,9 +85,8 @@ export default function App() {
   }, [user, refreshThreads]);
 
   const openThread = (id, params = null) => {
-    setThreadId(id);
-    setChatParams(params);
-    navigateTo('chat');
+    navigate(`/chat/${id}`, { state: params });
+    setSidebarOpen(false);
   };
 
   const beginReflection = () => {
@@ -95,109 +97,112 @@ export default function App() {
     try {
       await deleteThreadApi(id);
       setThreads((prev) => prev.filter((t) => t.thread_id !== id));
-      if (threadId === id) { setThreadId(null); setChatParams(null); navigateTo('today'); }
+      if (currentThreadId === id) navigate('/today', { replace: true });
     } catch { /* ignore */ }
-  }, [threadId]);
+  }, [currentThreadId, navigate]);
 
   const onLogout = async () => {
     try { await apiLogout(); } catch { clearSession(); }
     setUser(null);
     setThreads([]);
-    setThreadId(null);
-    setChatParams(null);
-    navigateTo('today');
+    navigate('/today', { replace: true });
   };
 
   const onAuthExpired = () => {
     setUser(null);
     setThreads([]);
-    setThreadId(null);
-    setChatParams(null);
-    navigateTo('today');
+    navigate('/today', { replace: true });
   };
 
   if (!user) {
-    if (window.location.pathname === '/pricing') {
+    if (location.pathname === '/pricing') {
       return (
         <div style={{ minHeight: '100vh', background: 'var(--surface)' }}>
           <PricingScreen isLanding={true} />
         </div>
       );
     }
-    return <LandingPage onAuth={setUser} />;
+    const authMode = location.pathname === '/login' ? 'login'
+      : location.pathname === '/signup' ? 'signup'
+      : null;
+    return <LandingPage onAuth={setUser} authMode={authMode} />;
   }
 
-  const activeThread = threads.find((t) => t.thread_id === threadId);
+  const activeRoute = location.pathname.split('/')[1] || 'today';
 
-  let screen;
-  if (route === 'chat') {
-    screen = (
-      <ChatScreen
-        onNav={navigateTo}
-        threadId={threadId}
-        threadTitle={chatParams?.threadTitle || activeThread?.title}
-        initialMessage={chatParams?.initialMessage}
-        onMessageDone={refreshThreads}
-        onAuthExpired={onAuthExpired}
-      />
-    );
-  } else if (route === 'journal') {
-    screen = <JournalScreen user={user} />;
-  } else if (route === 'prompt-packs') {
-    screen = <PromptPacksScreen />;
-  } else if (route === 'loops') {
-    screen = (
-      <LoopsScreen
-        onNav={(r, params) => {
-          if (r === 'chat') {
-            params?.threadId ? openThread(params.threadId, params) : beginReflection();
-          } else {
-            navigateTo(r);
-          }
-        }}
-      />
-    );
-  } else if (route === 'insights') {
-    screen = <InsightsScreen />;
-  } else if (route === 'profile') {
-    screen = (
-      <ProfilePage
-        onLogout={onLogout}
-        onUserUpdate={(updated) => { setUser(updated); persistUser(updated); }}
-      />
-    );
-  } else {
-    screen = (
-      <TodayScreen
-        onNav={(r, params) => {
-          if (r === 'chat') {
-            refreshThreads();
-            params?.threadId ? openThread(params.threadId, params) : beginReflection();
-          } else {
-            navigateTo(r);
-          }
-        }}
-        threads={threads}
-        user={user}
-      />
-    );
-  }
+  const chatEl = (
+    <ChatScreen
+      onNav={navigateTo}
+      threadId={currentThreadId}
+      threadTitle={chatParams?.threadTitle || activeThread?.title}
+      initialMessage={chatParams?.initialMessage}
+      onMessageDone={refreshThreads}
+      onAuthExpired={onAuthExpired}
+    />
+  );
+
+  const todayEl = (
+    <TodayScreen
+      onNav={(r, params) => {
+        if (r === 'chat') {
+          refreshThreads();
+          params?.threadId ? openThread(params.threadId, params) : beginReflection();
+        } else {
+          navigateTo(r);
+        }
+      }}
+      threads={threads}
+      user={user}
+    />
+  );
+
+  const loopsEl = (
+    <LoopsScreen
+      onNav={(r, params) => {
+        if (r === 'chat') {
+          params?.threadId ? openThread(params.threadId, params) : beginReflection();
+        } else {
+          navigateTo(r);
+        }
+      }}
+    />
+  );
 
   return (
     <AppContext.Provider value={{ theme, setTheme, sidebarOpen, setSidebarOpen }}>
-      <div className="nm-app" data-screen-label={`Nextmate — ${route}`}>
+      <div className="nm-app" data-screen-label={`Nextmate — ${activeRoute}`}>
         <Sidebar
-          active={route}
+          active={activeRoute}
           onNav={navigateTo}
           threads={threads}
-          activeThreadId={threadId}
+          activeThreadId={currentThreadId}
           onSelectThread={openThread}
           onNewThread={beginReflection}
           onDeleteThread={onDeleteThread}
           user={user}
           onLogout={onLogout}
         />
-        {screen}
+        <Routes>
+          <Route path="/today" element={todayEl} />
+          <Route path="/chat" element={chatEl} />
+          <Route path="/chat/:threadId" element={chatEl} />
+          <Route path="/journal" element={<JournalScreen user={user} />} />
+          <Route path="/prompt-packs" element={<PromptPacksScreen />} />
+          <Route path="/loops" element={loopsEl} />
+          <Route path="/insights" element={<InsightsScreen />} />
+          <Route
+            path="/profile"
+            element={(
+              <ProfilePage
+                onLogout={onLogout}
+                onUserUpdate={(updated) => { setUser(updated); persistUser(updated); }}
+              />
+            )}
+          />
+          <Route path="/pricing" element={<Navigate to="/today" replace />} />
+          <Route path="/" element={<Navigate to="/today" replace />} />
+          <Route path="*" element={<Navigate to="/today" replace />} />
+        </Routes>
         <PromptPackPop />
         <SupportWidget />
         <JournalReminderToast
