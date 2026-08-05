@@ -200,7 +200,7 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
 
         {!collapsed && (
           <>
-        <button className="nm-btn accent" style={{ width: '100%', marginBottom: 16 }} onClick={() => { onNewThread && onNewThread(); setSidebarOpen(false); }}>
+        <button className="nm-btn accent" style={{ width: 'calc(100% - 32px)', margin: '0 16px 16px 16px', justifyContent: 'center' }} onClick={() => { onNewThread && onNewThread(); setSidebarOpen(false); }}>
           <Icon name="plus" size={12} /> Begin reflection
         </button>
 

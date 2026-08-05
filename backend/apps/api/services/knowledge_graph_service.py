@@ -3,8 +3,8 @@ from collections import Counter
 from typing import Any
 
 import networkx as nx
-
-from apps.db import get_connection
+from datetime import timedelta
+from apps.db import get_connection, utc_now
 
 MIN_NODE_FREQUENCY = 2
 
@@ -17,16 +17,17 @@ def _clean_belief(raw: str) -> str:
     return str(raw).strip().rstrip(".")
 
 
-def _fetch_entries(user_id: int) -> list[dict[str, Any]]:
+def _fetch_entries(user_id: int, days: int) -> list[dict[str, Any]]:
+    cutoff = utc_now() - timedelta(days=days)
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT triggers, core_beliefs
                 FROM journal_entries_v2
-                WHERE user_id = %s
+                WHERE user_id = %s AND created_at >= %s
                 """,
-                (user_id,),
+                (user_id, cutoff),
             )
             return cur.fetchall()
 
@@ -128,7 +129,7 @@ def _fetch_loop_edges(user_id: int) -> list[dict[str, Any]]:
             return cur.fetchall()
 
 
-def build_knowledge_graph(user_id: int) -> dict[str, Any]:
+def build_knowledge_graph(user_id: int, days: int = 30) -> dict[str, Any]:
     """Bipartite trigger<->core-belief graph built with NetworkX.
 
     An edge means a trigger and a core belief were mentioned together in the
@@ -136,7 +137,7 @@ def build_knowledge_graph(user_id: int) -> dict[str, Any]:
     Pairings that were promoted to a detected `loop` are flagged so the
     frontend can render them as confirmed patterns rather than one-offs.
     """
-    entries = _fetch_entries(user_id)
+    entries = _fetch_entries(user_id, days)
 
     trigger_labels: dict[str, str] = {}
     belief_labels: dict[str, str] = {}
