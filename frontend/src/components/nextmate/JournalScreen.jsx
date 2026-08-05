@@ -33,6 +33,32 @@ const BOOK_COLORS = [
   'var(--accent)', 'var(--clay)', 'var(--gold)', 'var(--teal)', 'var(--plum)', 'var(--ink-3)',
 ];
 
+// Curated font stack for the journal editor — mirrors the variety of a Canva-style font picker.
+const FONT_OPTIONS = [
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Times New Roman', value: "'Times New Roman', serif" },
+  { label: 'Arial', value: 'Arial, sans-serif' },
+  { label: 'Verdana', value: 'Verdana, sans-serif' },
+  { label: 'Courier New', value: "'Courier New', monospace" },
+  { label: 'Playfair Display', value: "'Playfair Display', serif" },
+  { label: 'Merriweather', value: "'Merriweather', serif" },
+  { label: 'Lora', value: "'Lora', serif" },
+  { label: 'Poppins', value: "'Poppins', sans-serif" },
+  { label: 'Montserrat', value: "'Montserrat', sans-serif" },
+  { label: 'Raleway', value: "'Raleway', sans-serif" },
+  { label: 'Oswald', value: "'Oswald', sans-serif" },
+  { label: 'Quicksand', value: "'Quicksand', sans-serif" },
+  { label: 'Comfortaa', value: "'Comfortaa', sans-serif" },
+  { label: 'Caveat', value: "'Caveat', cursive" },
+  { label: 'Dancing Script', value: "'Dancing Script', cursive" },
+  { label: 'Pacifico', value: "'Pacifico', cursive" },
+  { label: 'Amatic SC', value: "'Amatic SC', cursive" },
+  { label: 'Shadows Into Light', value: "'Shadows Into Light', cursive" },
+  { label: 'Indie Flower', value: "'Indie Flower', cursive" },
+  { label: 'Bebas Neue', value: "'Bebas Neue', sans-serif" },
+  { label: 'Space Mono', value: "'Space Mono', monospace" },
+];
+
 const todayISO = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -199,13 +225,13 @@ const StreakBlock = ({ streak }) => {
         day streak!
       </div>
       
-      <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 10px', color: 'var(--ink)' }}>
+      <div style={{ background: 'var(--surface)', borderRadius: 12, padding: '12px 10px', color: 'var(--ink)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
           {streak.last_7.map((d) => {
             const dateObj = new Date(d.date);
             const dayName = dateObj.toLocaleDateString(undefined, { weekday: 'short' }).slice(0, 2);
             return (
-              <div key={`head-${d.date}`} style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 'bold', color: 'var(--ink-3)' }}>
+              <div key={`head-${d.date}`} style={{ flex: 1, minWidth: 0, textAlign: 'center', fontSize: 12, fontWeight: 'bold', color: 'var(--ink-3)' }}>
                 {dayName}
               </div>
             );
@@ -213,22 +239,23 @@ const StreakBlock = ({ streak }) => {
         </div>
         <div style={{ display: 'flex', position: 'relative', height: 36, alignItems: 'center' }}>
           {/* Background bar for streak */}
-          <div style={{ position: 'absolute', left: '6%', right: '6%', height: 36, background: 'var(--surface-2)', borderRadius: 18, zIndex: 0 }} />
-          
+          <div style={{ position: 'absolute', left: 0, right: 0, height: 36, background: 'var(--surface-2)', borderRadius: 18, zIndex: 0 }} />
+
           {streak.last_7.map((d) => {
             const isLit = d.has_entry;
             const isToday = d.is_today;
-            
+
             return (
-              <div key={`pip-${d.date}`} style={{ flex: 1, display: 'flex', justifyContent: 'center', zIndex: 1 }}>
-                <div style={{ 
-                  width: 32, 
-                  height: 32, 
-                  borderRadius: 16, 
+              <div key={`pip-${d.date}`} style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'center', zIndex: 1 }}>
+                <div style={{
+                  width: '78%',
+                  maxWidth: 32,
+                  aspectRatio: '1',
+                  borderRadius: '50%',
                   background: isLit ? 'var(--gold)' : 'transparent',
                   color: isLit ? 'white' : 'var(--ink-2)',
-                  display: 'flex', 
-                  alignItems: 'center', 
+                  display: 'flex',
+                  alignItems: 'center',
                   justifyContent: 'center',
                   fontWeight: 'bold',
                   boxShadow: isLit ? '0 2px 6px rgba(242,196,110,0.5)' : 'none',
@@ -300,7 +327,7 @@ export const JournalScreen = ({ user }) => {
   const [showStickerPanel, setShowStickerPanel] = useState(false);
   const [stickers, setStickers] = useState([]); // { id, src, x, y, w, rotate }
   const [selectedSticker, setSelectedSticker] = useState(null);
-  const [textBlocks, setTextBlocks] = useState([]); // { id, text, x, y, rotate }
+  const [textBlocks, setTextBlocks] = useState([]); // { id, text, x, y, rotate, fontFamily, fontSize, color, bold, italic, underline, align }
   const [selectedBlock, setSelectedBlock] = useState(null);
   const [textColor, setTextColor] = useState('#000000');
   const [hlColor, setHlColor] = useState('#fff176');
@@ -309,9 +336,6 @@ export const JournalScreen = ({ user }) => {
   const editorWrapRef = useRef(null);
 
   const STICKERS = [
-    '/stickers/sticker-1.jpg', '/stickers/sticker-2.jpg', '/stickers/sticker-3.jpg',
-    '/stickers/sticker-4.jpg', '/stickers/sticker-5.jpg', '/stickers/sticker-flowers.jpg',
-    '/stickers/sticker-butterfly.jpg', '/stickers/sticker-music.jpg',
     '/stickers/sticker-6.png', '/stickers/sticker-7.png', '/stickers/sticker-8.png',
     '/stickers/sticker-9.png', '/stickers/Sticker-10.png', '/stickers/sticker-11.png',
   ];
@@ -338,13 +362,25 @@ export const JournalScreen = ({ user }) => {
 
   const addTextBlock = () => {
     const id = Date.now();
-    setTextBlocks(prev => [...prev, { id, text: 'Your text here', x: 40, y: 40, rotate: 0 }]);
+    setTextBlocks(prev => [...prev, {
+      id, text: 'Your text here', x: 40, y: 40, rotate: 0,
+      fontFamily: FONT_OPTIONS[0].value, fontSize: 18, color: '#000000',
+      bold: false, italic: false, underline: false, align: 'left',
+    }]);
     setSelectedBlock(id);
   };
 
   const updateTextBlock = (id, fields) => setTextBlocks(prev => prev.map(b => b.id === id ? { ...b, ...fields } : b));
 
   const removeTextBlock = (id) => { setTextBlocks(prev => prev.filter(b => b.id !== id)); setSelectedBlock(null); };
+
+  const duplicateTextBlock = (id) => {
+    const src = textBlocks.find(b => b.id === id);
+    if (!src) return;
+    const copy = { ...src, id: Date.now(), x: src.x + 16, y: src.y + 16 };
+    setTextBlocks(prev => [...prev, copy]);
+    setSelectedBlock(copy.id);
+  };
 
   const blockDragState = useRef(null);
 
@@ -387,6 +423,34 @@ export const JournalScreen = ({ user }) => {
     const sel = window.getSelection();
     sel.removeAllRanges();
     sel.addRange(range);
+  };
+
+  // Keeps savedRangeRef pointed at the last real selection made inside the editor,
+  // since opening a <select> or the native color picker steals focus and collapses
+  // window.getSelection() before the resulting onChange fires.
+  const trackSelection = () => {
+    const range = saveSelection();
+    if (range && editorRef.current?.contains(range.commonAncestorContainer)) {
+      savedRangeRef.current = range;
+    }
+  };
+
+  const applyCommand = (cmd, value) => {
+    editorRef.current?.focus();
+    if (savedRangeRef.current) restoreSelection(savedRangeRef.current);
+    document.execCommand(cmd, false, value);
+    trackSelection();
+  };
+
+  const handleDownloadPdf = () => {
+    setSelectedSticker(null);
+    setSelectedBlock(null);
+    requestAnimationFrame(() => {
+      const el = editorWrapRef.current;
+      if (el) el.classList.add('print-target');
+      window.print();
+      if (el) el.classList.remove('print-target');
+    });
   };
 
   const onStickerMouseDown = (e, id) => {
@@ -716,139 +780,158 @@ export const JournalScreen = ({ user }) => {
                     marginBottom: 4,
                   }}>
                     {/* Toolbar */}
-                    <div style={{
-                      display: 'flex', flexWrap: 'wrap', gap: 2, padding: '6px 8px',
-                      borderBottom: '1px solid var(--rule)', background: 'var(--surface)',
-                    }}>
-                      {[
-                        { cmd: 'bold', label: <b>B</b> },
-                        { cmd: 'italic', label: <i>I</i> },
-                        { cmd: 'underline', label: <u>U</u> },
-                        { cmd: 'strikeThrough', label: <s>S</s> },
-                      ].map(({ cmd, label }) => (
-                        <button key={cmd} type="button" onMouseDown={(e) => { e.preventDefault(); document.execCommand(cmd); }}
-                          className="nm-btn ghost"
-                          style={{ padding: '2px 7px', fontSize: 13, minWidth: 28 }}>
-                          {label}
+                    <div style={{ borderBottom: '1px solid var(--rule)' }}>
+                      <div className="nm-toolbar-row">
+                        {/* Font group */}
+                        <div className="nm-toolbar-group">
+                          <span className="nm-toolbar-label">Font</span>
+                          <select onMouseDown={(e) => e.stopPropagation()}
+                            onChange={(e) => { applyCommand('fontName', e.target.value); e.target.value = ''; }}
+                            defaultValue=""
+                            style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '3px 4px', cursor: 'pointer', maxWidth: 130 }}>
+                            <option value="" disabled>Typeface</option>
+                            {FONT_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                          </select>
+                          <select onMouseDown={(e) => e.stopPropagation()}
+                            onChange={(e) => { applyCommand('fontSize', e.target.value); e.target.value = ''; }}
+                            defaultValue=""
+                            style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '3px 4px', cursor: 'pointer' }}>
+                            <option value="" disabled>Size</option>
+                            <option value="1">Small</option>
+                            <option value="3">Normal</option>
+                            <option value="5">Large</option>
+                            <option value="7">Huge</option>
+                          </select>
+                        </div>
+
+                        {/* Style group */}
+                        <div className="nm-toolbar-group">
+                          <span className="nm-toolbar-label">Style</span>
+                          {[
+                            { cmd: 'bold', label: <b>B</b> },
+                            { cmd: 'italic', label: <i>I</i> },
+                            { cmd: 'underline', label: <u>U</u> },
+                            { cmd: 'strikeThrough', label: <s>S</s> },
+                          ].map(({ cmd, label }) => (
+                            <button key={cmd} type="button" onMouseDown={(e) => { e.preventDefault(); applyCommand(cmd); }}
+                              className="nm-btn ghost"
+                              style={{ padding: '2px 7px', fontSize: 13, minWidth: 28 }}>
+                              {label}
+                            </button>
+                          ))}
+                          <label title="Text color" style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', padding: '2px 5px', borderRadius: 4, fontSize: 12, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)' }}>
+                            <span style={{ borderBottom: `3px solid ${textColor}`, lineHeight: 1.1 }}>A</span>
+                            <input type="color" value={textColor} style={{ width: 16, height: 16, border: 'none', padding: 0, cursor: 'pointer', background: 'none' }}
+                              onMouseDown={() => { trackSelection(); }}
+                              onChange={(e) => { setTextColor(e.target.value); applyCommand('foreColor', e.target.value); }} />
+                          </label>
+                          <button type="button" title="Remove text color" onMouseDown={(e) => { e.preventDefault(); applyCommand('foreColor', 'inherit'); }}
+                            className="nm-btn ghost" style={{ padding: '2px 5px', fontSize: 11 }}>A⊘</button>
+                          <label title="Highlight" style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', padding: '2px 5px', borderRadius: 4, fontSize: 12, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: hlColor }}>
+                            <span style={{ color: '#333', mixBlendMode: 'multiply' }}>H</span>
+                            <input type="color" value={hlColor} style={{ width: 16, height: 16, border: 'none', padding: 0, cursor: 'pointer', background: 'none' }}
+                              onMouseDown={() => { trackSelection(); }}
+                              onChange={(e) => { setHlColor(e.target.value); applyCommand('backColor', e.target.value); }} />
+                          </label>
+                          <button type="button" title="Remove highlight" onMouseDown={(e) => { e.preventDefault(); applyCommand('backColor', 'transparent'); }}
+                            className="nm-btn ghost" style={{ padding: '2px 5px', fontSize: 11 }}>H⊘</button>
+                        </div>
+
+                        {/* Layout group */}
+                        <div className="nm-toolbar-group">
+                          <span className="nm-toolbar-label">Layout</span>
+                          {[
+                            { cmd: 'justifyLeft', label: '⬛▭▭' },
+                            { cmd: 'justifyCenter', label: '▭⬛▭' },
+                            { cmd: 'justifyRight', label: '▭▭⬛' },
+                          ].map(({ cmd, label }) => (
+                            <button key={cmd} type="button" onMouseDown={(e) => { e.preventDefault(); applyCommand(cmd); }}
+                              className="nm-btn ghost"
+                              style={{ padding: '2px 7px', fontSize: 10 }}>
+                              {label}
+                            </button>
+                          ))}
+                          <button type="button" onMouseDown={(e) => { e.preventDefault(); applyCommand('insertUnorderedList'); }}
+                            className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>≡ Bullets</button>
+                          <button type="button" onMouseDown={(e) => { e.preventDefault(); applyCommand('insertOrderedList'); }}
+                            className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}># Numbers</button>
+                        </div>
+
+                        <button type="button" title="Download this entry as a PDF" onClick={handleDownloadPdf}
+                          className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13, color: 'var(--ink-3)', marginLeft: 'auto' }}>
+                          <Icon name="download" size={13} /> Download PDF
                         </button>
-                      ))}
-                      <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
-                      <label title="Text color" style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', padding: '2px 5px', borderRadius: 4, fontSize: 12, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)' }}>
-                        <span style={{ borderBottom: `3px solid ${textColor}`, lineHeight: 1.1 }}>A</span>
-                        <input type="color" value={textColor} style={{ width: 16, height: 16, border: 'none', padding: 0, cursor: 'pointer', background: 'none' }}
-                          onMouseDown={() => { savedRangeRef.current = saveSelection(); }}
-                          onChange={(e) => { setTextColor(e.target.value); restoreSelection(savedRangeRef.current); document.execCommand('foreColor', false, e.target.value); }} />
-                      </label>
-                      <button type="button" title="Remove text color" onMouseDown={(e) => { e.preventDefault(); restoreSelection(savedRangeRef.current); document.execCommand('foreColor', false, 'inherit'); }}
-                        className="nm-btn ghost" style={{ padding: '2px 5px', fontSize: 11 }}>A⊘</button>
-                      <label title="Highlight" style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', padding: '2px 5px', borderRadius: 4, fontSize: 12, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: hlColor }}>
-                        <span style={{ color: '#333', mixBlendMode: 'multiply' }}>H</span>
-                        <input type="color" value={hlColor} style={{ width: 16, height: 16, border: 'none', padding: 0, cursor: 'pointer', background: 'none' }}
-                          onMouseDown={() => { savedRangeRef.current = saveSelection(); }}
-                          onChange={(e) => { setHlColor(e.target.value); restoreSelection(savedRangeRef.current); document.execCommand('backColor', false, e.target.value); }} />
-                      </label>
-                      <button type="button" title="Remove highlight" onMouseDown={(e) => { e.preventDefault(); restoreSelection(savedRangeRef.current); document.execCommand('backColor', false, 'transparent'); }}
-                        className="nm-btn ghost" style={{ padding: '2px 5px', fontSize: 11 }}>H⊘</button>
-                      <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
-                      {[
-                        { cmd: 'justifyLeft', label: '⬛▭▭' },
-                        { cmd: 'justifyCenter', label: '▭⬛▭' },
-                        { cmd: 'justifyRight', label: '▭▭⬛' },
-                      ].map(({ cmd, label }) => (
-                        <button key={cmd} type="button" onMouseDown={(e) => { e.preventDefault(); document.execCommand(cmd); }}
-                          className="nm-btn ghost"
-                          style={{ padding: '2px 7px', fontSize: 10 }}>
-                          {label}
-                        </button>
-                      ))}
-                      <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
-                      <select onMouseDown={(e) => e.stopPropagation()}
-                        onChange={(e) => { setBgImage(e.target.value); e.target.value = ''; }}
-                        defaultValue=""
-                        style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer', maxWidth: 120 }}>
-                        <option value="" disabled>🎨 Theme</option>
-                        <option value="bullet">Dot Grid (Bullet)</option>
-                        <option value="lined">Ruled Notebook</option>
-                        <option value="coffee">Coffee Stained</option>
-                        <option value="newspaper">Newspaper</option>
-                        <option value="tulips">Tulips</option>
-                        <option value="blue-floral">Blue Floral</option>
-                        <option value="blue-paper">Blue Paper</option>
-                        <option value="aesthetic">Aesthetic</option>
-                        <option value="pastel">Pastel</option>
-                        <option value="vintage-aesthetic">Vintage Aesthetic</option>
-                        <option value="minimal">Minimal</option>
-                        <option value="grid-paper">Grid Paper</option>
-                        <option value="moon">Moon</option>
-                        <option value="">None</option>
-                      </select>
-                      <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => customThemeInputRef.current?.click()}>
-                        📁 Upload
-                      </button>
-                      <input ref={customThemeInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCustomThemeUpload} />
-                      <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowTemplateModal(true)}>
-                        Templates
-                      </button>
-                      <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={addTextBlock}>
-                        ✚ Text
-                      </button>
-                      <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowStickerPanel(p => !p)}>
-                        🎀 Stickers
-                      </button>
-                      <button type="button" title="Download as text" onClick={() => {
-                        const text = editorRef.current?.innerText || body;
-                        const blob = new Blob([text], { type: 'text/plain' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `${activeBook.name}-${entryDate}.txt`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }} className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13, color: 'var(--ink-3)', marginLeft: 'auto' }}>
-                        <Icon name="download" size={13} /> Download
-                      </button>
-                      <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
-                      <button type="button" onMouseDown={(e) => { e.preventDefault(); editorRef.current?.focus(); document.execCommand('insertUnorderedList'); }}
-                        className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>≡ Bullets</button>
-                      <button type="button" onMouseDown={(e) => { e.preventDefault(); editorRef.current?.focus(); document.execCommand('insertOrderedList'); }}
-                        className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}># Numbers</button>
-                      <div style={{ width: 1, background: 'var(--rule)', margin: '0 4px' }} />
-                      <select onMouseDown={(e) => e.stopPropagation()}
-                        onChange={(e) => { document.execCommand('fontSize', false, e.target.value); e.target.value = ''; }}
-                        defaultValue=""
-                        style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer' }}>
-                        <option value="" disabled>Size</option>
-                        <option value="1">Small</option>
-                        <option value="3">Normal</option>
-                        <option value="5">Large</option>
-                        <option value="7">Huge</option>
-                      </select>
-                      <select onMouseDown={(e) => e.stopPropagation()}
-                        onChange={(e) => { document.execCommand('fontName', false, e.target.value); e.target.value = ''; }}
-                        defaultValue=""
-                        style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer', maxWidth: 110 }}>
-                        <option value="" disabled>Font</option>
-                        <option value="Georgia">Georgia</option>
-                        <option value="Arial">Arial</option>
-                        <option value="'Courier New'">Courier</option>
-                        <option value="'Times New Roman'">Times</option>
-                        <option value="Verdana">Verdana</option>
-                      </select>
+                      </div>
+
+                      <div className="nm-toolbar-row">
+                        {/* Insert group */}
+                        <div className="nm-toolbar-group">
+                          <span className="nm-toolbar-label">Insert</span>
+                          <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowTemplateModal(true)}>
+                            📄 Templates
+                          </button>
+                          <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={addTextBlock}>
+                            ✚ Text box
+                          </button>
+                          <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowStickerPanel(p => !p)}>
+                            🎀 Stickers
+                          </button>
+                        </div>
+
+                        {/* Page group */}
+                        <div className="nm-toolbar-group">
+                          <span className="nm-toolbar-label">Page</span>
+                          <select onMouseDown={(e) => e.stopPropagation()}
+                            onChange={(e) => { setBgImage(e.target.value); e.target.value = ''; }}
+                            defaultValue=""
+                            style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '3px 4px', cursor: 'pointer', maxWidth: 120 }}>
+                            <option value="" disabled>🎨 Theme</option>
+                            <option value="bullet">Dot Grid (Bullet)</option>
+                            <option value="lined">Ruled Notebook</option>
+                            <option value="coffee">Coffee Stained</option>
+                            <option value="newspaper">Newspaper</option>
+                            <option value="tulips">Tulips</option>
+                            <option value="blue-floral">Blue Floral</option>
+                            <option value="blue-paper">Blue Paper</option>
+                            <option value="aesthetic">Aesthetic</option>
+                            <option value="pastel">Pastel</option>
+                            <option value="vintage-aesthetic">Vintage Aesthetic</option>
+                            <option value="minimal">Minimal</option>
+                            <option value="grid-paper">Grid Paper</option>
+                            <option value="moon">Moon</option>
+                            <option value="">None</option>
+                          </select>
+                          <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => customThemeInputRef.current?.click()}>
+                            📁 Upload
+                          </button>
+                          <input ref={customThemeInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCustomThemeUpload} />
+                        </div>
+                      </div>
                     </div>
                     {/* Sticker picker panel */}
                     {showStickerPanel && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '10px 12px', borderBottom: '1px solid var(--rule)', background: 'var(--surface-2)' }}>
                         {STICKERS.map((src, i) => (
                           <img key={i} src={src} alt="sticker" onClick={() => addSticker(src)}
-                            style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, cursor: 'pointer', border: '2px solid transparent', transition: 'border 0.15s' }}
-                            onMouseEnter={e => e.target.style.border = '2px solid var(--accent)'}
-                            onMouseLeave={e => e.target.style.border = '2px solid transparent'}
+                            style={{ width: 60, height: 60, objectFit: 'contain', cursor: 'pointer', outline: '2px solid transparent', outlineOffset: 2, borderRadius: 6, transition: 'outline-color 0.15s' }}
+                            onMouseEnter={e => e.target.style.outlineColor = 'var(--accent)'}
+                            onMouseLeave={e => e.target.style.outlineColor = 'transparent'}
                           />
                         ))}
                       </div>
                     )}
-                    {/* Editable area with draggable stickers */}
-                    <div ref={editorWrapRef} style={{ position: 'relative',
+                    {/* A4-ratio page: editable area with draggable stickers */}
+                    <div ref={editorWrapRef} style={{
+                      position: 'relative',
+                      width: '100%',
+                      maxWidth: 640,
+                      aspectRatio: '210 / 297',
+                      margin: '0 auto',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      overflow: 'hidden',
+                      borderRadius: 4,
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.15), 0 1px 0 rgba(0,0,0,0.04)',
                       ...(bgImage === '__custom__' ? { backgroundImage: `url(${customThemeUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' } : {})
                     }} onClick={(e) => { if (e.target === editorWrapRef.current) setSelectedSticker(null); }}>
                       {stickers.map(s => {
@@ -876,8 +959,8 @@ export const JournalScreen = ({ user }) => {
                             )}
                             <img src={s.src} alt="sticker"
                               onMouseDown={(e) => onStickerMouseDown(e, s.id)}
-                              style={{ width: s.w, height: s.w, objectFit: 'cover', borderRadius: 8, cursor: 'grab', display: 'block',
-                                boxShadow: isSelected ? '0 0 0 2px var(--accent), 0 2px 8px rgba(0,0,0,0.2)' : '0 2px 8px rgba(0,0,0,0.15)' }}
+                              style={{ width: s.w, height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block',
+                                filter: isSelected ? 'drop-shadow(0 0 0 2px var(--accent)) drop-shadow(0 3px 6px rgba(0,0,0,0.25))' : 'drop-shadow(0 2px 5px rgba(0,0,0,0.15))' }}
                             />
                           </div>
                         );
@@ -888,9 +971,13 @@ export const JournalScreen = ({ user }) => {
                       suppressContentEditableWarning
                       onInput={(e) => setBody(e.currentTarget.innerText)}
                       onClick={() => { setSelectedSticker(null); setSelectedBlock(null); }}
+                      onMouseUp={trackSelection}
+                      onKeyUp={trackSelection}
                       data-placeholder={`Today, in your ${activeBook.name.toLowerCase()} book…`}
                       style={{
-                        minHeight: 500,
+                        flex: 1,
+                        minHeight: 0,
+                        overflowY: 'auto',
                         padding: '28px 36px',
                         fontFamily: 'var(--font-serif)',
                         fontSize: 16,
@@ -906,14 +993,43 @@ export const JournalScreen = ({ user }) => {
                         const isSel = selectedBlock === b.id;
                         return (
                           <div key={b.id}
-                            style={{ position: 'absolute', left: b.x, top: b.y, zIndex: 11, userSelect: 'none', transform: `rotate(${b.rotate || 0}deg)`, cursor: 'move' }}
+                            style={{ position: 'absolute', left: b.x, top: b.y, zIndex: isSel ? 21 : 11, userSelect: 'none', transform: `rotate(${b.rotate || 0}deg)`, cursor: 'move' }}
                             onMouseDown={(e) => { setSelectedBlock(b.id); setSelectedSticker(null); onBlockMouseDown(e, b.id); }}
                           >
                             {isSel && (
-                              <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 3, background: 'rgba(0,0,0,0.75)', borderRadius: 8, padding: '3px 6px', whiteSpace: 'nowrap', zIndex: 22 }}>
+                              <div onMouseDown={(e) => e.stopPropagation()}
+                                style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(20,20,24,0.92)', borderRadius: 8, padding: '4px 6px', whiteSpace: 'nowrap', zIndex: 22, boxShadow: '0 4px 14px rgba(0,0,0,0.25)' }}>
+                                <select value={b.fontFamily} onChange={(e) => updateTextBlock(b.id, { fontFamily: e.target.value })}
+                                  style={{ fontSize: 11, fontFamily: b.fontFamily, background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 4, padding: '3px 4px', maxWidth: 100, cursor: 'pointer' }}>
+                                  {FONT_OPTIONS.map(f => <option key={f.value} value={f.value} style={{ color: '#111' }}>{f.label}</option>)}
+                                </select>
+                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { fontSize: Math.max(8, (b.fontSize || 18) - 2) }); }}
+                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13, padding: '0 3px' }}>A−</button>
+                                <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, minWidth: 16, textAlign: 'center' }}>{b.fontSize || 18}</span>
+                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { fontSize: Math.min(96, (b.fontSize || 18) + 2) }); }}
+                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 15, padding: '0 3px' }}>A+</button>
+                                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, padding: '0 2px' }}>|</span>
+                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { bold: !b.bold }); }}
+                                  style={{ background: b.bold ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 'bold', padding: '2px 6px' }}>B</button>
+                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { italic: !b.italic }); }}
+                                  style={{ background: b.italic ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 13, fontStyle: 'italic', padding: '2px 6px' }}>I</button>
+                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { underline: !b.underline }); }}
+                                  style={{ background: b.underline ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 13, textDecoration: 'underline', padding: '2px 6px' }}>U</button>
+                                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '0 2px' }}>
+                                  <input type="color" value={b.color || '#000000'} onChange={(e) => updateTextBlock(b.id, { color: e.target.value })}
+                                    style={{ width: 18, height: 18, border: 'none', padding: 0, cursor: 'pointer', background: 'none' }} />
+                                </label>
+                                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, padding: '0 2px' }}>|</span>
+                                {['left', 'center', 'right'].map(a => (
+                                  <button key={a} onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { align: a }); }}
+                                    style={{ background: b.align === a ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 10, padding: '2px 5px' }}>
+                                    {a === 'left' ? '⬛▭▭' : a === 'center' ? '▭⬛▭' : '▭▭⬛'}
+                                  </button>
+                                ))}
+                                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, padding: '0 2px' }}>|</span>
                                 <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { rotate: (b.rotate || 0) - 15 }); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>↺</button>
                                 <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { rotate: (b.rotate || 0) + 15 }); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>↻</button>
-                                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: '0 2px' }}>|</span>
+                                <button onMouseDown={(e) => { e.stopPropagation(); duplicateTextBlock(b.id); }} title="Duplicate" style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13, padding: '0 4px' }}>⧉</button>
                                 <button onMouseDown={(e) => { e.stopPropagation(); removeTextBlock(b.id); }} style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>✕</button>
                               </div>
                             )}
@@ -921,7 +1037,20 @@ export const JournalScreen = ({ user }) => {
                               defaultValue={b.text}
                               onBlur={(e) => updateTextBlock(b.id, { text: e.target.value })}
                               onClick={(e) => e.stopPropagation()}
-                              style={{ background: 'rgba(255,255,255,0.85)', border: isSel ? '1.5px dashed var(--accent)' : '1.5px dashed rgba(0,0,0,0.2)', borderRadius: 6, padding: '6px 10px', fontSize: 15, fontFamily: 'var(--font-serif)', color: 'var(--ink)', resize: 'both', minWidth: 100, minHeight: 36, outline: 'none', cursor: 'text', boxShadow: isSel ? '0 2px 10px rgba(0,0,0,0.15)' : 'none' }}
+                              style={{
+                                background: 'rgba(255,255,255,0.85)',
+                                border: isSel ? '1.5px dashed var(--accent)' : '1.5px dashed rgba(0,0,0,0.2)',
+                                borderRadius: 6, padding: '6px 10px',
+                                fontSize: b.fontSize || 18,
+                                fontFamily: b.fontFamily || FONT_OPTIONS[0].value,
+                                fontWeight: b.bold ? 'bold' : 'normal',
+                                fontStyle: b.italic ? 'italic' : 'normal',
+                                textDecoration: b.underline ? 'underline' : 'none',
+                                textAlign: b.align || 'left',
+                                color: b.color || '#000000',
+                                resize: 'both', minWidth: 100, minHeight: 36, outline: 'none', cursor: 'text',
+                                boxShadow: isSel ? '0 2px 10px rgba(0,0,0,0.15)' : 'none',
+                              }}
                             />
                           </div>
                         );

@@ -32,6 +32,7 @@ class User:
     created_at: str
     name: str = ""
     age: int | None = None
+    dob: str | None = None
     subscription_tier: str = "paid"
     reminder_enabled: bool = False
     reminder_time: str = "20:00"
@@ -41,6 +42,9 @@ MIN_AGE = 13
 MAX_AGE = 120
 
 REMINDER_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+DOB_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+SUBSCRIPTION_TIERS = {"bronze": "Bronze", "silver": "Silver", "gold": "Gold"}
 
 
 def _validate_name(name: str) -> str:
@@ -50,6 +54,37 @@ def _validate_name(name: str) -> str:
     if len(cleaned) > 200:
         raise ValueError("Name is too long")
     return cleaned
+
+
+def _validate_email(email: str) -> str:
+    cleaned = email.strip().lower()
+    if not cleaned or "@" not in cleaned:
+        raise ValueError("Invalid email")
+    if len(cleaned) > 320:
+        raise ValueError("Email is too long")
+    return cleaned
+
+
+def _validate_dob(value: str) -> str:
+    cleaned = value.strip()
+    if not DOB_RE.match(cleaned):
+        raise ValueError("dob must be in YYYY-MM-DD format")
+    try:
+        parsed = datetime.strptime(cleaned, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError("dob must be a valid date") from exc
+    if parsed > _utc_now().date():
+        raise ValueError("Date of birth cannot be in the future")
+    if parsed.year < 1900:
+        raise ValueError("Date of birth is invalid")
+    return cleaned
+
+
+def _validate_subscription_tier(tier: str) -> str:
+    cleaned = tier.strip().lower()
+    if cleaned not in SUBSCRIPTION_TIERS:
+        raise ValueError("Plan must be one of: Bronze, Silver, Gold")
+    return SUBSCRIPTION_TIERS[cleaned]
 
 
 def _validate_reminder_time(value: str) -> str:
@@ -143,7 +178,7 @@ def authenticate_user(email: str, password: str) -> User | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, email, password_hash, created_at, name, age, subscription_tier,
+                SELECT id, email, password_hash, created_at, name, age, dob, subscription_tier,
                        reminder_enabled, reminder_time
                 FROM users WHERE email = %s
                 """,
@@ -161,6 +196,7 @@ def authenticate_user(email: str, password: str) -> User | None:
         created_at=row["created_at"].isoformat(),
         name=str(row.get("name") or ""),
         age=row.get("age"),
+        dob=row["dob"].isoformat() if row.get("dob") else None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),
@@ -192,7 +228,7 @@ def get_user_by_token(token: str) -> User | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT u.id, u.email, u.created_at, u.name, u.age, u.subscription_tier,
+                SELECT u.id, u.email, u.created_at, u.name, u.age, u.dob, u.subscription_tier,
                        u.reminder_enabled, u.reminder_time, s.expires_at
                 FROM sessions s
                 JOIN users u ON s.user_id = u.id
@@ -216,6 +252,7 @@ def get_user_by_token(token: str) -> User | None:
         created_at=row["created_at"].isoformat(),
         name=str(row.get("name") or ""),
         age=row.get("age"),
+        dob=row["dob"].isoformat() if row.get("dob") else None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),
@@ -650,7 +687,7 @@ def update_reminder_settings(user_id: int, enabled: bool, reminder_time: str) ->
                 """
                 UPDATE users SET reminder_enabled = %s, reminder_time = %s
                 WHERE id = %s
-                RETURNING id, email, created_at, name, age, subscription_tier,
+                RETURNING id, email, created_at, name, age, dob, subscription_tier,
                           reminder_enabled, reminder_time
                 """,
                 (bool(enabled), cleaned_time, user_id),
@@ -666,6 +703,46 @@ def update_reminder_settings(user_id: int, enabled: bool, reminder_time: str) ->
         created_at=row["created_at"].isoformat(),
         name=str(row.get("name") or ""),
         age=row.get("age"),
+        dob=row["dob"].isoformat() if row.get("dob") else None,
+        subscription_tier=str(row.get("subscription_tier") or "paid"),
+        reminder_enabled=bool(row.get("reminder_enabled") or False),
+        reminder_time=str(row.get("reminder_time") or "20:00"),
+    )
+
+
+def update_profile(user_id: int, name: str, email: str, dob: str | None, subscription_tier: str) -> User:
+    cleaned_name = _validate_name(name)
+    cleaned_email = _validate_email(email)
+    cleaned_dob = _validate_dob(dob) if dob else None
+    cleaned_tier = _validate_subscription_tier(subscription_tier)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM users WHERE email = %s AND id != %s", (cleaned_email, user_id))
+            if cur.fetchone():
+                raise ValueError("Email already registered")
+
+            cur.execute(
+                """
+                UPDATE users SET name = %s, email = %s, dob = %s, subscription_tier = %s
+                WHERE id = %s
+                RETURNING id, email, created_at, name, age, dob, subscription_tier,
+                          reminder_enabled, reminder_time
+                """,
+                (cleaned_name, cleaned_email, cleaned_dob, cleaned_tier, user_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("Account not found")
+        conn.commit()
+
+    return User(
+        id=int(row["id"]),
+        email=str(row["email"]),
+        created_at=row["created_at"].isoformat(),
+        name=str(row.get("name") or ""),
+        age=row.get("age"),
+        dob=row["dob"].isoformat() if row.get("dob") else None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),

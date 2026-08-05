@@ -19,67 +19,26 @@ export const PAPER_STYLES = {
     backgroundPosition: '0 8px',
     color: '#2d3436',
   },
-  newspaper: {
-    backgroundImage: 'url("/themes/theme-newspaper.jpg")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
-  tulips: {
-    backgroundImage: 'url("/themes/theme-tulips.jpg")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
-  'blue-floral': {
-    backgroundImage: 'url("/themes/theme-blue-floral.jpg")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
-  'blue-paper': {
-    backgroundImage: 'url("/themes/theme-blue-paper.jpg")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
-  aesthetic: {
-    backgroundImage: 'url("/themes/theme-aesthetic.jpg")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
-  pastel: {
-    backgroundImage: 'url("/themes/theme-pastel.jpg")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
-  'vintage-aesthetic': {
-    backgroundImage: 'url("/themes/theme-vintage-aesthetic.jpg")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
-  minimal: {
-    backgroundImage: 'url("/themes/theme-minimal.jpg")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
-  'grid-paper': {
-    backgroundImage: 'url("/themes/theme-grid-paper.jpg")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
-  moon: {
-    backgroundImage: 'url("/themes/theme-moon.jpg")',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    color: '#1a1a1a',
-  },
 };
+
+const framedTheme = (file) => ({
+  backgroundImage: `url("/themes/${file}"), url("/themes/${file}")`,
+  backgroundSize: 'contain, cover',
+  backgroundPosition: 'center, center',
+  backgroundRepeat: 'no-repeat, no-repeat',
+  color: '#1a1a1a',
+});
+
+PAPER_STYLES.newspaper = framedTheme('theme-newspaper.jpg');
+PAPER_STYLES.tulips = framedTheme('theme-tulips.jpg');
+PAPER_STYLES['blue-floral'] = framedTheme('theme-blue-floral.jpg');
+PAPER_STYLES['blue-paper'] = framedTheme('theme-blue-paper.jpg');
+PAPER_STYLES.aesthetic = framedTheme('theme-aesthetic.jpg');
+PAPER_STYLES.pastel = framedTheme('theme-pastel.jpg');
+PAPER_STYLES['vintage-aesthetic'] = framedTheme('theme-vintage-aesthetic.jpg');
+PAPER_STYLES.minimal = framedTheme('theme-minimal.jpg');
+PAPER_STYLES['grid-paper'] = framedTheme('theme-grid-paper.jpg');
+PAPER_STYLES.moon = framedTheme('theme-moon.jpg');
 
 export const TEMPLATE_CATEGORIES = [
   {

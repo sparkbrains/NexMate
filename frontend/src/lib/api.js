@@ -225,6 +225,13 @@ export function updateReminderSettings(enabled, reminderTime) {
   });
 }
 
+export function updateProfile({ name, email, dob, subscription_tier }) {
+  return request('/api/auth/profile', {
+    method: 'PATCH',
+    body: { name, email, dob, subscription_tier },
+  });
+}
+
 export function listThreads() {
   return request('/api/threads');
 }
@@ -245,8 +252,8 @@ export function getDashboardInsights(days = 30) {
   return request(`/api/dashboard/insights?days=${encodeURIComponent(days)}`);
 }
 
-export function getKnowledgeGraph() {
-  return request('/api/dashboard/knowledge-graph');
+export function getKnowledgeGraph(days = 30) {
+  return request(`/api/dashboard/knowledge-graph?days=${encodeURIComponent(days)}`);
 }
 
 export function getUserProfileSummary() {

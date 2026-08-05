@@ -69,6 +69,7 @@ def init_postgres() -> None:
                 ALTER TABLE users
                 ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '',
                 ADD COLUMN IF NOT EXISTS age INT,
+                ADD COLUMN IF NOT EXISTS dob DATE,
                 ADD COLUMN IF NOT EXISTS subscription_tier TEXT NOT NULL DEFAULT 'paid',
                 ADD COLUMN IF NOT EXISTS reminder_enabled BOOLEAN NOT NULL DEFAULT FALSE,
                 ADD COLUMN IF NOT EXISTS reminder_time TEXT NOT NULL DEFAULT '20:00'
