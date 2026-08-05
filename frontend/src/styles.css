@@ -144,6 +144,7 @@ body {
 }
 
 .nm-nav-item {
+  text-decoration: none;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -293,6 +294,8 @@ body {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+  text-decoration: none;
+  color: inherit;
 }
 .nm-avatar {
   width: 30px;
@@ -382,6 +385,7 @@ body {
   gap: 6px;
   transition: all 0.15s;
   letter-spacing: -0.005em;
+  text-decoration: none;
 }
 .nm-btn:hover {
   border-color: var(--ink-3);

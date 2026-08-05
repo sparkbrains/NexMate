@@ -1,5 +1,6 @@
 import { useContext, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import { AppContext } from '../../context';
 import LogoIco from '../../assets/ic_logo.svg';
 
@@ -89,12 +90,21 @@ export const ConfirmDialog = ({ open, title, body, confirmLabel = 'Delete', canc
   );
 };
 
+const NAV_PATH = {
+  today: '/today',
+  journal: '/journal',
+  'prompt-packs': '/prompt-packs',
+  loops: '/loops',
+  insights: '/insights',
+  profile: '/profile',
+};
+
 const NavItem = ({ icon, label, k, active, onNav, count }) => (
-  <button className={"nm-nav-item" + (active === k ? " active" : "")} onClick={() => onNav && onNav(k)}>
+  <Link to={NAV_PATH[k] || '/today'} className={"nm-nav-item" + (active === k ? " active" : "")} onClick={() => onNav && onNav(k)}>
     <span className="nm-nav-ic"><Icon name={icon} /></span>
     <span>{label}</span>
     {count && <span className="nm-nav-count">{count}</span>}
-  </button>
+  </Link>
 );
 
 const fmtWhen = (iso) => {
@@ -229,28 +239,20 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
         {collapsed && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 8 }}>
             <button className="nm-btn ghost" style={{ padding: 6 }} title="Begin reflection" onClick={() => { onNewThread?.(); setSidebarOpen(false); }}><Icon name="plus" size={16} /></button>
-            <button className={"nm-btn ghost" + (active === 'today' ? ' active' : '')} style={{ padding: 6 }} title="Today" onClick={() => onNav?.('today')}><Icon name="home" size={16} /></button>
-            <button className={"nm-btn ghost" + (active === 'journal' ? ' active' : '')} style={{ padding: 6 }} title="Journal" onClick={() => onNav?.('journal')}><Icon name="book" size={16} /></button>
-            <button className={"nm-btn ghost" + (active === 'prompt-packs' ? ' active' : '')} style={{ padding: 6 }} title="Prompt Packs" onClick={() => onNav?.('prompt-packs')}><Icon name="sparkle" size={16} /></button>
-            <button className={"nm-btn ghost" + (active === 'loops' ? ' active' : '')} style={{ padding: 6 }} title="Loops" onClick={() => onNav?.('loops')}><Icon name="loops" size={16} /></button>
-            <button className={"nm-btn ghost" + (active === 'insights' ? ' active' : '')} style={{ padding: 6 }} title="Insights" onClick={() => onNav?.('insights')}><Icon name="insights" size={16} /></button>
+            <Link to="/today" className={"nm-btn ghost" + (active === 'today' ? ' active' : '')} style={{ padding: 6 }} title="Today" onClick={() => onNav?.('today')}><Icon name="home" size={16} /></Link>
+            <Link to="/journal" className={"nm-btn ghost" + (active === 'journal' ? ' active' : '')} style={{ padding: 6 }} title="Journal" onClick={() => onNav?.('journal')}><Icon name="book" size={16} /></Link>
+            <Link to="/prompt-packs" className={"nm-btn ghost" + (active === 'prompt-packs' ? ' active' : '')} style={{ padding: 6 }} title="Prompt Packs" onClick={() => onNav?.('prompt-packs')}><Icon name="sparkle" size={16} /></Link>
+            <Link to="/loops" className={"nm-btn ghost" + (active === 'loops' ? ' active' : '')} style={{ padding: 6 }} title="Loops" onClick={() => onNav?.('loops')}><Icon name="loops" size={16} /></Link>
+            <Link to="/insights" className={"nm-btn ghost" + (active === 'insights' ? ' active' : '')} style={{ padding: 6 }} title="Insights" onClick={() => onNav?.('insights')}><Icon name="insights" size={16} /></Link>
           </div>
         )}
 
-        <div
+        <Link
+          to="/profile"
           className={"nm-side-footer" + (active === 'profile' ? " active" : "")}
-          role="button"
-          tabIndex={0}
           onClick={() => {
             onNav && onNav('profile');
             setSidebarOpen(false);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              onNav && onNav('profile');
-              setSidebarOpen(false);
-            }
           }}
           style={{ cursor: 'pointer', flexShrink: 0 }}
           title="View profile"
@@ -264,7 +266,7 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
           </div>
           <button
             className="nm-btn ghost"
-            onClick={(e) => { e.stopPropagation(); onLogout && onLogout(); }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onLogout && onLogout(); }}
             title="Sign out"
             style={{ padding: 4, flexShrink: 0 }}
           >
@@ -272,7 +274,7 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
           </button>
             </>
           )}
-        </div>
+        </Link>
       </aside>
 
       <ConfirmDialog

@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { AuthGate } from './AuthGate';
 import LogoIco from '../../assets/ic_logo.svg';
 
-export const LandingPage = ({ onAuth }) => {
-  const [authMode, setAuthMode] = useState(null); // 'login' | 'signup' | null
+export const LandingPage = ({ onAuth, authMode = null }) => {
+  const navigate = useNavigate();
 
   if (authMode) {
-    return <AuthGate onAuth={onAuth} initialMode={authMode} onBack={() => setAuthMode(null)} />;
+    return <AuthGate key={authMode} onAuth={onAuth} initialMode={authMode} onBack={() => navigate('/')} />;
   }
 
   return (
@@ -17,8 +18,8 @@ export const LandingPage = ({ onAuth }) => {
         <img src={LogoIco} alt="Nextmate" height="30" className="nm-logo" />
         <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
           <button onClick={() => window.open('/pricing', '_blank')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Pricing</button>
-          <button onClick={() => setAuthMode('login')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Sign In</button>
-          <button onClick={() => setAuthMode('signup')} style={{ background: 'var(--ink)', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: 20, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Make a Space</button>
+          <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Sign In</button>
+          <button onClick={() => navigate('/signup')} style={{ background: 'var(--ink)', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: 20, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Make a Space</button>
         </div>
       </nav>
 
@@ -33,7 +34,7 @@ export const LandingPage = ({ onAuth }) => {
         <p style={{ fontSize: 18, lineHeight: 1.5, color: 'var(--ink-3)', maxWidth: 600, marginBottom: 40 }}>
           Track daily emotional loops, uncover hidden behavioral patterns, and build a powerful thinking practice. NexMate provides unhurried reflection to help you understand your mind.
         </p>
-        <button onClick={() => setAuthMode('signup')} style={{ background: 'var(--ink)', color: '#ffffff', border: 'none', padding: '16px 32px', borderRadius: 30, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 14, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
+        <button onClick={() => navigate('/signup')} style={{ background: 'var(--ink)', color: '#ffffff', border: 'none', padding: '16px 32px', borderRadius: 30, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 14, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
           Start Journaling
         </button>
       </section>
