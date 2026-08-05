@@ -339,7 +339,7 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
                 onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
                 onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; }}
               >
-                ← Back
+                ←
               </button>
             )}
             <img src={LogoIco} alt="Nextmate" height="30" className="nm-logo" />

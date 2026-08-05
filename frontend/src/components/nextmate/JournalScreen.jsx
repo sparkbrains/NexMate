@@ -66,28 +66,9 @@ const todayISO = () => {
 
 const moodFor = (label) => MOODS.find((m) => m.label === label);
 
-const Entry = ({ entry, onDelete, onUpdate }) => {
+const Entry = ({ entry, onDelete, onEditInMain }) => {
   const [confirming, setConfirming] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [editBody, setEditBody] = useState(entry.body);
-  const editRef = useRef(null);
-  const [saving, setSaving] = useState(false);
-  const time = entry.created_at
-    ? new Date(entry.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : '';
-
-  const handleSaveEdit = async () => {
-    const content = editRef.current?.innerHTML || editBody;
-    if (!content.trim()) return;
-    setSaving(true);
-    try {
-      await onUpdate(entry.id, { body: content });
-      setEditing(false);
-    } finally {
-      setSaving(false);
-    }
-  };
-
+  const time = new Date(entry.entry_date || entry.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 
   return (
     <div className="nm-entry">
@@ -99,15 +80,7 @@ const Entry = ({ entry, onDelete, onUpdate }) => {
         <div className="nm-entry-time">
           <span>{time}</span>
           <span className="nm-entry-del">
-            <button className="nm-btn ghost" title="Download PDF" style={{ padding: 4, marginRight: 2 }} onClick={(e) => {
-              const el = e.currentTarget.closest('.nm-entry');
-              if (el) el.classList.add('print-target');
-              window.print();
-              if (el) el.classList.remove('print-target');
-            }}>
-              <Icon name="download" size={11} />
-            </button>
-            <button className="nm-btn ghost" title="Edit entry" style={{ padding: 4, marginRight: 2 }} onClick={() => { setEditing(!editing); setEditBody(entry.body); }}>
+            <button className="nm-btn ghost" title="Edit entry" style={{ padding: 4, marginRight: 2 }} onClick={() => onEditInMain(entry)}>
               <Icon name="edit" size={11} />
             </button>
             <button className="nm-btn ghost" title="Delete entry" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
@@ -115,26 +88,7 @@ const Entry = ({ entry, onDelete, onUpdate }) => {
             </button>
           </span>
         </div>
-        {editing ? (
-          <div style={{ marginTop: 6 }}>
-            <div
-              ref={editRef}
-              contentEditable
-              suppressContentEditableWarning
-              onInput={(e) => setEditBody(e.currentTarget.innerHTML)}
-              dangerouslySetInnerHTML={{ __html: entry.body }}
-              style={{ fontSize: 13, marginBottom: 8, border: '1px solid var(--rule)', borderRadius: 4, padding: '8px 10px', minHeight: 80, outline: 'none', fontFamily: 'var(--font-serif)', background: 'var(--surface-2)' }}
-            />
-            <div style={{ display: 'flex', gap: 6 }}>
-              <button className="nm-btn primary" style={{ fontSize: 11 }} onClick={handleSaveEdit} disabled={saving || !editBody.trim()}>
-                {saving ? 'Saving…' : 'Save'}
-              </button>
-              <button className="nm-btn ghost" style={{ fontSize: 11 }} onClick={() => { setEditing(false); setEditBody(entry.body); }}>Cancel</button>
-            </div>
-          </div>
-        ) : (
-          <div className="nm-entry-body" dangerouslySetInnerHTML={{ __html: entry.body }} />
-        )}
+        <div className="nm-entry-body" dangerouslySetInnerHTML={{ __html: entry.body }} />
         {entry.translated && (
           <div className="nm-meta" style={{ marginTop: 6, fontStyle: 'italic', color: 'var(--ink-3)' }}>{entry.translated}</div>
         )}
@@ -272,7 +226,7 @@ const StreakBlock = ({ streak }) => {
   );
 };
 
-const DayAccordion = ({ k, items, handleDeleteEntry, handleUpdateEntry }) => {
+const DayAccordion = ({ k, items, handleDeleteEntry, handleEditInMain }) => {
   const [open, setOpen] = useState(false);
   return (
     <div className="nm-day-block" style={{ border: '1px solid var(--rule-soft)', borderRadius: 8, padding: '12px 16px', marginBottom: 16, background: 'var(--surface)' }}>
@@ -295,7 +249,7 @@ const DayAccordion = ({ k, items, handleDeleteEntry, handleUpdateEntry }) => {
       {open && (
         <div style={{ paddingTop: 16, borderTop: '1px solid var(--rule-soft)', marginTop: 16 }}>
           {items.map((e) => (
-            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} onUpdate={handleUpdateEntry} />
+            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} onEditInMain={handleEditInMain} />
           ))}
         </div>
       )}
@@ -306,6 +260,7 @@ const DayAccordion = ({ k, items, handleDeleteEntry, handleUpdateEntry }) => {
 export const JournalScreen = ({ user }) => {
   const [books, setBooks] = useState([]);
   const [activeBookId, setActiveBookId] = useState(null);
+  const [editingEntryId, setEditingEntryId] = useState(null);
   const [entries, setEntries] = useState([]);
   const [streak, setStreak] = useState(null);
   const [loadingBooks, setLoadingBooks] = useState(true);
@@ -331,13 +286,17 @@ export const JournalScreen = ({ user }) => {
   const [selectedBlock, setSelectedBlock] = useState(null);
   const [textColor, setTextColor] = useState('#000000');
   const [hlColor, setHlColor] = useState('#fff176');
+  const [activeFont, setActiveFont] = useState('');
   const [customThemeUrl, setCustomThemeUrl] = useState('');
   const customThemeInputRef = useRef(null);
   const editorWrapRef = useRef(null);
 
   const STICKERS = [
-    '/stickers/sticker-6.png', '/stickers/sticker-7.png', '/stickers/sticker-8.png',
-    '/stickers/sticker-9.png', '/stickers/Sticker-10.png', '/stickers/sticker-11.png',
+    '/stickers/sticker-1.jpg', '/stickers/sticker-2.jpg', '/stickers/sticker-3.jpg',
+    '/stickers/sticker-4.jpg', '/stickers/sticker-5.jpg', '/stickers/sticker-6.png', 
+    '/stickers/sticker-7.png', '/stickers/sticker-8.png', '/stickers/sticker-9.png', 
+    '/stickers/Sticker-10.png', '/stickers/sticker-11.png', 
+    '/stickers/sticker-butterfly.jpg', '/stickers/sticker-flowers.jpg', '/stickers/sticker-music.jpg'
   ];
 
   const addSticker = (src) => {
@@ -425,13 +384,39 @@ export const JournalScreen = ({ user }) => {
     sel.addRange(range);
   };
 
-  // Keeps savedRangeRef pointed at the last real selection made inside the editor,
-  // since opening a <select> or the native color picker steals focus and collapses
-  // window.getSelection() before the resulting onChange fires.
   const trackSelection = () => {
     const range = saveSelection();
     if (range && editorRef.current?.contains(range.commonAncestorContainer)) {
       savedRangeRef.current = range;
+    }
+    if (typeof window !== 'undefined' && window.getSelection) {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      
+      const node = sel.anchorNode?.parentNode;
+      if (node && node.nodeType === 1) {
+        const comp = window.getComputedStyle(node);
+        if (node.hasAttribute('color') || node.style.color) {
+          setTextColor(comp.color);
+        } else {
+          setTextColor('#000000');
+        }
+        
+        if (node.style.backgroundColor && node.style.backgroundColor !== 'rgba(0, 0, 0, 0)' && node.style.backgroundColor !== 'transparent') {
+          setHlColor(comp.backgroundColor);
+        } else {
+          setHlColor('#fff176');
+        }
+        
+        const rawFont = node.style.fontFamily || node.getAttribute('face') || comp.fontFamily;
+        if (rawFont) {
+          const cleanFont = rawFont.replace(/['"]/g, '').split(',')[0].trim().toLowerCase();
+          const match = FONT_OPTIONS.find(f => f.value.toLowerCase().replace(/['"]/g, '').includes(cleanFont));
+          setActiveFont(match ? match.value : '');
+        } else {
+          setActiveFont('');
+        }
+      }
     }
   };
 
@@ -439,6 +424,7 @@ export const JournalScreen = ({ user }) => {
     editorRef.current?.focus();
     if (savedRangeRef.current) restoreSelection(savedRangeRef.current);
     document.execCommand(cmd, false, value);
+    if (cmd === 'fontName') setActiveFont(value);
     trackSelection();
   };
 
@@ -538,15 +524,28 @@ export const JournalScreen = ({ user }) => {
         ? `<div style="${Object.entries(PAPER_STYLES[bgImage]).map(([k,v])=>`${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';')}; padding: 20px; border-radius: 8px;">${plainBody}</div>`
         : plainBody;
 
-      await createJournalEntry({
-        body: finalBody,
-        mood_emoji: selectedMood?.emoji || '',
-        mood_label: selectedMood?.label || '',
-        entry_date: entryDate || todayISO(),
-        auto_translate: false,
-        book_id: activeBookId,
-        allow_loop_detection: allowLoopDetection,
-      });
+      if (editingEntryId) {
+        await updateJournalEntry(editingEntryId, {
+          body: finalBody,
+          mood_emoji: selectedMood?.emoji || '',
+          mood_label: selectedMood?.label || '',
+          entry_date: entryDate || todayISO(),
+          auto_translate: false,
+          book_id: activeBookId,
+          allow_loop_detection: allowLoopDetection,
+        });
+        setEditingEntryId(null);
+      } else {
+        await createJournalEntry({
+          body: finalBody,
+          mood_emoji: selectedMood?.emoji || '',
+          mood_label: selectedMood?.label || '',
+          entry_date: entryDate || todayISO(),
+          auto_translate: false,
+          book_id: activeBookId,
+          allow_loop_detection: allowLoopDetection,
+        });
+      }
       setBody('');
       if (editorRef.current) editorRef.current.innerHTML = '';
       setMoodLabel('');
@@ -558,6 +557,18 @@ export const JournalScreen = ({ user }) => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleEditInMain = (entry) => {
+    setEditingEntryId(entry.id);
+    setBody(entry.body);
+    if (editorRef.current) {
+      editorRef.current.innerHTML = entry.body;
+    }
+    setMoodLabel(entry.mood_label || '');
+    setEntryDate(entry.entry_date || todayISO());
+    setBgImage('');
+    editorWrapRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleEditEntry = async (id, fields) => {
@@ -786,11 +797,11 @@ export const JournalScreen = ({ user }) => {
                         <div className="nm-toolbar-group">
                           <span className="nm-toolbar-label">Font</span>
                           <select onMouseDown={(e) => e.stopPropagation()}
-                            onChange={(e) => { applyCommand('fontName', e.target.value); e.target.value = ''; }}
-                            defaultValue=""
-                            style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '3px 4px', cursor: 'pointer', maxWidth: 130 }}>
+                            onChange={(e) => applyCommand('fontName', e.target.value)}
+                            value={activeFont}
+                            style={{ fontSize: 11, fontFamily: activeFont || 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '3px 4px', cursor: 'pointer', maxWidth: 130 }}>
                             <option value="" disabled>Typeface</option>
-                            {FONT_OPTIONS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                            {FONT_OPTIONS.map(f => <option key={f.value} value={f.value} style={{ fontFamily: f.value, fontSize: 14 }}>{f.label}</option>)}
                           </select>
                           <select onMouseDown={(e) => e.stopPropagation()}
                             onChange={(e) => { applyCommand('fontSize', e.target.value); e.target.value = ''; }}
@@ -858,8 +869,8 @@ export const JournalScreen = ({ user }) => {
                         </div>
 
                         <button type="button" title="Download this entry as a PDF" onClick={handleDownloadPdf}
-                          className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13, color: 'var(--ink-3)', marginLeft: 'auto' }}>
-                          <Icon name="download" size={13} /> Download PDF
+                          className="nm-btn primary" style={{ padding: '5px 12px', fontSize: 13, marginLeft: 'auto', borderRadius: '16px' }}>
+                          <Icon name="download" size={13} style={{ marginRight: 6 }} /> Download PDF
                         </button>
                       </div>
 
@@ -920,12 +931,11 @@ export const JournalScreen = ({ user }) => {
                         ))}
                       </div>
                     )}
-                    {/* A4-ratio page: editable area with draggable stickers */}
+                    {/* Full width editable area with draggable stickers */}
                     <div ref={editorWrapRef} style={{
                       position: 'relative',
                       width: '100%',
-                      maxWidth: 640,
-                      aspectRatio: '210 / 297',
+                      minHeight: 500,
                       margin: '0 auto',
                       display: 'flex',
                       flexDirection: 'column',
@@ -976,8 +986,6 @@ export const JournalScreen = ({ user }) => {
                       data-placeholder={`Today, in your ${activeBook.name.toLowerCase()} book…`}
                       style={{
                         flex: 1,
-                        minHeight: 0,
-                        overflowY: 'auto',
                         padding: '28px 36px',
                         fontFamily: 'var(--font-serif)',
                         fontSize: 16,
@@ -1076,8 +1084,21 @@ export const JournalScreen = ({ user }) => {
                       onClick={handleSave}
                       disabled={!body.trim() || saving}
                     >
-                      {saving ? 'Keeping…' : `Keep in ${activeBook.name}`}
+                      {saving ? 'Keeping…' : editingEntryId ? 'Update Entry' : `Keep in ${activeBook.name}`}
                     </button>
+                    {editingEntryId && (
+                      <button
+                        type="button"
+                        className="nm-btn ghost"
+                        onClick={() => {
+                          setEditingEntryId(null);
+                          setBody('');
+                          if (editorRef.current) editorRef.current.innerHTML = '';
+                        }}
+                      >
+                        Cancel Edit
+                      </button>
+                    )}
                     <span className="nm-meta">
                       {body.length > 0 ? `${body.length} chars` : ''}
                     </span>
@@ -1103,7 +1124,7 @@ export const JournalScreen = ({ user }) => {
                       <div className="nm-meta">{entries.length} kept</div>
                     </div>
 
-                    <div style={{ height: 160, overflowY: 'auto', paddingRight: 4, border: '1px solid var(--rule-soft)', borderRadius: 8 }}>
+                    <div style={{ maxHeight: 340, overflowY: 'auto', paddingRight: 4, border: '1px solid var(--rule-soft)', borderRadius: 8 }}>
                       {entriesByDate.map(([date, items], i) => {
                         const k = dayKindLabel(date);
                         return (
@@ -1112,7 +1133,7 @@ export const JournalScreen = ({ user }) => {
                             k={k}
                             items={items}
                             handleDeleteEntry={handleDeleteEntry}
-                            handleUpdateEntry={handleUpdateEntry}
+                            handleEditInMain={handleEditInMain}
                           />
                         );
                       })}

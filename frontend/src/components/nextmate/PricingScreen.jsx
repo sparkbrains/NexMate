@@ -21,11 +21,9 @@ const PricingScreen = ({ isLanding }) => {
           onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
           onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; }}
         >
-          ← Back
+          ←
         </button>
-      )}
-
-      <div style={{ textAlign: 'center', marginBottom: 60, marginTop: isLanding ? 40 : 0 }}>
+      )}<div style={{ textAlign: 'center', marginBottom: 60, marginTop: isLanding ? 40 : 0 }}>
         <h1 className="nm-h1" style={{ fontSize: 42, marginBottom: 16 }}>Plans & Pricing</h1>
         <p style={{ fontSize: 16, maxWidth: 600, margin: '0 auto', lineHeight: 1.6, color: 'var(--ink-3)', fontWeight: 400 }}>
           Unlock the full potential of your subconscious. Get more insights into your daily emotional loops and behavioral patterns with a premium subscription.

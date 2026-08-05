@@ -2433,16 +2433,16 @@ body {
     margin: 0 !important;
     width: 100% !important;
     max-width: none !important;
-    height: auto !important;
+    min-height: 100vh !important;
     aspect-ratio: auto !important;
     box-shadow: none !important;
     overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .print-target [contenteditable] {
-    flex: none !important;
     overflow: visible !important;
-    min-height: 0 !important;
   }
 
   .print-target textarea {
