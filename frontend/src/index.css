@@ -1,7 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=Baloo+2:wght@400;500;600;700;800&family=Quicksand:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=JetBrains+Mono:wght@400;500&display=swap");
 
 /* ══════════════════════════════════════════════════════════════════
-   Theme 1 — "Light": a page torn from a dusty-blue scrapbook — fine
+   Theme 1 — "Canvas" (light): a page torn from a dusty-blue scrapbook — fine
    notebook-grid paper, a woven gingham swatch under the nav, cloud
    washes and star stickers in the corners. Editorial serif display,
    airy geometric sans, vibrant but classy blue accent duo.
@@ -84,7 +84,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   Theme 2 — "Dark": a vintage writing desk at midnight. True-black
+   Theme 2 — "Midnight" (dark): a vintage writing desk at midnight. True-black
    paper, ancient-beige ink and accents (no orange/caramel), a muted
    plum undertone for character. Bold geometric display, minimal,
    high contrast. Every accent is a solid shade — no two-tone blends.
@@ -164,7 +164,7 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   Theme 3 — "Playful": a picnic blanket. A true woven gingham check
+   Theme 3 — "Meadow" (playful): a picnic blanket. A true woven gingham check
    in red, rick-rack ribbon trim, a strawberry-and-daisy sticker —
    sun-yellow and cherry red, sky blue. Bouncy rounded display, warm
    and loud but legible. Every accent is a solid shade — no two-tone

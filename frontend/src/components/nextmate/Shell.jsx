@@ -316,7 +316,7 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
 
 const THEME_CYCLE = { light: 'dark', dark: 'playful', playful: 'light' };
 const THEME_ICON = { light: 'sun', dark: 'moon', playful: 'sparkle' };
-const THEME_NEXT_LABEL = { light: 'Switch to dark mode', dark: 'Switch to playful mode', playful: 'Switch to light mode' };
+const THEME_NEXT_LABEL = { light: 'Switch to Midnight mode', dark: 'Switch to Meadow mode', playful: 'Switch to Canvas mode' };
 
 export const TopBar = ({ crumb, children }) => {
   const { setSidebarOpen, theme, setTheme, setRewardsOpen, hasUnseenReward, rewardPoints } = useContext(AppContext);

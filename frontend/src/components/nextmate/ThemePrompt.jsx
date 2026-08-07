@@ -4,9 +4,9 @@ import { StepDots } from './ProfilePrompts';
 import { useDelayedUnmount } from '../../hooks/useDelayedUnmount';
 
 const OPTIONS = [
-  { key: 'light', label: 'Light', icon: 'sun' },
-  { key: 'dark', label: 'Dark', icon: 'moon' },
-  { key: 'playful', label: 'Playful', icon: 'sparkle' },
+  { key: 'light', label: 'Canvas', icon: 'sun' },
+  { key: 'dark', label: 'Midnight', icon: 'moon' },
+  { key: 'playful', label: 'Meadow', icon: 'sparkle' },
 ];
 
 const THEME_ICON = { light: 'sun', dark: 'moon', playful: 'sparkle' };
@@ -44,7 +44,7 @@ export const ThemePrompt = ({ open, steps, currentTheme, onPreview, onSubmit, on
         <div className="nm-eyebrow" style={{ marginBottom: 10 }}>One last thing</div>
         <h2 className="nm-h2" style={{ marginBottom: 10 }}>Pick your look</h2>
         <p className="nm-body" style={{ marginBottom: 22 }}>
-          Soft &amp; light, classic dark, or bright and playful — you can always switch later from the top bar.
+          Soft &amp; light Canvas, classic dark Midnight, or bright and playful Meadow — you can always switch later from the top bar.
         </p>
         <div className="nm-onboard-choices">
           {OPTIONS.map((o) => (
