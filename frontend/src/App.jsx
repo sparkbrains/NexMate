@@ -222,6 +222,7 @@ export default function App() {
 
   const loopsEl = (
     <LoopsScreen
+      threads={threads}
       onNav={(r, params) => {
         if (r === 'chat') {
           params?.threadId ? openThread(params.threadId, params) : beginReflection();
@@ -260,7 +261,7 @@ export default function App() {
             <Route path="/journal" element={<JournalScreen user={user} />} />
             <Route path="/prompt-packs" element={<PromptPacksScreen />} />
             <Route path="/loops" element={loopsEl} />
-            <Route path="/insights" element={<InsightsScreen tourSample={tourSampleFor('insights')} />} />
+            <Route path="/insights" element={<InsightsScreen tourSample={tourSampleFor('insights')} threads={threads} />} />
             <Route
               path="/profile"
               element={(

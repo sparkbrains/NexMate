@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Icon, TopBar, LoopRing } from './Shell';
+import { useNavigate } from 'react-router-dom';
+import { Icon, TopBar, LoopRing, EmptyDataOverlay } from './Shell';
 import { getDashboardInsights, getKnowledgeGraph } from '../../lib/api';
 import {
   SAMPLE_TREND,
@@ -13,7 +14,7 @@ const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ComposedChart, Bar, Line, Legend
+  ComposedChart, Bar, Line, LineChart, Legend
 } from 'recharts';
 
 const MOOD_COLORS = {
@@ -394,6 +395,26 @@ const KnowledgeGraph = ({ graph }) => {
             </div>
           </div>
         )}
+        <div style={{ position: 'absolute', top: 12, left: 16, zIndex: 1, pointerEvents: 'none' }}>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', gap: 16, fontSize: 11, color: 'var(--ink-2)' }}>
+            <li style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--plum)' }} />
+              <span>Core Belief (Purple)</span>
+            </li>
+            <li style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--clay)' }} />
+              <span>Event/Trigger (Blue)</span>
+            </li>
+            <li style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 14, height: 2, background: 'var(--loop-strong)' }} />
+              <span>Confirmed Loop</span>
+            </li>
+            <li style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 14, height: 1, background: 'var(--rule)' }} />
+              <span>Standard Link (Gray)</span>
+            </li>
+          </ul>
+        </div>
         <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 1, display: 'flex', gap: 4 }}>
           <button type="button" onClick={() => zoomBy(0.8)} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
           <button type="button" onClick={() => zoomBy(1.25)} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
@@ -551,20 +572,8 @@ const KnowledgeGraph = ({ graph }) => {
         )}
         </svg>
       </div>
-      <div style={{ display: 'flex', gap: 16, marginTop: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
-          <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--clay)', flexShrink: 0 }} />
-          <span className="nm-meta">Trigger</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
-          <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--plum)', flexShrink: 0 }} />
-          <span className="nm-meta">Core belief</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
-          <span style={{ width: 16, height: 2, background: 'var(--loop-strong)', flexShrink: 0 }} />
-          <span className="nm-meta">Confirmed loop</span>
-        </div>
-        <span className="nm-meta" style={{ fontStyle: 'italic', marginLeft: 'auto', color: 'var(--ink-3)' }}>Scroll to zoom · drag to pan · click a node for details</span>
+      <div style={{ display: 'flex', marginTop: 10 }}>
+        <span className="nm-meta" style={{ fontStyle: 'italic', marginLeft: 'auto', color: 'var(--ink-3)' }}>Scroll to zoom · drag to pan · click a node</span>
       </div>
     </div>
   );
@@ -763,35 +772,24 @@ const EmotionalSpectrum = ({ moods }) => {
 };
 
 const EmotionalBandwidth = ({ distribution }) => {
-  const [zoom, setZoom] = useState(1);
   if (!distribution || distribution.length === 0) return <div className="nm-meta" style={{ padding: 30 }}>No intensity data yet.</div>;
 
   return (
-    <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 13, overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', gap: 4 }}>
-        <button type="button" onClick={() => setZoom(z => Math.min(z + 0.25, 3))} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
-        <button type="button" onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
-        <button type="button" onClick={() => setZoom(1)} className="nm-graph-zoom-btn" aria-label="Reset view">⤢</button>
-      </div>
-      <div style={{ height: '100%', transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.2s' }}>
-        <div style={{ height: '100%' }}>
+    <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 13 }}>
+      <div style={{ overflowX: 'auto', overflowY: 'hidden', height: '100%', paddingBottom: 8 }}>
+        <div style={{ height: '100%', minWidth: 600 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={distribution} margin={{ top: 117, right: 20, left: 30, bottom: 40 }}>
-              <defs>
-                <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.8}/>
-                  <stop offset="95%" stopColor="var(--accent)" stopOpacity={0}/>
-                </linearGradient>
-              </defs>
-              <XAxis dataKey="intensity" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Intensity (1-10)', position: 'insideBottom', offset: -20, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
-              <YAxis tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Frequency (Days)', angle: -90, position: 'insideLeft', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+            <LineChart layout="vertical" data={distribution} margin={{ top: 20, right: 20, left: 30, bottom: 40 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="var(--rule-soft)" />
+              <XAxis type="number" dataKey="count" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Frequency (Days)', position: 'insideBottom', offset: -20, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <YAxis type="category" dataKey="intensity" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Intensity (1-10)', angle: -90, position: 'insideLeft', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
               <Tooltip 
                 contentStyle={{ background: 'var(--surface-0)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
                 formatter={(value) => [value, 'Frequency']}
                 labelFormatter={(label) => `Intensity Level: ${label}`}
               />
-              <Area type="monotone" dataKey="count" stroke="var(--accent)" fillOpacity={1} fill="url(#colorCount)" />
-            </AreaChart>
+              <Line type="monotone" dataKey="count" stroke="var(--accent)" strokeWidth={3} dot={{ r: 4, fill: 'var(--surface-0)', stroke: 'var(--accent)', strokeWidth: 2 }} activeDot={{ r: 6 }} />
+            </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
@@ -800,7 +798,6 @@ const EmotionalBandwidth = ({ distribution }) => {
 };
 
 const CognitiveLoad = ({ trend, granularity }) => {
-  const [zoom, setZoom] = useState(1);
   const n = trend?.length || 0;
   if (!n) return <div className="nm-meta" style={{ padding: 30 }}>No data yet.</div>;
 
@@ -810,15 +807,13 @@ const CognitiveLoad = ({ trend, granularity }) => {
     intensity: d.avg_intensity || 0,
   }));
 
+  // Dynamically calculate width based on number of days to prevent squishing
+  const minWidth = Math.max(600, n * 50);
+
   return (
-    <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 8, overflow: 'hidden' }}>
-      <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', gap: 4 }}>
-        <button type="button" onClick={() => setZoom(z => Math.min(z + 0.25, 3))} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
-        <button type="button" onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
-        <button type="button" onClick={() => setZoom(1)} className="nm-graph-zoom-btn" aria-label="Reset view">⤢</button>
-      </div>
-      <div style={{ height: '100%', transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.2s' }}>
-        <div style={{ height: '100%' }}>
+    <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 8 }}>
+      <div style={{ overflowX: 'auto', overflowY: 'hidden', height: '100%', paddingBottom: 8 }}>
+        <div style={{ height: '100%', minWidth }}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data} margin={{ top: 27, right: 20, left: 30, bottom: 40 }}>
               <defs>
@@ -855,7 +850,45 @@ const KG_RANGES = RANGES.filter(r => r.k !== '1y');
 
 const GRANULARITY_LABELS = { day: 'Today', week: 'This week', month: 'This month' };
 
-export const InsightsScreen = ({ tourSample }) => {
+const DUMMY_INSIGHTS = {
+  total_entries: 0,
+  thread_count: 0,
+  message_count: 0,
+  intensity_stats: { avg: 6.2, peak: 9, peak_day: 'Wed', low: 2, low_day: 'Sun', peak_summary: 'Work stress peak', low_summary: 'Relaxing weekend' },
+  mood_breakdown: [
+    { mood: 'anxious', count: 12, pct: 40 },
+    { mood: 'hopeful', count: 8, pct: 27 },
+    { mood: 'tired', count: 6, pct: 20 },
+    { mood: 'calm', count: 4, pct: 13 }
+  ],
+  emotion_trend: Array.from({ length: 30 }, (_, i) => ({
+    day: new Date(Date.now() - (29 - i) * 86400000).toISOString(),
+    count: Math.floor(Math.random() * 5) + 1,
+    avg_intensity: Math.floor(Math.random() * 6) + 3,
+    dominant_mood: ['anxious', 'hopeful', 'tired', 'calm'][Math.floor(Math.random() * 4)]
+  })),
+  trigger_heatmap: [
+    { trigger: 'Work', intensity: Array(30).fill(0).map(() => Math.floor(Math.random() * 10)) },
+    { trigger: 'Sleep', intensity: Array(30).fill(0).map(() => Math.floor(Math.random() * 8)) },
+    { trigger: 'Relationships', intensity: Array(30).fill(0).map(() => Math.floor(Math.random() * 6)) },
+  ],
+  intensity_distribution: Array.from({ length: 10 }, (_, i) => ({
+    intensity: i + 1, count: Math.floor(Math.random() * 15)
+  })),
+  growth: {
+    current: { avg_intensity: 5.4, threads: 14 },
+    previous: { avg_intensity: 6.1, threads: 10 }
+  },
+  loops: { items: [], active: 3, resolved: 1, new_in_window: 1, mastery_pct: 25 },
+  core_beliefs_profile: [
+    { belief: 'I must be perfect', pct: 45 },
+    { belief: 'I am not doing enough', pct: 35 },
+    { belief: 'People will judge me', pct: 20 }
+  ]
+};
+
+export const InsightsScreen = ({ tourSample, threads = [] }) => {
+  const navigate = useNavigate();
   const [rangeKey, setRangeKey] = useState('30d');
   const [granularity, setGranularity] = useState('month');
   const [insights, setInsights] = useState(null);
@@ -885,56 +918,56 @@ export const InsightsScreen = ({ tourSample }) => {
     return () => { cancelled = true; };
   }, [kgDays]);
 
-  const totalEntries = insights?.total_entries ?? 0;
-  // A fresh account has nothing to point an arrow at, so the tour swaps in
-  // clearly-badged sample data for the charts it walks through.
-  const usingSample = Boolean(tourSample) && totalEntries === 0;
+  const usingSample = Boolean(tourSample) && !loading && (insights?.total_entries ?? 0) === 0;
+  const isEmpty = !loading && (insights?.total_entries === 0 || !insights) && threads.length === 0 && !usingSample;
+  const displayInsights = usingSample ? insights : (isEmpty ? DUMMY_INSIGHTS : insights);
 
   // Slice emotion_trend to the granularity window
   const visibleTrend = useMemo(() => {
     const window = GRANULARITY_WINDOW[granularity] ?? 30;
     if (usingSample) return sliceLast(SAMPLE_TREND, window);
-    const sliced = sliceLast(insights?.emotion_trend, window);
+    const sliced = sliceLast(displayInsights?.emotion_trend, window);
     const firstDataIdx = sliced.findIndex(d => d.count > 0);
     if (firstDataIdx === -1) return sliced;
     return sliced.slice(firstDataIdx);
-  }, [insights, granularity, usingSample]);
+  }, [displayInsights, granularity, usingSample]);
 
   // Slice each trigger row's intensity cells to the granularity window
   const visibleHeatmap = useMemo(() => {
     const window = GRANULARITY_WINDOW[granularity] ?? 30;
     if (usingSample) return sliceHeatmap(SAMPLE_TRIGGER_HEATMAP, window);
-    return sliceHeatmap(insights?.trigger_heatmap, window);
-  }, [insights, granularity, usingSample]);
+    return sliceHeatmap(displayInsights?.trigger_heatmap, window);
+  }, [displayInsights, granularity, usingSample]);
 
-  const threadCount = insights?.thread_count ?? 0;
-  const messageCount = insights?.message_count ?? 0;
+  const totalEntries = displayInsights?.total_entries ?? 0;
+  const threadCount = displayInsights?.thread_count ?? 0;
+  const messageCount = displayInsights?.message_count ?? 0;
 
-  const intensityAvg = insights?.intensity_stats?.avg;
-  const peak = insights?.intensity_stats?.peak;
-  const peakDay = insights?.intensity_stats?.peak_day;
-  const low = insights?.intensity_stats?.low;
-  const lowDay = insights?.intensity_stats?.low_day;
+  const intensityAvg = displayInsights?.intensity_stats?.avg;
+  const peak = displayInsights?.intensity_stats?.peak;
+  const peakDay = displayInsights?.intensity_stats?.peak_day;
+  const low = displayInsights?.intensity_stats?.low;
+  const lowDay = displayInsights?.intensity_stats?.low_day;
 
-  const moods = usingSample ? SAMPLE_MOOD_BREAKDOWN : (insights?.mood_breakdown || []);
-  const intensityDistribution = usingSample ? SAMPLE_INTENSITY_DISTRIBUTION : insights?.intensity_distribution;
+  const moods = usingSample ? SAMPLE_MOOD_BREAKDOWN : (displayInsights?.mood_breakdown || []);
+  const intensityDistribution = usingSample ? SAMPLE_INTENSITY_DISTRIBUTION : displayInsights?.intensity_distribution;
   const displayGraph = usingSample ? SAMPLE_KNOWLEDGE_GRAPH : knowledgeGraph;
 
-  const growthCur = insights?.growth?.current;
-  const growthPrev = insights?.growth?.previous;
+  const growthCur = displayInsights?.growth?.current;
+  const growthPrev = displayInsights?.growth?.previous;
   const intensityDelta = fmtDelta(growthCur?.avg_intensity, growthPrev?.avg_intensity);
   const threadsDelta = fmtDelta(growthCur?.threads, growthPrev?.threads);
 
-  const loops = insights?.loops?.items || [];
-  const loopsActive = insights?.loops?.active ?? 0;
-  const loopsResolved = insights?.loops?.resolved ?? 0;
-  const loopsNew = insights?.loops?.new_in_window ?? 0;
-  const masteryPct = insights?.loops?.mastery_pct ?? 0;
+  const loops = displayInsights?.loops?.items || [];
+  const loopsActive = displayInsights?.loops?.active ?? 0;
+  const loopsResolved = displayInsights?.loops?.resolved ?? 0;
+  const loopsNew = displayInsights?.loops?.new_in_window ?? 0;
+  const masteryPct = displayInsights?.loops?.mastery_pct ?? 0;
   
-  const coreBeliefs = insights?.core_beliefs_profile || [];
-  const topCoreThemes = insights?.top_core_themes || [];
-  const peakSummary = insights?.intensity_stats?.peak_summary;
-  const lowSummary = insights?.intensity_stats?.low_summary;
+  const coreBeliefs = displayInsights?.core_beliefs_profile || [];
+  const topCoreThemes = displayInsights?.top_core_themes || [];
+  const peakSummary = displayInsights?.intensity_stats?.peak_summary;
+  const lowSummary = displayInsights?.intensity_stats?.low_summary;
 
   return (
     <div className="nm-main">
@@ -996,175 +1029,227 @@ export const InsightsScreen = ({ tourSample }) => {
 
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, marginBottom: 14 }}>
             {/* Emotion Trend card */}
-            <div className="nm-card" style={{ overflow: 'hidden' }} data-tour="insights-trend">
-              <div style={{ marginBottom: 14 }}>
-                <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  Emotion Trend · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
-                  {usingSample && <SampleBadge />}
-                </div>
-                <div className="nm-h3" style={{ marginTop: 4 }}>
-                  {usingSample ? 'A preview, once entries start coming in' : totalEntries === 0 ? 'Start reflecting to see your trend.' : 'Emotions over time'}
-                </div>
-                <EmotionMixBars
-                  trend={visibleTrend}
-                  granularity={granularity}
-                  emotions={moods.slice(0, 6).map(m => m.mood)}
-                />
-                <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
-                  {moods.slice(0, 6).map((m, mi) => (
-                    <div key={m.mood} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5 }}>
-                      <span style={{ width: 9, height: 9, background: EMOTION_PALETTE[mi % EMOTION_PALETTE.length], borderRadius: 2, flexShrink: 0 }} />
-                      <span>{m.mood}</span>
-                      <span className="nm-meta">{m.pct}%</span>
-                    </div>
-                  ))}
+            <EmptyDataOverlay
+              active={isEmpty}
+              title="Your journey begins here."
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={() => navigate('/chat')}
+            >
+              <div className="nm-card" style={{ overflow: 'hidden' }} data-tour="insights-trend">
+                <div style={{ marginBottom: 14 }}>
+                  <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    Emotion Trend · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
+                    {usingSample && <SampleBadge />}
+                  </div>
+                  <div className="nm-h3" style={{ marginTop: 4 }}>
+                    {usingSample ? 'A preview, once entries start coming in' : totalEntries === 0 ? 'Start reflecting to see your trend.' : 'Emotions over time'}
+                  </div>
+                  <EmotionMixBars
+                    trend={visibleTrend}
+                    granularity={granularity}
+                    emotions={moods.slice(0, 6).map(m => m.mood)}
+                  />
+                  <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+                    {moods.slice(0, 6).map((m, mi) => (
+                      <div key={m.mood} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5 }}>
+                        <span style={{ width: 9, height: 9, background: EMOTION_PALETTE[mi % EMOTION_PALETTE.length], borderRadius: 2, flexShrink: 0 }} />
+                        <span>{m.mood}</span>
+                        <span className="nm-meta">{m.pct}%</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            </EmptyDataOverlay>
           </div>
 
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14, marginBottom: 14 }}>
             {/* Cognitive Load card */}
-            <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-load">
-              <div style={{ marginBottom: 14 }}>
-                <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  Cognitive Load · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
-                  {usingSample && <SampleBadge />}
+            <EmptyDataOverlay
+              active={isEmpty}
+              title="Your journey begins here."
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={() => navigate('/chat')}
+            >
+              <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-load">
+                <div style={{ marginBottom: 14 }}>
+                  <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    Cognitive Load · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
+                    {usingSample && <SampleBadge />}
+                  </div>
+                  <div className="nm-h3" style={{ marginTop: 4 }}>Thought Volume vs. Intensity</div>
+                  <CognitiveLoad trend={visibleTrend} granularity={granularity} />
                 </div>
-                <div className="nm-h3" style={{ marginTop: 4 }}>Thought Volume vs. Intensity</div>
-                <CognitiveLoad trend={visibleTrend} granularity={granularity} />
               </div>
-            </div>
+            </EmptyDataOverlay>
 
             {/* Emotional Spectrum card */}
-            <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-spectrum">
-              <div style={{ marginBottom: 14 }}>
-                <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  The Emotional Spectrum
-                  {usingSample && <SampleBadge />}
+            <EmptyDataOverlay
+              active={isEmpty}
+              title="Your journey begins here."
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={() => navigate('/chat')}
+            >
+              <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-spectrum">
+                <div style={{ marginBottom: 14 }}>
+                  <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    The Emotional Spectrum
+                    {usingSample && <SampleBadge />}
+                  </div>
+                  <div className="nm-h3" style={{ marginTop: 4 }}>Your emotional shape</div>
+                  <EmotionalSpectrum moods={moods} />
                 </div>
-                <div className="nm-h3" style={{ marginTop: 4 }}>Your emotional shape</div>
-                <EmotionalSpectrum moods={moods} />
               </div>
-            </div>
+            </EmptyDataOverlay>
           </div>
 
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 14, marginBottom: 14 }}>
             {/* Emotional Bandwidth card */}
-            <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ marginBottom: 14 }}>
-                <div className="nm-eyebrow">Emotional Bandwidth</div>
-                <div className="nm-h3" style={{ marginTop: 4 }}>Intensity Distribution</div>
-                <EmotionalBandwidth distribution={intensityDistribution} />
+            <EmptyDataOverlay
+              active={isEmpty}
+              title="Your journey begins here."
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={() => navigate('/chat')}
+            >
+              <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ marginBottom: 14 }}>
+                  <div className="nm-eyebrow">Emotional Bandwidth</div>
+                  <div className="nm-h3" style={{ marginTop: 4 }}>Intensity Distribution</div>
+                  <EmotionalBandwidth distribution={intensityDistribution} />
+                </div>
               </div>
-            </div>
+            </EmptyDataOverlay>
 
             {/* Growth & Awareness card */}
-            <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', background: 'linear-gradient(145deg, var(--surface-1), var(--surface-2))', border: '1px solid var(--rule-soft)' }}>
-              <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Growth & Awareness</div>
-              <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
-                
-                {/* Embedded KPI 1: Emotional State */}
-                <div style={{ background: 'var(--surface-0)', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <div className="nm-meta" style={{ marginBottom: 6 }}>Dominant State</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 600, color: 'var(--ink)' }}>
-                        {moods[0] ? moods[0].mood.charAt(0).toUpperCase() + moods[0].mood.slice(1) : '—'}
-                      </div>
-                      {moods[0] && <div className="nm-meta" style={{ color: 'var(--ink-3)' }}>({moods[0].pct}%)</div>}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div className="nm-meta" style={{ marginBottom: 6 }}>Avg Intensity of all emotions</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, justifyContent: 'flex-end' }}>
-                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 600, color: 'var(--ink)' }}>{growthCur?.avg_intensity ?? '—'}</div>
-                      {intensityDelta != null && (
-                        <div style={{ fontSize: 12, fontWeight: 600, color: intensityDelta <= 0 ? 'var(--teal)' : 'var(--accent)' }}>
-                          {intensityDelta <= 0 ? '↓ Calming' : '↑ Elevating'}
+            <EmptyDataOverlay 
+              active={isEmpty} 
+              title="Your journey begins here." 
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={() => navigate('/chat')}
+            >
+              <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', background: 'linear-gradient(145deg, var(--surface-1), var(--surface-2))', border: '1px solid var(--rule-soft)' }}>
+                <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Growth & Awareness</div>
+                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+                  
+                  {/* Embedded KPI 1: Emotional State */}
+                  <div style={{ background: 'var(--surface-0)', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div className="nm-meta" style={{ marginBottom: 6 }}>Dominant State</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 600, color: 'var(--ink)' }}>
+                          {moods[0] ? moods[0].mood.charAt(0).toUpperCase() + moods[0].mood.slice(1) : '—'}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Embedded KPI 2: Core Beliefs Profile */}
-                <div style={{ background: 'var(--surface-0)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div className="nm-meta">Core Beliefs Profile</div>
-                  {coreBeliefs.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {coreBeliefs.slice(0, 3).map((belief, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <div style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 13, color: 'var(--ink)' }}>
-                            {belief.belief}
-                          </div>
-                          <div style={{ width: 40, height: 4, background: 'var(--rule-soft)', borderRadius: 2, overflow: 'hidden' }}>
-                            <div style={{ width: `${belief.pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 2 }} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="nm-meta" style={{ fontStyle: 'italic', fontSize: 12 }}>Not enough data to profile core beliefs.</div>
-                  )}
-                </div>
-
-                {/* Embedded KPI 3: Pattern Mastery */}
-                <div style={{ background: 'linear-gradient(135deg, rgba(78, 205, 196, 0.1), rgba(108, 92, 231, 0.15))', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <div className="nm-meta" style={{ marginBottom: 6 }}>Pattern Mastery</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: 'var(--ink)' }}>{masteryPct}%</div>
-                        <div className="nm-meta" style={{ color: 'var(--ink-3)' }}>resolved</div>
+                        {moods[0] && <div className="nm-meta" style={{ color: 'var(--ink-3)' }}>({moods[0].pct}%)</div>}
                       </div>
                     </div>
-                    <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 4 }}>
-                      {loopsResolved} resolved / {loopsActive + loopsResolved} total loops
+                    <div style={{ textAlign: 'right' }}>
+                      <div className="nm-meta" style={{ marginBottom: 6 }}>Avg Intensity of all emotions</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, justifyContent: 'flex-end' }}>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 600, color: 'var(--ink)' }}>{growthCur?.avg_intensity ?? '—'}</div>
+                        {intensityDelta != null && (
+                          <div style={{ fontSize: 12, fontWeight: 600, color: intensityDelta <= 0 ? 'var(--teal)' : 'var(--accent)' }}>
+                            {intensityDelta <= 0 ? '↓ Calming' : '↑ Elevating'}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--surface-0)', border: '2px solid var(--teal)', color: 'var(--teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, boxShadow: '0 4px 12px rgba(78, 205, 196, 0.2)' }}>
-                    {masteryPct === 100 ? '✧' : '∞'}
+
+                  {/* Embedded KPI 2: Core Beliefs Profile */}
+                  <div style={{ background: 'var(--surface-0)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div className="nm-meta">Core Beliefs Profile</div>
+                    {coreBeliefs.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {coreBeliefs.slice(0, 3).map((belief, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 13, color: 'var(--ink)' }}>
+                              {belief.belief}
+                            </div>
+                            <div style={{ width: 40, height: 4, background: 'var(--rule-soft)', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{ width: `${belief.pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 2 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="nm-meta" style={{ fontStyle: 'italic', fontSize: 12 }}>Not enough data to profile core beliefs.</div>
+                    )}
+                  </div>
+
+                  {/* Embedded KPI 3: Pattern Mastery */}
+                  <div style={{ background: 'linear-gradient(135deg, rgba(78, 205, 196, 0.1), rgba(108, 92, 231, 0.15))', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div className="nm-meta" style={{ marginBottom: 6 }}>Pattern Mastery</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: 'var(--ink)' }}>{masteryPct}%</div>
+                          <div className="nm-meta" style={{ color: 'var(--ink-3)' }}>resolved</div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 4 }}>
+                        {loopsResolved} resolved / {loopsActive + loopsResolved} total loops
+                      </div>
+                    </div>
+                    <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--surface-0)', border: '2px solid var(--teal)', color: 'var(--teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, boxShadow: '0 4px 12px rgba(78, 205, 196, 0.2)' }}>
+                      {masteryPct === 100 ? '✧' : '∞'}
+                    </div>
                   </div>
                 </div>
-
               </div>
-            </div>
+            </EmptyDataOverlay>
           </div>
 
-          <div className="nm-card" style={{ marginBottom: 14 }} data-tour="insights-graph">
-            <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div>
+          <EmptyDataOverlay 
+            active={isEmpty || (!knowledgeGraph || knowledgeGraph?.nodes?.length === 0)} 
+            title={isEmpty ? "Your journey begins here." : "We need more data to draw this chart."}
+            message={isEmpty ? "Start a chat or write your first journal entry to unlock your personalized insights." : "Your Knowledge Graph is building. Keep journaling! 🧠"}
+            actionLabel={isEmpty ? "Begin a Chat" : "Begin Reflection"}
+            onAction={isEmpty ? () => navigate('/chat') : undefined}
+          >
+            <div className="nm-card" style={{ marginBottom: 14 }}>
+              <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div className="nm-eyebrow">Knowledge Graph</div>
+                  <div className="nm-h3" style={{ marginTop: 4 }}>How your triggers and core beliefs connect</div>
+                </div>
+                <select 
+                  value={kgRangeKey} 
+                  onChange={(e) => setKgRangeKey(e.target.value)}
+                  style={{ padding: '6px 28px 6px 12px', borderRadius: 20, border: '1px solid var(--rule)', background: 'var(--surface-0)', fontSize: 12, fontWeight: 500, color: 'var(--ink)', cursor: 'pointer' }}
+                >
+                  {KG_RANGES.map(r => (
+                    <option key={r.k} value={r.k}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ position: 'relative', width: '100%', height: 320, border: '1px solid var(--rule-soft)', borderRadius: 8, overflow: 'hidden', marginTop: 12 }}>
+                <KnowledgeGraph graph={knowledgeGraph} />
+              </div>
+            </div>
+          </EmptyDataOverlay>
+
+          <EmptyDataOverlay
+            active={isEmpty}
+            title="Your journey begins here."
+            message="Start a chat or write your first journal entry to unlock your personalized insights."
+            actionLabel="Begin a Chat"
+            onAction={() => navigate('/chat')}
+          >
+            <div className="nm-card" style={{ marginBottom: 14 }} data-tour="insights-heatmap">
+              <div style={{ marginBottom: 14 }}>
                 <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  Knowledge Graph
+                  Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
                   {usingSample && <SampleBadge />}
                 </div>
-                <div className="nm-h3" style={{ marginTop: 4 }}>How your triggers and core beliefs connect</div>
               </div>
-              <select
-                value={kgRangeKey}
-                onChange={(e) => setKgRangeKey(e.target.value)}
-                style={{ padding: '6px 28px 6px 12px', borderRadius: 20, border: '1px solid var(--rule)', background: 'var(--surface-0)', fontSize: 12, fontWeight: 500, color: 'var(--ink)', cursor: 'pointer' }}
-              >
-                {KG_RANGES.map(r => (
-                  <option key={r.k} value={r.k}>{r.label}</option>
-                ))}
-              </select>
+              <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />
             </div>
-            <div style={{ position: 'relative', width: '100%', height: 320, border: '1px solid var(--rule-soft)', borderRadius: 8, overflow: 'hidden', marginTop: 12 }}>
-              <KnowledgeGraph graph={displayGraph} />
-            </div>
-          </div>
-
-          <div className="nm-card" style={{ marginBottom: 14 }} data-tour="insights-heatmap">
-            <div style={{ marginBottom: 14 }}>
-              <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
-                {usingSample && <SampleBadge />}
-              </div>
-            </div>
-            <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />
-          </div>
+          </EmptyDataOverlay>
 
           {false && /* Discovered Patterns, Subconscious Themes, Month in Extremes — hidden for now */ (
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>

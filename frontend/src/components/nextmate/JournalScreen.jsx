@@ -37,6 +37,47 @@ const BOOK_COLORS = [
 // on-screen zoom is a pure CSS transform on top of it, so saved sticker/text-block
 // coordinates stay valid across window sizes and zoom levels, and print/export can
 // render it at true A4 size regardless of what zoom the user was looking at.
+
+const THEME_TO_COVER_MAP = {
+  'Background 1.jpg': 'Cover 1.png',
+  'Background 10.jpg': 'Cover 10.png',
+  'Background 11.jpg': 'Cover 11.png',
+  'Background 12.jpg': 'Cover 12.png',
+  'Background 13.jpg': 'Cover 13.png',
+  'Background 14.jpg': 'Cover 14.png',
+  'Background 15.png': 'Cover 15.jpg',
+  'Background 16.png': 'Cover 16.png',
+  'Background 17.png': 'Cover 17.jpg',
+  'Background 18.png': 'Cover 18.jpg',
+  'Background 19.png': 'Cover 20.jpg',
+  'Background 2.jpg': 'Cover 2.png',
+  'Background 20.png': 'Cover 20.jpg',
+  'Background 21.jpg': 'Cover 21.png',
+  'Background 3.jpg': 'Cover 3.jpg',
+  'Background 4.jpg': 'Cover 4.png',
+  'Background 5.jpg': 'Cover 5.png',
+  'Background 6.jpg': 'Cover 6.jpg',
+  'Background 7.jpg': 'cover 7.jpg',
+  'Background 8.jpg': 'Cover 8.jpg',
+  'Background 9.jpg': 'Cover 9.png',
+};
+
+const COVERS = [
+  'Cover 1.jpg', 'Cover 2.jpg', 'Cover 3.jpg', 'Cover 4.jpg', 'Cover 5.jpg',
+  'Cover 6.jpg', 'cover 7.jpg', 'Cover 8.jpg', 'Cover 9.jpg', 'Cover 10.jpg',
+  'Cover 11.jpg', 'Cover 12.jpg', 'Cover 13.jpg', 'Cover 14.jpg', 'Cover 15.jpg',
+  'Cover 16.jpg', 'Cover 17.jpg', 'Cover 18.jpg', 'Cover 19.jpg', 'Cover 20.jpg',
+  'Cover 21.jpg', 'Cover 22.jpg', 'Cover 23.jpg', 'Cover 24.jpg'
+];
+
+const BACKGROUNDS = [
+  'Background 1.jpg', 'Background 2.jpg', 'Background 3.jpg', 'Background 4.jpg',
+  'Background 5.jpg', 'Background 6.jpg', 'Background 7.jpg', 'Background 8.jpg',
+  'Background 9.jpg', 'Background 10.jpg', 'Background 11.jpg', 'Background 12.jpg',
+  'Background 13.jpg', 'Background 14.jpg', 'Background 15.jpg', 'Background 16.jpg',
+  'Background 17.jpg', 'Background 18.jpg', 'Background 19.jpg', 'Background 20.jpg'
+];
+
 const A4_WIDTH = 794;
 const A4_HEIGHT = 1123;
 const ZOOM_MIN = 0.25;
@@ -119,25 +160,65 @@ const Entry = ({ entry, onDelete, onEditInMain }) => {
   );
 };
 
-const BookRow = ({ book, active, onClick, onDelete }) => {
+const BookRow = ({ book, active, cover, onClick, onDelete }) => {
   const [confirming, setConfirming] = useState(false);
   return (
     <div
-      className={'nm-book-row' + (active ? ' active' : '')}
       onClick={onClick}
+      style={{
+        position: 'relative',
+        height: 48,
+        marginBottom: 10,
+        borderRadius: '2px 6px 6px 2px',
+        boxShadow: active ? '0 8px 16px rgba(0,0,0,0.3)' : '0 2px 4px rgba(0,0,0,0.1)',
+        transform: 'none',
+        transition: 'transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.3s, border-left 0.3s',
+        cursor: 'pointer',
+        background: cover ? `url('/covers/${encodeURIComponent(cover)}') center/cover` : book.color || 'var(--accent)',
+        borderLeft: active ? '5px solid var(--accent)' : '5px solid rgba(0,0,0,0.35)',
+        overflow: 'hidden',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '0 12px'
+      }}
     >
-      <div style={{ width: 14, height: 14, borderRadius: '50%', background: book.color || 'var(--accent)', marginLeft: 16, flexShrink: 0 }} />
-      <div className="nm-book-meta" style={{ paddingLeft: 12 }}>
-        <div className="nm-book-title">{book.name}</div>
-        <div className="nm-book-count">
-          {book.entry_count || 0} {book.entry_count === 1 ? 'entry' : 'entries'}
+      <div style={{
+        position: 'absolute', inset: 0,
+        background: 'linear-gradient(to bottom, rgba(255,255,255,0.15) 0%, rgba(0,0,0,0.2) 100%)',
+        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)'
+      }} />
+      <div style={{ position: 'relative', zIndex: 1, flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ 
+          flex: 1,
+          textAlign: 'center',
+          background: 'rgba(255, 255, 255, 0.85)', 
+          backdropFilter: 'blur(4px)',
+          color: '#111', 
+          padding: '2px 10px', 
+          borderRadius: '12px', 
+          fontFamily: 'var(--font-serif)', 
+          fontWeight: 600, 
+          fontSize: 14, 
+          whiteSpace: 'nowrap', 
+          overflow: 'hidden', 
+          textOverflow: 'ellipsis',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          border: '1px solid rgba(255,255,255,0.4)'
+        }}>
+          {book.name}
         </div>
       </div>
-      <div className="nm-book-actions" onClick={(e) => e.stopPropagation()}>
-        <button className="nm-btn ghost" title="Delete book" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
-          <Icon name="trash" size={11} />
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center' }}>
+        <button className="nm-btn ghost" title="Delete book" style={{ padding: 4, color: 'white', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }} onClick={(e) => { e.stopPropagation(); setConfirming(true); }}>
+          <Icon name="trash" size={12} />
         </button>
       </div>
+
+      <div style={{
+        position: 'absolute', right: 0, top: 2, bottom: 2, width: 5,
+        background: '#f0ebd8', borderRadius: '0 3px 3px 0',
+        borderLeft: '1px solid rgba(0,0,0,0.2)'
+      }} />
 
       <ConfirmDialog
         open={confirming}
@@ -283,13 +364,31 @@ export const JournalScreen = ({ user }) => {
   const [entryDate, setEntryDate] = useState(todayISO());
   const [saving, setSaving] = useState(false);
   const [allowLoopDetection, setAllowLoopDetection] = useState(true);
+  const [bookSettings, setBookSettings] = useState({});
+  const [isBookOpen, setIsBookOpen] = useState(false);
+  const [coverText, setCoverText] = useState('');
   const editorRef = useRef(null);
+  
+  // Toolbar dropdown state
+  const [activeMenu, setActiveMenu] = useState(null);
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest('.nm-dropdown-group')) {
+        setActiveMenu(null);
+      }
+    };
+    if (activeMenu) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [activeMenu]);
 
   const [showNewBook, setShowNewBook] = useState(false);
   const [newBookName, setNewBookName] = useState('');
   const [newBookColor, setNewBookColor] = useState(BOOK_COLORS[0]);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [bgImage, setBgImage] = useState('');
+  const [coverStyle, setCoverStyle] = useState('');
   const [showStickerPanel, setShowStickerPanel] = useState(false);
   const [stickers, setStickers] = useState([]); // { id, src, x, y, w, rotate }
   const [selectedSticker, setSelectedSticker] = useState(null);
@@ -301,6 +400,7 @@ export const JournalScreen = ({ user }) => {
   const [customThemeUrl, setCustomThemeUrl] = useState('');
   const customThemeInputRef = useRef(null);
   const editorWrapRef = useRef(null);
+  const printContainerRef = useRef(null);
   const pageViewportRef = useRef(null);
 
   // zoomMode is either 'fit-width' / 'fit-page', or a fixed numeric zoom (1 = 100%).
@@ -317,7 +417,7 @@ export const JournalScreen = ({ user }) => {
 
   const addSticker = (src) => {
     const id = Date.now();
-    setStickers(prev => [...prev, { id, src, x: 20, y: 20, w: 90, rotate: 0 }]);
+    setStickers(prev => [...prev, { id, src, x: 20, y: 20, w: 90, rotate: 0, page: isBookOpen ? 'journal' : 'cover' }]);
     setSelectedSticker(id);
     setShowStickerPanel(false);
   };
@@ -341,6 +441,7 @@ export const JournalScreen = ({ user }) => {
       id, text: 'Your text here', x: 40, y: 40, rotate: 0,
       fontFamily: FONT_OPTIONS[0].value, fontSize: 18, color: '#000000',
       bold: false, italic: false, underline: false, align: 'left',
+      page: isBookOpen ? 'journal' : 'cover'
     }]);
     setSelectedBlock(id);
   };
@@ -477,10 +578,35 @@ export const JournalScreen = ({ user }) => {
     setSelectedSticker(null);
     setSelectedBlock(null);
     requestAnimationFrame(() => {
-      const el = editorWrapRef.current;
-      if (el) el.classList.add('print-target');
+      const el = printContainerRef.current;
+      if (!el) return;
+      
+      // Clone to break out of React's DOM hierarchy for perfect printing
+      const clone = el.cloneNode(true);
+      clone.classList.add('print-target-clone');
+      
+      // Foolproof fix: Strip inline visibility/opacity from the cover clone so it ALWAYS prints
+      const coverClone = clone.querySelector('.nm-cover-page');
+      if (coverClone) {
+        coverClone.style.opacity = '1';
+        coverClone.style.visibility = 'visible';
+        coverClone.style.transform = 'none';
+        coverClone.style.pointerEvents = 'auto';
+        
+        // PDF engines ignore backface-visibility: hidden, causing the beige inner cover to render on top of the image!
+        // We completely remove it from the print clone.
+        const backfaceDiv = coverClone.querySelector('.nm-backface');
+        if (backfaceDiv) backfaceDiv.remove();
+      }
+      
+      const printWrapper = document.createElement('div');
+      printWrapper.id = 'nm-print-wrapper';
+      printWrapper.appendChild(clone);
+      document.body.appendChild(printWrapper);
+      
       window.print();
-      if (el) el.classList.remove('print-target');
+      
+      document.body.removeChild(printWrapper);
     });
   };
 
@@ -556,7 +682,60 @@ export const JournalScreen = ({ user }) => {
   };
 
   useEffect(() => { fetchBooks(); fetchStreak(); }, []);
-  useEffect(() => { if (activeBookId) fetchEntries(activeBookId); }, [activeBookId]);
+  
+  // Load settings from local storage
+  useEffect(() => {
+    const settings = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('book_')) {
+        settings[key] = localStorage.getItem(key);
+      }
+    }
+    setBookSettings(settings);
+  }, []);
+
+  useEffect(() => { 
+    if (activeBookId) {
+      fetchEntries(activeBookId); 
+      setCoverStyle(localStorage.getItem(`book_${activeBookId}_cover`) || '');
+      setBgImage(localStorage.getItem(`book_${activeBookId}_bg`) || '');
+      setCoverText(localStorage.getItem(`book_${activeBookId}_coverText`) || '');
+      setIsBookOpen(false); // Close book when switching
+    }
+  }, [activeBookId]);
+
+  const handleSetCoverText = (val) => {
+    setCoverText(val);
+    if (activeBookId) {
+      localStorage.setItem(`book_${activeBookId}_coverText`, val);
+    }
+  };
+
+  const handleSetCover = (val) => {
+    setCoverStyle(val);
+    setIsBookOpen(false); // Close book to show the new cover
+    if (activeBookId) {
+      localStorage.setItem(`book_${activeBookId}_cover`, val);
+      setBookSettings(prev => ({ ...prev, [`book_${activeBookId}_cover`]: val }));
+    }
+  };
+
+  const handleSetBg = (val) => {
+    setBgImage(val);
+    setIsBookOpen(true); // Open book to show the new background
+    if (activeBookId) {
+      localStorage.setItem(`book_${activeBookId}_bg`, val);
+      setBookSettings(prev => ({ ...prev, [`book_${activeBookId}_bg`]: val }));
+
+      if (val && THEME_TO_COVER_MAP[val]) {
+        const suggestedCover = THEME_TO_COVER_MAP[val];
+        setCoverStyle(suggestedCover);
+        localStorage.setItem(`book_${activeBookId}_cover`, suggestedCover);
+        setBookSettings(prev => ({ ...prev, [`book_${activeBookId}_cover`]: suggestedCover }));
+      }
+    }
+  };
 
   const handleSave = async () => {
     if (!body.trim() || !activeBookId) return;
@@ -565,6 +744,8 @@ export const JournalScreen = ({ user }) => {
       const plainBody = editorRef.current?.innerHTML || body;
       const finalBody = bgImage === '__custom__'
         ? `<div style="background-image:url(${customThemeUrl});background-size:cover;background-position:center;padding:20px;border-radius:8px;">${plainBody}</div>`
+        : bgImage && BACKGROUNDS.includes(bgImage)
+        ? `<div style="background-image:url('/backgrounds/${encodeURIComponent(bgImage)}');background-size:cover;background-position:center;padding:20px;border-radius:8px;">${plainBody}</div>`
         : bgImage && PAPER_STYLES[bgImage]
         ? `<div style="${Object.entries(PAPER_STYLES[bgImage]).map(([k,v])=>`${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';')}; padding: 20px; border-radius: 8px;">${plainBody}</div>`
         : plainBody;
@@ -595,7 +776,6 @@ export const JournalScreen = ({ user }) => {
       if (editorRef.current) editorRef.current.innerHTML = '';
       setMoodLabel('');
       setEntryDate(todayISO());
-      setBgImage('');
       await Promise.all([fetchEntries(activeBookId), fetchBooks(activeBookId), fetchStreak()]);
       checkRewards();
     } catch (e) {
@@ -613,7 +793,6 @@ export const JournalScreen = ({ user }) => {
     }
     setMoodLabel(entry.mood_label || '');
     setEntryDate(entry.entry_date || todayISO());
-    setBgImage('');
     editorWrapRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
@@ -686,6 +865,109 @@ export const JournalScreen = ({ user }) => {
     }
   };
 
+  const renderStickers = (targetPage) => (
+    stickers.filter(s => (s.page || 'journal') === targetPage).map(s => {
+      const isSelected = selectedSticker === s.id;
+      return (
+        <div key={s.id}
+          style={{ position: 'absolute', left: s.x, top: s.y, zIndex: 10, userSelect: 'none', transform: `rotate(${s.rotate || 0}deg)` }}
+          onMouseDown={(e) => { e.stopPropagation(); setSelectedSticker(s.id); }}
+        >
+          {isSelected && (
+            <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 3, background: 'rgba(0,0,0,0.75)', borderRadius: 8, padding: '3px 6px', whiteSpace: 'nowrap', zIndex: 20 }}>
+              <button onMouseDown={(e) => { e.stopPropagation(); resizeSticker(s.id, -15); }}
+                style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>−</button>
+              <button onMouseDown={(e) => { e.stopPropagation(); resizeSticker(s.id, 15); }}
+                style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>+</button>
+              <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: '0 2px' }}>|</span>
+              <button onMouseDown={(e) => { e.stopPropagation(); rotateSticker(s.id, -15); }}
+                style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>↺</button>
+              <button onMouseDown={(e) => { e.stopPropagation(); rotateSticker(s.id, 15); }}
+                style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>↻</button>
+              <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: '0 2px' }}>|</span>
+              <button onMouseDown={(e) => { e.stopPropagation(); removeSticker(s.id); }}
+                style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>✕</button>
+            </div>
+          )}
+          <img src={s.src} alt="sticker"
+            onMouseDown={(e) => onStickerMouseDown(e, s.id)}
+            style={{ width: s.w, height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block',
+              filter: isSelected ? 'drop-shadow(0 0 0 2px var(--accent)) drop-shadow(0 3px 6px rgba(0,0,0,0.25))' : 'drop-shadow(0 2px 5px rgba(0,0,0,0.15))' }}
+          />
+        </div>
+      );
+    })
+  );
+
+  const renderTextBlocks = (targetPage) => (
+    textBlocks.filter(b => (b.page || 'journal') === targetPage).map(b => {
+      const isSel = selectedBlock === b.id;
+      return (
+        <div key={b.id}
+          style={{ position: 'absolute', left: b.x, top: b.y, zIndex: isSel ? 21 : 11, userSelect: 'none', transform: `rotate(${b.rotate || 0}deg)`, cursor: 'move' }}
+          onMouseDown={(e) => { setSelectedBlock(b.id); setSelectedSticker(null); onBlockMouseDown(e, b.id); }}
+        >
+          {isSel && (
+            <div onMouseDown={(e) => e.stopPropagation()}
+              style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(20,20,24,0.92)', borderRadius: 8, padding: '4px 6px', whiteSpace: 'nowrap', zIndex: 22, boxShadow: '0 4px 14px rgba(0,0,0,0.25)' }}>
+              <select value={b.fontFamily} onChange={(e) => updateTextBlock(b.id, { fontFamily: e.target.value })}
+                style={{ fontSize: 11, fontFamily: b.fontFamily, background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 4, padding: '3px 4px', maxWidth: 100, cursor: 'pointer' }}>
+                {FONT_OPTIONS.map(f => <option key={f.value} value={f.value} style={{ color: '#111' }}>{f.label}</option>)}
+              </select>
+              <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { fontSize: Math.max(8, (b.fontSize || 18) - 2) }); }}
+                style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13, padding: '0 3px' }}>A−</button>
+              <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, minWidth: 16, textAlign: 'center' }}>{b.fontSize || 18}</span>
+              <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { fontSize: Math.min(96, (b.fontSize || 18) + 2) }); }}
+                style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 15, padding: '0 3px' }}>A+</button>
+              <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, padding: '0 2px' }}>|</span>
+              <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { bold: !b.bold }); }}
+                style={{ background: b.bold ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 'bold', padding: '2px 6px' }}>B</button>
+              <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { italic: !b.italic }); }}
+                style={{ background: b.italic ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 13, fontStyle: 'italic', padding: '2px 6px' }}>I</button>
+              <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { underline: !b.underline }); }}
+                style={{ background: b.underline ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 13, textDecoration: 'underline', padding: '2px 6px' }}>U</button>
+              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '0 2px' }}>
+                <input type="color" value={b.color || '#000000'} onChange={(e) => updateTextBlock(b.id, { color: e.target.value })}
+                  style={{ width: 18, height: 18, border: 'none', padding: 0, cursor: 'pointer', background: 'none' }} />
+              </label>
+              <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, padding: '0 2px' }}>|</span>
+              {['left', 'center', 'right'].map(a => (
+                <button key={a} onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { align: a }); }}
+                  style={{ background: b.align === a ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 10, padding: '2px 5px' }}>
+                  {a === 'left' ? '⬛▭▭' : a === 'center' ? '▭⬛▭' : '▭▭⬛'}
+                </button>
+              ))}
+              <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, padding: '0 2px' }}>|</span>
+              <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { rotate: (b.rotate || 0) - 15 }); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>↺</button>
+              <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { rotate: (b.rotate || 0) + 15 }); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>↻</button>
+              <button onMouseDown={(e) => { e.stopPropagation(); duplicateTextBlock(b.id); }} title="Duplicate" style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13, padding: '0 4px' }}>⧉</button>
+              <button onMouseDown={(e) => { e.stopPropagation(); removeTextBlock(b.id); }} style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>✕</button>
+            </div>
+          )}
+          <textarea
+            defaultValue={b.text}
+            onBlur={(e) => updateTextBlock(b.id, { text: e.target.value })}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'rgba(255,255,255,0.85)',
+              border: isSel ? '1.5px dashed var(--accent)' : '1.5px dashed rgba(0,0,0,0.2)',
+              borderRadius: 6, padding: '6px 10px',
+              fontSize: b.fontSize || 18,
+              fontFamily: b.fontFamily || FONT_OPTIONS[0].value,
+              fontWeight: b.bold ? 'bold' : 'normal',
+              fontStyle: b.italic ? 'italic' : 'normal',
+              textDecoration: b.underline ? 'underline' : 'none',
+              textAlign: b.align || 'left',
+              color: b.color || '#000000',
+              resize: 'both', minWidth: 100, minHeight: 36, outline: 'none', cursor: 'text',
+              boxShadow: isSel ? '0 2px 10px rgba(0,0,0,0.15)' : 'none',
+            }}
+          />
+        </div>
+      );
+    })
+  );
+
   return (
     <div className="nm-main">
       <TopBar crumb={
@@ -712,6 +994,7 @@ export const JournalScreen = ({ user }) => {
                   key={b.id}
                   book={b}
                   active={b.id === activeBookId}
+                  cover={bookSettings[`book_${b.id}_cover`]}
                   onClick={() => setActiveBookId(b.id)}
                   onDelete={handleDeleteBook}
                 />
@@ -773,6 +1056,7 @@ export const JournalScreen = ({ user }) => {
                 <h3>Welcome back, {displayName}!</h3>
                 <p>Your daily journal is a space for clarity,<br></br> growth and self reflection.</p>
               </div>
+              <img src={WelcomeBookImg} alt='welcome'/>
             </div>
 
             {!activeBook && !loadingBooks && (
@@ -840,7 +1124,7 @@ export const JournalScreen = ({ user }) => {
                     {/* Toolbar */}
                     <div style={{ borderBottom: '1px solid var(--rule)' }}>
                       <div className="nm-toolbar-row">
-                        {/* Font group */}
+                        {/* Font group (Always visible) */}
                         <div className="nm-toolbar-group">
                           <span className="nm-toolbar-label">Font</span>
                           <select onMouseDown={(e) => e.stopPropagation()}
@@ -862,7 +1146,7 @@ export const JournalScreen = ({ user }) => {
                           </select>
                         </div>
 
-                        {/* Style group */}
+                        {/* Style group (Always visible) */}
                         <div className="nm-toolbar-group">
                           <span className="nm-toolbar-label">Style</span>
                           {[
@@ -883,116 +1167,133 @@ export const JournalScreen = ({ user }) => {
                               onMouseDown={() => { trackSelection(); }}
                               onChange={(e) => { setTextColor(e.target.value); applyCommand('foreColor', e.target.value); }} />
                           </label>
-                          <button type="button" title="Remove text color" onMouseDown={(e) => { e.preventDefault(); applyCommand('foreColor', 'inherit'); }}
-                            className="nm-btn ghost" style={{ padding: '2px 5px', fontSize: 11 }}>A⊘</button>
                           <label title="Highlight" style={{ display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', padding: '2px 5px', borderRadius: 4, fontSize: 12, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: hlColor }}>
                             <span style={{ color: '#333', mixBlendMode: 'multiply' }}>H</span>
                             <input type="color" value={hlColor} style={{ width: 16, height: 16, border: 'none', padding: 0, cursor: 'pointer', background: 'none' }}
                               onMouseDown={() => { trackSelection(); }}
                               onChange={(e) => { setHlColor(e.target.value); applyCommand('backColor', e.target.value); }} />
                           </label>
-                          <button type="button" title="Remove highlight" onMouseDown={(e) => { e.preventDefault(); applyCommand('backColor', 'transparent'); }}
-                            className="nm-btn ghost" style={{ padding: '2px 5px', fontSize: 11 }}>H⊘</button>
                         </div>
 
-                        {/* Layout group */}
-                        <div className="nm-toolbar-group">
-                          <span className="nm-toolbar-label">Layout</span>
-                          {[
-                            { cmd: 'justifyLeft', label: '⬛▭▭' },
-                            { cmd: 'justifyCenter', label: '▭⬛▭' },
-                            { cmd: 'justifyRight', label: '▭▭⬛' },
-                          ].map(({ cmd, label }) => (
-                            <button key={cmd} type="button" onMouseDown={(e) => { e.preventDefault(); applyCommand(cmd); }}
-                              className="nm-btn ghost"
-                              style={{ padding: '2px 7px', fontSize: 10 }}>
-                              {label}
-                            </button>
-                          ))}
-                          <button type="button" onMouseDown={(e) => { e.preventDefault(); applyCommand('insertUnorderedList'); }}
-                            className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}>≡ Bullets</button>
-                          <button type="button" onMouseDown={(e) => { e.preventDefault(); applyCommand('insertOrderedList'); }}
-                            className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 13 }}># Numbers</button>
+                        {/* Layout Dropdown */}
+                        <div className="nm-toolbar-group nm-dropdown-group" style={{ position: 'relative' }}>
+                          <button type="button" className="nm-btn ghost" onClick={() => setActiveMenu(activeMenu === 'layout' ? null : 'layout')} style={{ padding: '2px 7px', fontSize: 13 }}>
+                            Layout ▼
+                          </button>
+                          {activeMenu === 'layout' && (
+                            <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 6, padding: '6px', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '140px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginTop: '4px' }}>
+                              {[
+                                { cmd: 'justifyLeft', label: '⬛▭▭ Align Left' },
+                                { cmd: 'justifyCenter', label: '▭⬛▭ Align Center' },
+                                { cmd: 'justifyRight', label: '▭▭⬛ Align Right' },
+                              ].map(({ cmd, label }) => (
+                                <button key={cmd} type="button" onMouseDown={(e) => { e.preventDefault(); applyCommand(cmd); setActiveMenu(null); }}
+                                  className="nm-btn ghost" style={{ padding: '6px', fontSize: 12, textAlign: 'left', width: '100%' }}>
+                                  {label}
+                                </button>
+                              ))}
+                              <div style={{ height: '1px', background: 'var(--rule)', margin: '2px 0' }} />
+                              <button type="button" onMouseDown={(e) => { e.preventDefault(); applyCommand('insertUnorderedList'); setActiveMenu(null); }}
+                                className="nm-btn ghost" style={{ padding: '6px', fontSize: 12, textAlign: 'left', width: '100%' }}>≡ Bullets</button>
+                              <button type="button" onMouseDown={(e) => { e.preventDefault(); applyCommand('insertOrderedList'); setActiveMenu(null); }}
+                                className="nm-btn ghost" style={{ padding: '6px', fontSize: 12, textAlign: 'left', width: '100%' }}># Numbers</button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Insert Dropdown */}
+                        <div className="nm-toolbar-group nm-dropdown-group" style={{ position: 'relative' }}>
+                          <button type="button" className="nm-btn ghost" onClick={() => setActiveMenu(activeMenu === 'insert' ? null : 'insert')} style={{ padding: '2px 7px', fontSize: 13 }}>
+                            Insert ▼
+                          </button>
+                          {activeMenu === 'insert' && (
+                            <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 6, padding: '6px', display: 'flex', flexDirection: 'column', gap: '4px', minWidth: '140px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginTop: '4px' }}>
+                              <button type="button" className="nm-btn ghost" style={{ padding: '6px', fontSize: 12, textAlign: 'left', width: '100%' }} onClick={() => { setShowTemplateModal(true); setActiveMenu(null); }}>
+                                📄 Templates
+                              </button>
+                              <button type="button" className="nm-btn ghost" style={{ padding: '6px', fontSize: 12, textAlign: 'left', width: '100%' }} onClick={() => { addTextBlock(); setActiveMenu(null); }}>
+                                ✚ Text box
+                              </button>
+                              <button type="button" className="nm-btn ghost" style={{ padding: '6px', fontSize: 12, textAlign: 'left', width: '100%' }} onClick={() => { setShowStickerPanel(p => !p); setActiveMenu(null); }}>
+                                🎀 Stickers
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Page Setup Dropdown */}
+                        <div className="nm-toolbar-group nm-dropdown-group" style={{ position: 'relative' }}>
+                          <button type="button" className="nm-btn ghost" onClick={() => setActiveMenu(activeMenu === 'page' ? null : 'page')} style={{ padding: '2px 7px', fontSize: 13 }}>
+                            Page Setup ▼
+                          </button>
+                          {activeMenu === 'page' && (
+                            <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 6, padding: '16px', display: 'flex', gap: '20px', minWidth: '450px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', marginTop: '4px' }}>
+                              
+                              <div style={{ flex: 1 }}>
+                                <div className="nm-meta" style={{ marginBottom: 12, fontWeight: 'bold' }}>📔 Notebook Cover</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 4 }}>
+                                  <button onClick={() => { handleSetCover(''); setActiveMenu(null); }} style={{ height: 60, border: coverStyle === '' ? '2px solid var(--accent)' : '1px solid var(--rule)', borderRadius: 4, background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, cursor: 'pointer' }}>None</button>
+                                  {COVERS.map(c => (
+                                    <img key={c} src={`/covers/${encodeURIComponent(c)}`} alt={c} onClick={() => { handleSetCover(c); setActiveMenu(null); }}
+                                      style={{ width: '100%', height: 60, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: coverStyle === c ? '2px solid var(--accent)' : '1px solid var(--rule)' }} />
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div style={{ flex: 1 }}>
+                                <div className="nm-meta" style={{ marginBottom: 12, fontWeight: 'bold' }}>🎨 Page Background</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 4 }}>
+                                  <button onClick={() => { handleSetBg(''); setActiveMenu(null); }} style={{ height: 60, border: bgImage === '' ? '2px solid var(--accent)' : '1px solid var(--rule)', borderRadius: 4, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, cursor: 'pointer' }}>None</button>
+                                  {BACKGROUNDS.map(b => (
+                                    <img key={b} src={`/backgrounds/${encodeURIComponent(b)}`} alt={b} onClick={() => { handleSetBg(b); setActiveMenu(null); }}
+                                      style={{ width: '100%', height: 60, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: bgImage === b ? '2px solid var(--accent)' : '1px solid var(--rule)' }} />
+                                  ))}
+                                </div>
+                              </div>
+
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Zoom Dropdown */}
+                        <div className="nm-toolbar-group nm-dropdown-group" style={{ position: 'relative', marginLeft: 'auto' }}>
+                          <button type="button" className="nm-btn ghost" onClick={() => setActiveMenu(activeMenu === 'zoom' ? null : 'zoom')} style={{ padding: '2px 7px', fontSize: 13 }}>
+                            🔍 {Math.round(zoom * 100)}% ▼
+                          </button>
+                          {activeMenu === 'zoom' && (
+                            <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 100, background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 6, padding: '6px', display: 'flex', flexDirection: 'column', gap: '6px', minWidth: '150px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', marginTop: '4px' }}>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button type="button" title="Zoom out" onClick={() => nudgeZoom(-0.1)}
+                                  className="nm-btn ghost" style={{ padding: '4px 10px', fontSize: 14, flex: 1 }}>−</button>
+                                <button type="button" title="Zoom in" onClick={() => nudgeZoom(0.1)}
+                                  className="nm-btn ghost" style={{ padding: '4px 10px', fontSize: 14, flex: 1 }}>+</button>
+                              </div>
+                              <select
+                                onMouseDown={(e) => e.stopPropagation()}
+                                value={typeof zoomMode === 'number' ? String(zoomMode) : zoomMode}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setZoomMode(v === 'fit-width' || v === 'fit-page' ? v : Number(v));
+                                  setActiveMenu(null);
+                                }}
+                                style={{ fontSize: 12, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface-2)', color: 'var(--ink)', borderRadius: 4, padding: '4px 6px', cursor: 'pointer', width: '100%' }}>
+                                {!ZOOM_PRESETS.includes(Math.round(zoom * 100) / 100) && typeof zoomMode === 'number' && (
+                                  <option value={String(zoomMode)}>{Math.round(zoom * 100)}%</option>
+                                )}
+                                {ZOOM_PRESETS.map((p) => (
+                                  <option key={p} value={String(p)}>{Math.round(p * 100)}%</option>
+                                ))}
+                                <option value="fit-width">Fit width</option>
+                                <option value="fit-page">Fit page</option>
+                              </select>
+                            </div>
+                          )}
                         </div>
 
                         <button type="button" title="Download this entry as a PDF" onClick={handleDownloadPdf}
-                          className="nm-btn primary" style={{ padding: '5px 12px', fontSize: 13, marginLeft: 'auto', borderRadius: '16px' }}>
+                          className="nm-btn primary" style={{ padding: '5px 12px', fontSize: 13, borderRadius: '16px', marginLeft: 8 }}>
                           <Icon name="download" size={13} style={{ marginRight: 6 }} /> Download PDF
                         </button>
-                      </div>
-
-                      <div className="nm-toolbar-row">
-                        {/* Insert group */}
-                        <div className="nm-toolbar-group">
-                          <span className="nm-toolbar-label">Insert</span>
-                          <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowTemplateModal(true)}>
-                            📄 Templates
-                          </button>
-                          <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={addTextBlock}>
-                            ✚ Text box
-                          </button>
-                          <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => setShowStickerPanel(p => !p)}>
-                            🎀 Stickers
-                          </button>
-                        </div>
-
-                        {/* Page group */}
-                        <div className="nm-toolbar-group">
-                          <span className="nm-toolbar-label">Page</span>
-                          <select onMouseDown={(e) => e.stopPropagation()}
-                            onChange={(e) => { setBgImage(e.target.value); e.target.value = ''; }}
-                            defaultValue=""
-                            style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '3px 4px', cursor: 'pointer', maxWidth: 120 }}>
-                            <option value="" disabled>🎨 Theme</option>
-                            <option value="bullet">Dot Grid (Bullet)</option>
-                            <option value="lined">Ruled Notebook</option>
-                            <option value="coffee">Coffee Stained</option>
-                            <option value="newspaper">Newspaper</option>
-                            <option value="tulips">Tulips</option>
-                            <option value="blue-floral">Blue Floral</option>
-                            <option value="blue-paper">Blue Paper</option>
-                            <option value="aesthetic">Aesthetic</option>
-                            <option value="pastel">Pastel</option>
-                            <option value="vintage-aesthetic">Vintage Aesthetic</option>
-                            <option value="minimal">Minimal</option>
-                            <option value="grid-paper">Grid Paper</option>
-                            <option value="moon">Moon</option>
-                            <option value="">None</option>
-                          </select>
-                          <button type="button" className="nm-btn ghost" style={{ padding: '2px 7px', fontSize: 11 }} onClick={() => customThemeInputRef.current?.click()}>
-                            📁 Upload
-                          </button>
-                          <input ref={customThemeInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleCustomThemeUpload} />
-                        </div>
-
-                        {/* Zoom group */}
-                        <div className="nm-toolbar-group" style={{ marginLeft: 'auto' }}>
-                          <span className="nm-toolbar-label">Zoom</span>
-                          <button type="button" title="Zoom out" onClick={() => nudgeZoom(-0.1)}
-                            className="nm-btn ghost" style={{ padding: '2px 8px', fontSize: 13 }}>−</button>
-                          <select
-                            onMouseDown={(e) => e.stopPropagation()}
-                            value={typeof zoomMode === 'number' ? String(zoomMode) : zoomMode}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setZoomMode(v === 'fit-width' || v === 'fit-page' ? v : Number(v));
-                            }}
-                            style={{ fontSize: 11, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '3px 4px', cursor: 'pointer' }}>
-                            {!ZOOM_PRESETS.includes(Math.round(zoom * 100) / 100) && typeof zoomMode === 'number' && (
-                              <option value={String(zoomMode)}>{Math.round(zoom * 100)}%</option>
-                            )}
-                            {ZOOM_PRESETS.map((p) => (
-                              <option key={p} value={String(p)}>{Math.round(p * 100)}%</option>
-                            ))}
-                            <option value="fit-width">Fit width</option>
-                            <option value="fit-page">Fit page</option>
-                          </select>
-                          <button type="button" title="Zoom in" onClick={() => nudgeZoom(0.1)}
-                            className="nm-btn ghost" style={{ padding: '2px 8px', fontSize: 13 }}>+</button>
-                          <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--ink-3)', minWidth: 36, textAlign: 'right' }}>
-                            {Math.round(zoom * 100)}%
-                          </span>
-                        </div>
                       </div>
                     </div>
                     {/* Sticker picker panel */}
@@ -1014,146 +1315,219 @@ export const JournalScreen = ({ user }) => {
                       maxHeight: '75vh',
                       background: 'var(--surface-2)',
                       padding: '24px 0',
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'flex-start' // Changed from center to prevent top truncation when container is taller than screen
                     }}>
                       {/* Sizing slot reserves the zoomed footprint so scrollbars/centering are correct */}
-                      <div style={{ width: A4_WIDTH * zoom, height: A4_HEIGHT * zoom, margin: '0 auto' }}>
-                        <div ref={editorWrapRef} className="nm-a4-page" style={{
-                          position: 'relative',
-                          width: A4_WIDTH,
-                          height: A4_HEIGHT,
-                          transform: `scale(${zoom})`,
-                          transformOrigin: 'top left',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          overflow: 'hidden',
-                          borderRadius: 4,
-                          boxShadow: '0 10px 30px rgba(0,0,0,0.15), 0 1px 0 rgba(0,0,0,0.04)',
-                          backgroundColor: bgImage ? undefined : 'var(--surface)',
-                          ...(bgImage === '__custom__'
-                            ? { backgroundImage: `url(${customThemeUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }
-                            : bgImage ? (PAPER_STYLES[bgImage] || {}) : {})
-                        }} onClick={(e) => { if (e.target === editorWrapRef.current) setSelectedSticker(null); }}>
-                      {stickers.map(s => {
-                        const isSelected = selectedSticker === s.id;
-                        return (
-                          <div key={s.id}
-                            style={{ position: 'absolute', left: s.x, top: s.y, zIndex: 10, userSelect: 'none', transform: `rotate(${s.rotate || 0}deg)` }}
-                            onMouseDown={(e) => { e.stopPropagation(); setSelectedSticker(s.id); }}
-                          >
-                            {isSelected && (
-                              <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 3, background: 'rgba(0,0,0,0.75)', borderRadius: 8, padding: '3px 6px', whiteSpace: 'nowrap', zIndex: 20 }}>
-                                <button onMouseDown={(e) => { e.stopPropagation(); resizeSticker(s.id, -15); }}
-                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>−</button>
-                                <button onMouseDown={(e) => { e.stopPropagation(); resizeSticker(s.id, 15); }}
-                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>+</button>
-                                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: '0 2px' }}>|</span>
-                                <button onMouseDown={(e) => { e.stopPropagation(); rotateSticker(s.id, -15); }}
-                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>↺</button>
-                                <button onMouseDown={(e) => { e.stopPropagation(); rotateSticker(s.id, 15); }}
-                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>↻</button>
-                                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: '0 2px' }}>|</span>
-                                <button onMouseDown={(e) => { e.stopPropagation(); removeSticker(s.id); }}
-                                  style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>✕</button>
-                              </div>
-                            )}
-                            <img src={s.src} alt="sticker"
-                              onMouseDown={(e) => onStickerMouseDown(e, s.id)}
-                              style={{ width: s.w, height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block',
-                                filter: isSelected ? 'drop-shadow(0 0 0 2px var(--accent)) drop-shadow(0 3px 6px rgba(0,0,0,0.25))' : 'drop-shadow(0 2px 5px rgba(0,0,0,0.15))' }}
-                            />
-                          </div>
-                        );
-                      })}
-                    <div
-                      ref={editorRef}
-                      contentEditable
-                      suppressContentEditableWarning
-                      onInput={(e) => setBody(e.currentTarget.innerText)}
-                      onClick={() => { setSelectedSticker(null); setSelectedBlock(null); }}
-                      onMouseUp={trackSelection}
-                      onKeyUp={trackSelection}
-                      data-placeholder={`Today, in your ${activeBook.name.toLowerCase()} book…`}
-                      style={{
-                        flex: 1,
-                        overflowY: 'auto',
-                        padding: '28px 36px',
-                        fontFamily: 'var(--font-serif)',
-                        fontSize: 16,
-                        lineHeight: '28px',
-                        color: 'var(--ink)',
-                        outline: 'none',
-                        background: 'transparent',
-                        borderRadius: 0,
-                      }}
-                    ></div>
-                      {textBlocks.map(b => {
-                        const isSel = selectedBlock === b.id;
-                        return (
-                          <div key={b.id}
-                            style={{ position: 'absolute', left: b.x, top: b.y, zIndex: isSel ? 21 : 11, userSelect: 'none', transform: `rotate(${b.rotate || 0}deg)`, cursor: 'move' }}
-                            onMouseDown={(e) => { setSelectedBlock(b.id); setSelectedSticker(null); onBlockMouseDown(e, b.id); }}
-                          >
-                            {isSel && (
-                              <div onMouseDown={(e) => e.stopPropagation()}
-                                style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(20,20,24,0.92)', borderRadius: 8, padding: '4px 6px', whiteSpace: 'nowrap', zIndex: 22, boxShadow: '0 4px 14px rgba(0,0,0,0.25)' }}>
-                                <select value={b.fontFamily} onChange={(e) => updateTextBlock(b.id, { fontFamily: e.target.value })}
-                                  style={{ fontSize: 11, fontFamily: b.fontFamily, background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 4, padding: '3px 4px', maxWidth: 100, cursor: 'pointer' }}>
-                                  {FONT_OPTIONS.map(f => <option key={f.value} value={f.value} style={{ color: '#111' }}>{f.label}</option>)}
-                                </select>
-                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { fontSize: Math.max(8, (b.fontSize || 18) - 2) }); }}
-                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13, padding: '0 3px' }}>A−</button>
-                                <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, minWidth: 16, textAlign: 'center' }}>{b.fontSize || 18}</span>
-                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { fontSize: Math.min(96, (b.fontSize || 18) + 2) }); }}
-                                  style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 15, padding: '0 3px' }}>A+</button>
-                                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, padding: '0 2px' }}>|</span>
-                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { bold: !b.bold }); }}
-                                  style={{ background: b.bold ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 'bold', padding: '2px 6px' }}>B</button>
-                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { italic: !b.italic }); }}
-                                  style={{ background: b.italic ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 13, fontStyle: 'italic', padding: '2px 6px' }}>I</button>
-                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { underline: !b.underline }); }}
-                                  style={{ background: b.underline ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 13, textDecoration: 'underline', padding: '2px 6px' }}>U</button>
-                                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', padding: '0 2px' }}>
-                                  <input type="color" value={b.color || '#000000'} onChange={(e) => updateTextBlock(b.id, { color: e.target.value })}
-                                    style={{ width: 18, height: 18, border: 'none', padding: 0, cursor: 'pointer', background: 'none' }} />
-                                </label>
-                                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, padding: '0 2px' }}>|</span>
-                                {['left', 'center', 'right'].map(a => (
-                                  <button key={a} onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { align: a }); }}
-                                    style={{ background: b.align === a ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 10, padding: '2px 5px' }}>
-                                    {a === 'left' ? '⬛▭▭' : a === 'center' ? '▭⬛▭' : '▭▭⬛'}
-                                  </button>
-                                ))}
-                                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, padding: '0 2px' }}>|</span>
-                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { rotate: (b.rotate || 0) - 15 }); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>↺</button>
-                                <button onMouseDown={(e) => { e.stopPropagation(); updateTextBlock(b.id, { rotate: (b.rotate || 0) + 15 }); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>↻</button>
-                                <button onMouseDown={(e) => { e.stopPropagation(); duplicateTextBlock(b.id); }} title="Duplicate" style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 13, padding: '0 4px' }}>⧉</button>
-                                <button onMouseDown={(e) => { e.stopPropagation(); removeTextBlock(b.id); }} style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}>✕</button>
-                              </div>
-                            )}
-                            <textarea
-                              defaultValue={b.text}
-                              onBlur={(e) => updateTextBlock(b.id, { text: e.target.value })}
-                              onClick={(e) => e.stopPropagation()}
-                              style={{
-                                background: 'rgba(255,255,255,0.85)',
-                                border: isSel ? '1.5px dashed var(--accent)' : '1.5px dashed rgba(0,0,0,0.2)',
-                                borderRadius: 6, padding: '6px 10px',
-                                fontSize: b.fontSize || 18,
-                                fontFamily: b.fontFamily || FONT_OPTIONS[0].value,
-                                fontWeight: b.bold ? 'bold' : 'normal',
-                                fontStyle: b.italic ? 'italic' : 'normal',
-                                textDecoration: b.underline ? 'underline' : 'none',
-                                textAlign: b.align || 'left',
-                                color: b.color || '#000000',
-                                resize: 'both', minWidth: 100, minHeight: 36, outline: 'none', cursor: 'text',
-                                boxShadow: isSel ? '0 2px 10px rgba(0,0,0,0.15)' : 'none',
+                      <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.2s' }}>
+                        <div ref={printContainerRef} className="nm-perspective-container" style={{ perspective: '2500px', position: 'relative', width: A4_WIDTH, height: A4_HEIGHT }}>
+                          
+                          {/* Cover Page (Front/Hinged) - Placed first in DOM for PDF stacking */}
+                          {coverStyle && (
+                            <div 
+                              className="nm-cover-page" 
+                              onClick={() => { setSelectedSticker(null); setSelectedBlock(null); }}
+                              style={{ 
+                                position: 'absolute', inset: 0,
+                                backgroundImage: `url('/covers/${encodeURIComponent(coverStyle)}')`, 
+                                backgroundSize: 'cover', backgroundPosition: 'center', 
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                                color: 'white', textShadow: '0 2px 8px rgba(0,0,0,0.8)',
+                                transformOrigin: 'left center',
+                                transform: isBookOpen ? 'rotateY(-90deg)' : 'rotateY(0deg)',
+                                opacity: isBookOpen ? 0 : 1,
+                                visibility: isBookOpen ? 'hidden' : 'visible',
+                                transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
+                                zIndex: 2,
+                                transformStyle: 'preserve-3d',
+                                cursor: isBookOpen ? 'default' : 'pointer',
+                                borderRadius: 4,
+                                boxShadow: isBookOpen ? '-10px 0px 30px rgba(0,0,0,0.2)' : '5px 0px 15px rgba(0,0,0,0.3)',
+                                pointerEvents: isBookOpen ? 'none' : 'auto'
                               }}
-                            />
+                            >
+                              <div className="nm-backface" style={{
+                                position: 'absolute', inset: 0, background: '#f5ebd9', 
+                                transform: 'rotateY(180deg)', backfaceVisibility: 'hidden',
+                                boxShadow: 'inset 20px 0 30px rgba(0,0,0,0.1)',
+                                borderRadius: 4
+                              }} />
+                              
+                              <div style={{ 
+                                backfaceVisibility: 'hidden', 
+                                display: 'flex', 
+                                flexDirection: 'column', 
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: 'rgba(255, 255, 255, 0.85)',
+                                backdropFilter: 'blur(8px)',
+                                padding: '30px 40px',
+                                borderRadius: '12px',
+                                boxShadow: '0 8px 32px rgba(0,0,0,0.2), inset 0 0 0 1px rgba(255,255,255,0.5)',
+                                maxWidth: '75%',
+                                textAlign: 'center',
+                                border: '2px solid rgba(0,0,0,0.1)'
+                              }}>
+                                <textarea
+                                  value={coverText || activeBook?.name || ''}
+                                  onChange={(e) => handleSetCoverText(e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  placeholder="Journal Title"
+                                  rows={2}
+                                  style={{ 
+                                    fontFamily: 'var(--font-serif)', 
+                                    fontSize: 42, 
+                                    marginBottom: 16,
+                                    color: '#222',
+                                    textShadow: 'none',
+                                    background: 'transparent',
+                                    border: '1px dashed transparent',
+                                    outline: 'none',
+                                    textAlign: 'center',
+                                    resize: 'none',
+                                    width: '100%',
+                                    minWidth: '300px',
+                                    fontWeight: 'bold'
+                                  }}
+                                  onFocus={(e) => e.currentTarget.style.borderColor = 'rgba(0,0,0,0.2)'}
+                                  onBlur={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                                />
+                                <p style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: '#666', textShadow: 'none' }}>
+                                  kept since {new Date(activeBook?.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                              {renderStickers('cover')}
+                              {renderTextBlocks('cover')}
+                            </div>
+                          )}
+
+                          {/* Journal Page */}
+                          <div ref={editorWrapRef} className="nm-journal-page" style={{
+                            position: 'relative',
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                            borderRadius: 4,
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.15), 0 1px 0 rgba(0,0,0,0.04)',
+                            transform: isBookOpen ? 'rotateY(0deg)' : 'rotateY(0deg)',
+                            zIndex: 1
+                          }} onClick={(e) => { if (e.target === editorWrapRef.current) setSelectedSticker(null); }}>
+                            
+                            <div className="nm-page-content"
+                            style={{
+                              flex: 1,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              overflow: 'hidden',
+                              backgroundColor: bgImage ? undefined : '#e5d7fd80',
+                              ...(bgImage === '__custom__'
+                                ? { backgroundImage: `url(${customThemeUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }
+                                : bgImage ? (BACKGROUNDS.includes(bgImage) ? { backgroundImage: `url('/backgrounds/${encodeURIComponent(bgImage)}')`, backgroundSize: 'cover', backgroundPosition: 'center' } : (PAPER_STYLES[bgImage] || {})) : {})
+                            }}>
+
+                            {/* NexMate Watermark */}
+                            <div style={{
+                              position: 'absolute',
+                              top: '50%',
+                              left: '50%',
+                              transform: 'translate(-50%, -50%) rotate(-45deg)',
+                              fontSize: '140px',
+                              fontFamily: 'var(--font-serif)',
+                              color: 'rgba(128,128,128,0.15)', /* More visible on varying themes */
+                              mixBlendMode: 'multiply',
+                              pointerEvents: 'none',
+                              userSelect: 'none',
+                              zIndex: 0,
+                              whiteSpace: 'nowrap',
+                              fontWeight: 'bold'
+                            }}>
+                              NexMate
+                            </div>
+
+                            {/* Date Header (in document flow) */}
+                            <div style={{
+                              padding: '24px 36px 0',
+                              textAlign: 'right',
+                              fontFamily: 'var(--font-serif)',
+                              fontSize: 13,
+                              pointerEvents: 'none',
+                              userSelect: 'none',
+                              fontStyle: 'italic',
+                              zIndex: 1,
+                              position: 'relative'
+                            }}>
+                              <span style={{
+                                background: 'rgba(255, 255, 255, 0.7)',
+                                backdropFilter: 'blur(4px)',
+                                padding: '4px 10px',
+                                borderRadius: '12px',
+                                color: '#333',
+                                display: 'inline-block',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+                              }}>
+                                {new Date(entryDate).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                              </span>
+                            </div>
+                            {renderStickers('journal')}
+                            {/* The actual journal editor area */}
+                            <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column' }} onClick={() => { setSelectedSticker(null); setSelectedBlock(null); }}>
+                              <div
+                              ref={editorRef}
+                              contentEditable
+                              suppressContentEditableWarning
+                              onInput={(e) => setBody(e.currentTarget.innerHTML)}
+                              onPaste={(e) => {
+                                e.preventDefault();
+                                const text = e.clipboardData.getData('text/plain');
+                                document.execCommand('insertText', false, text);
+                              }}
+                              onMouseUp={trackSelection}
+                              onKeyUp={trackSelection}
+                              data-placeholder={`Today, in your ${activeBook.name.toLowerCase()} book…`}
+                              style={{
+                                flex: 1,
+                                overflowY: 'auto',
+                                padding: '36px 36px 28px', // Increased top padding so cursor is clearly visible
+                                fontFamily: 'var(--font-serif)',
+                                fontSize: 16,
+                                lineHeight: '28px',
+                                color: 'var(--ink)',
+                                outline: 'none',
+                                background: 'transparent',
+                                borderRadius: 0,
+                                position: 'relative',
+                                zIndex: 1
+                              }}
+                            ></div>
+                            {renderTextBlocks('journal')}
                           </div>
-                        );
-                      })}
+                      {/* Custom background image URL input */}
+                      {bgImage === '__custom__' && (
+                        <div style={{ position: 'absolute', bottom: 12, left: 12, zIndex: 10 }}>
+                          <input ref={customThemeInputRef} type="text" placeholder="Paste image URL here…" value={customThemeUrl} onChange={(e) => setCustomThemeUrl(e.target.value)}
+                            style={{ padding: '6px 12px', fontSize: 12, borderRadius: 20, border: '1px solid var(--rule-soft)', background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(4px)', width: 220, outline: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
                         </div>
+                      )}
                       </div>
+                      </div>
+                      </div>
+
+                      </div>
+
+                      {/* Page Navigation Arrows */}
+                      {isBookOpen ? (
+                        <button onClick={(e) => { e.stopPropagation(); setIsBookOpen(false); }} title="Close to Cover" style={{ position: 'absolute', left: -60, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.8)', border: 'none', borderRadius: '50%', width: 48, height: 48, fontSize: 20, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333' }}>
+                          ◀
+                        </button>
+                      ) : (
+                        <button onClick={(e) => { e.stopPropagation(); setIsBookOpen(true); }} title="Open Journal" style={{ position: 'absolute', right: -60, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.8)', border: 'none', borderRadius: '50%', width: 48, height: 48, fontSize: 20, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333' }}>
+                          ▶
+                        </button>
+                      )}
+
                     </div>
                   </div>
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Icon, TopBar, LoopRing } from './Shell';
+import { Icon, TopBar, LoopRing, EmptyDataOverlay } from './Shell';
 import { getDashboardInsights, answerDailyQuestion, reflectOnLoop } from '../../lib/api';
 import { SAMPLE_TODAY_TRIGGERS } from '../../lib/tourSampleData';
 
@@ -179,7 +179,33 @@ const fmtDelta = (cur, prev) => {
   return diff > 0 ? `+${diff}` : `${diff}`;
 };
 
-export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
+const DUMMY_TODAY_INSIGHTS = {
+  total_entries: 0,
+  checkin_streak_days: 3,
+  week: {
+    days_with_entries: 5,
+    stats: { avg_intensity: 6.2 },
+    previous_stats: { avg_intensity: 5.8 },
+    days: Array.from({ length: 7 }, (_, i) => ({
+      avg_intensity: Math.floor(Math.random() * 6) + 2,
+      dominant_mood: ['anxious', 'hopeful', 'tired', 'calm'][Math.floor(Math.random() * 4)],
+      weekday: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][(new Date().getDay() + i + 1) % 7]
+    }))
+  },
+  top_triggers: [
+    { trigger: 'Work', pct: 40 },
+    { trigger: 'Sleep', pct: 25 },
+    { trigger: 'Social', pct: 20 },
+    { trigger: 'Health', pct: 15 }
+  ],
+  loops: {
+    items: [
+      { loop_id: 'd1', name: 'Productivity Guilt', core_belief: 'I am not doing enough', strength: 0.85, state: 'active', occurrences: 12, trigger: 'Work' }
+    ]
+  }
+};
+
+export const TodayScreen = ({ onNav, threads = [], user }) => {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -252,36 +278,26 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
   const dateLabel = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   const userName = user?.email ? user.email.split('@')[0] : 'there';
 
-  const week = insights?.week;
+  const QUOTES = [{text: "Be gentle with yourself.", author: "Anonymous"}]; // Placeholder
+  const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
+
+  const isEmpty = !loading && (insights?.total_entries === 0 || !insights) && threads.length === 0;
+  const displayInsights = isEmpty ? DUMMY_TODAY_INSIGHTS : insights;
+
+  const totalEntries = displayInsights?.total_entries ?? 0;
+  
+  const week = displayInsights?.week;
   const weekDays = week?.days || Array.from({ length: 7 }).map(() => ({ avg_intensity: null, dominant_mood: null, weekday: '' }));
   const daysWithEntries = week?.days_with_entries ?? 0;
   const avgIntensity = week?.stats?.avg_intensity;
   const prevAvgIntensity = week?.previous_stats?.avg_intensity;
   const intensityDelta = fmtDelta(avgIntensity, prevAvgIntensity);
 
-  const topLoop = insights?.loops?.items?.find((l) => l.state === 'active');
-  const realTriggers = (insights?.top_triggers || []).slice(0, 4);
-  const usingSampleTriggers = tourSample && realTriggers.length === 0;
-  const topTriggers = usingSampleTriggers ? SAMPLE_TODAY_TRIGGERS : realTriggers;
-  const dailyQuestions = Array.isArray(insights?.daily_question) ? insights.daily_question : [];
+  const topLoop = displayInsights?.loops?.items?.find((l) => l.state === 'active');
+  const topTriggers = (displayInsights?.top_triggers || []).slice(0, 4);
+  const dailyQuestions = Array.isArray(displayInsights?.daily_question) ? displayInsights.daily_question : [];
   const pendingQuestions = dailyQuestions.filter((q) => q.status === 'pending');
   const currentQuestion = pendingQuestions[currentQuestionIdx] || pendingQuestions[0] || null;
-
-  const QUOTES = [
-    { text: 'The unexamined life is not worth living.', author: 'Socrates' },
-    { text: 'Knowing yourself is the beginning of all wisdom.', author: 'Aristotle' },
-    { text: 'In the middle of difficulty lies opportunity.', author: 'Albert Einstein' },
-    { text: 'What lies behind us and what lies before us are tiny matters compared to what lies within us.', author: 'Ralph Waldo Emerson' },
-    { text: 'You are never too old to set another goal or to dream a new dream.', author: 'C.S. Lewis' },
-    { text: 'The only way out is through.', author: 'Robert Frost' },
-    { text: 'Almost everything will work again if you unplug it for a few minutes — including you.', author: 'Anne Lamott' },
-    { text: 'Vulnerability is the birthplace of innovation, creativity, and change.', author: 'Brené Brown' },
-    { text: 'You do not have to see the whole staircase, just take the first step.', author: 'Martin Luther King Jr.' },
-    { text: 'The present moment always will have been.', author: 'Eckhart Tolle' },
-  ];
-  const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
-
-  const totalEntries = insights?.total_entries ?? 0;
 
   return (
     <div className="nm-main">
@@ -318,83 +334,104 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
             )}
           </div>
 
-          {topLoop && (
-            <div className="nm-card nm-fade-up" style={{ marginBottom: 24, padding: '20px 24px' }}>
-              <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-                <LoopRing strength={topLoop.strength} size={72} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                    <span className="nm-chip teal"><span className="nm-dot" />Active loop</span>
-                    <span className="nm-tag">strength {topLoop.strength.toFixed(2)} · {topLoop.occurrences}×</span>
+            {topLoop && (
+              <EmptyDataOverlay 
+                active={isEmpty} 
+                title="Your journey begins here." 
+                message="Start a chat or write your first journal entry to unlock your personalized insights."
+                actionLabel="Begin a Chat"
+                onAction={() => { onNav && onNav('chat'); }}
+              >
+                <div className="nm-card nm-fade-up" style={{ marginBottom: 24, padding: '20px 24px' }}>
+                <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+                  <LoopRing strength={topLoop.strength} size={72} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                      <span className="nm-chip teal"><span className="nm-dot" />Active loop</span>
+                      <span className="nm-tag">strength {topLoop.strength.toFixed(2)} · {topLoop.occurrences}×</span>
+                    </div>
+                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontStyle: 'italic', lineHeight: 1.4, marginBottom: 8 }}>
+                      "{topLoop.core_belief || topLoop.name}"
+                    </div>
+                    {topLoop.trigger && (
+                      <p className="nm-body" style={{ margin: '0 0 12px', fontSize: 13.5, color: 'var(--ink-2)' }}>
+                        Surfaces around <b>{topLoop.trigger}</b>{topLoop.valence ? <> · <b>{topLoop.valence}</b></> : null}.
+                      </p>
+                    )}
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="nm-btn" onClick={handleReflect} disabled={reflecting}>
+                          {reflecting ? 'Reflecting…' : 'Reflect on this'} <Icon name="arrow" size={11} />
+                        </button>
+                        <button className="nm-btn ghost" onClick={() => onNav && onNav('loops')}>See all loops</button>
+                      </div>
+                    </div>
                   </div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontStyle: 'italic', lineHeight: 1.4, marginBottom: 8 }}>
-                    "{topLoop.core_belief || topLoop.name}"
+                </div>
+              </EmptyDataOverlay>
+            )}
+
+            {/* Content Columns */}
+            <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
+              <EmptyDataOverlay 
+                active={isEmpty} 
+                title="Your journey begins here." 
+                message="Start a chat or write your first journal entry to unlock your personalized insights."
+                actionLabel="Begin a Chat"
+                onAction={() => { onNav && onNav('chat'); }}
+              >
+                <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <div>
+                    <div className="nm-eyebrow" style={{ marginBottom: 16 }}>This week</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
+                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 54, fontWeight: 600, lineHeight: 1, letterSpacing: '-0.018em' }}>{daysWithEntries}</div>
+                      <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--ink)' }}>of 7</div>
+                    </div>
+                    <div className="nm-body">days with reflections</div>
                   </div>
-                  {topLoop.trigger && (
-                    <p className="nm-body" style={{ margin: '0 0 12px', fontSize: 13.5, color: 'var(--ink-2)' }}>
-                      Surfaces around <b>{topLoop.trigger}</b>{topLoop.valence ? <> · <b>{topLoop.valence}</b></> : null}.
-                    </p>
+
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                    <WeekDots days={weekDays} />
+                  </div>
+
+                  <div>
+                    <div className="nm-hr" style={{ margin: '20px 0 14px' }} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      <div>
+                        <div className="nm-tag">Emotion intensity</div>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 24 }}>
+                          {avgIntensity ?? '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="nm-tag">Streak</div>
+                        <div className="nm-days-body" style={{ fontFamily: 'var(--font-display)' }}>
+                          🔥 {displayInsights?.checkin_streak_days ?? 0}<span className="nm-meta" style={{ marginLeft: 6 }}>days</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </EmptyDataOverlay>
+
+              <EmptyDataOverlay 
+                active={isEmpty} 
+                title="Your journey begins here." 
+                message="Start a chat or write your first journal entry to unlock your personalized insights."
+                actionLabel="Begin a Chat"
+                onAction={() => { onNav && onNav('chat'); }}
+              >
+                <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <div className="nm-meta" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
+                  {topTriggers.length === 0 ? (
+                    <div className="nm-meta-data">No triggers detected yet.</div>
+                  ) : (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                      <TriggerBubbles triggers={topTriggers} colors={TRIGGER_COLORS} />
+                    </div>
                   )}
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="nm-btn" onClick={handleReflect} disabled={reflecting}>
-                      {reflecting ? 'Reflecting…' : 'Reflect on this'} <Icon name="arrow" size={11} />
-                    </button>
-                    <button className="nm-btn ghost" onClick={() => onNav && onNav('loops')}>See all loops</button>
-                  </div>
                 </div>
-              </div>
+              </EmptyDataOverlay>
             </div>
-          )}
-
-          {/* Content Columns */}
-          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
-            <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }} data-tour="today-week">
-              <div>
-                <div className="nm-eyebrow" style={{ marginBottom: 16 }}>This week</div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 54, fontWeight: 600, lineHeight: 1, letterSpacing: '-0.018em' }}>{daysWithEntries}</div>
-                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 22, color: 'var(--ink)' }}>of 7</div>
-                </div>
-                <div className="nm-body">days with reflections</div>
-              </div>
-
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <WeekDots days={weekDays} />
-              </div>
-
-              <div>
-                <div className="nm-hr" style={{ margin: '20px 0 14px' }} />
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <div>
-                    <div className="nm-tag">Emotion intensity</div>
-                    <div style={{ fontFamily: 'var(--font-display)', fontSize: 24 }}>
-                      {avgIntensity ?? '—'}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="nm-tag">Streak</div>
-                    <div className="nm-days-body" style={{ fontFamily: 'var(--font-display)' }}>
-                      🔥 {insights?.checkin_streak_days ?? 0}<span className="nm-meta" style={{ marginLeft: 6 }}>days</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }} data-tour="today-triggers">
-              <div className="nm-meta" style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-                Triggers, last 7 days
-                {usingSampleTriggers && <SampleBadge />}
-              </div>
-              {topTriggers.length === 0 ? (
-                <div className="nm-meta-data">No triggers detected yet.</div>
-              ) : (
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <TriggerBubbles triggers={topTriggers} colors={TRIGGER_COLORS} />
-                </div>
-              )}
-            </div>
-          </div>
 
           <div className="nm-card" style={{ marginBottom: 16 }} data-tour="today-question">
             <div className="nm-meta" style={{ marginBottom: 10 }}>Today's question</div>

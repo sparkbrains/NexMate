@@ -3520,6 +3520,50 @@ body {
   }
 }
 
+.nm-cover-page {
+  display: none;
+}
+
+.nm-empty-overlay-wrapper {
+  position: relative;
+}
+.nm-empty-overlay-content {
+  filter: blur(5px);
+  opacity: 0.5;
+  pointer-events: none;
+  user-select: none;
+}
+.nm-empty-overlay-msg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--rule);
+  padding: 24px 32px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 80%;
+}
+.nm-empty-overlay-msg .nm-h3 {
+  margin: 0;
+  font-size: 16px;
+  font-family: var(--font-display);
+}
+.nm-empty-overlay-msg p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
 
 /* ══════════════════════════════════════════════════════════════════
    Landing page (signed-out) — its own identity, not a reskin of the
@@ -3843,45 +3887,316 @@ body {
 @media print {
   @page {
     size: A4;
-    margin: 12mm;
+    margin: 0;
   }
 
-  body * {
-    visibility: hidden;
+  /* Hide the entire React app */
+  #root {
+    display: none !important;
   }
 
-  .print-target,
-  .print-target * {
-    visibility: visible;
-  }
-
-  .print-target {
-    position: fixed !important;
-    left: 0 !important;
-    top: 0 !important;
-    /* The on-screen page is scaled with a CSS transform for zoom (see A4_WIDTH/A4_HEIGHT
-       in JournalScreen.jsx) — printing must always be at true, un-zoomed A4 size. */
-    transform: none !important;
-    margin: 0 !important;
+  /* Show ONLY our cloned wrapper */
+  #nm-print-wrapper {
+    display: block !important;
+    position: static !important;
     width: 210mm !important;
-    height: 297mm !important;
-    max-width: none !important;
-    max-height: none !important;
-    aspect-ratio: auto !important;
-    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .print-target-clone {
+    position: static !important;
+    width: 210mm !important;
+    height: auto !important; /* Critical to prevent clipping multi-page PDF */
+    margin: 0 !important;
+    padding: 0 !important;
     overflow: visible !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    perspective: none !important;
+    transform: none !important;
+    display: block !important;
+  }
+  
+  .print-target-clone .nm-cover-page {
+    order: -1 !important; /* Print cover first */
+    page-break-after: always !important;
+    break-after: page !important;
+    position: relative !important;
+    right: auto !important;
+    top: auto !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    transform: none !important;
+    display: flex !important;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    position: relative !important;
+    transform: none !important;
+    box-shadow: none !important;
+    opacity: 1 !important;
+    visibility: visible !important;
   }
 
-  .print-target [contenteditable] {
+  .print-target-clone .nm-cover-title {
+    font-family: var(--font-serif);
+    font-size: 32pt;
+    margin-bottom: 20px;
+    font-style: italic;
+    color: var(--ink);
+  }
+
+  .print-target-clone .nm-cover-date {
+    font-family: var(--font-mono);
+    font-size: 14pt;
+    color: var(--ink-2);
+  }
+
+  .print-target-clone .nm-journal-page {
+    position: relative !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    transform: none !important; /* Critical to remove inline zoom scale and 3D rotations during print */
+    page-break-before: always;
+    break-before: page;
+    box-shadow: none !important;
+  }
+
+  .print-target-clone [contenteditable] {
     overflow: visible !important;
   }
 
-  .print-target textarea {
+  .print-target-clone textarea {
     border: none !important;
     background: transparent !important;
     resize: none !important;
     box-shadow: none !important;
   }
+}
+
+/* Cover Styles */
+.nm-cover-classic {
+  background: #2a2a2a !important;
+}
+.nm-cover-classic .nm-cover-title {
+  color: #f0e6d2 !important;
+  font-family: var(--font-serif);
+}
+.nm-cover-classic .nm-cover-date {
+  color: #c9b48b !important;
+}
+
+.nm-cover-modern {
+  background: #ffffff !important;
+}
+.nm-cover-modern .nm-cover-title {
+  color: #111111 !important;
+  font-family: sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.nm-cover-modern .nm-cover-date {
+  color: #555555 !important;
+  font-family: sans-serif;
+  font-weight: bold;
+}
+
+.nm-cover-floral {
+  background: #fdf5f6 !important;
+}
+.nm-cover-floral .nm-cover-title {
+  color: #8c5b65 !important;
+}
+.nm-cover-floral .nm-cover-date {
+  color: #c98b9c !important;
+}
+
+.nm-cover-vintage {
+  background: #d4c4a8 !important;
+  border: 4px double #4a3f35 !important;
+  box-sizing: border-box;
+}
+.nm-cover-vintage .nm-cover-title {
+  color: #3b2f25 !important;
+  font-family: 'Courier New', Courier, monospace;
+  font-weight: bold;
+  text-transform: uppercase;
+  font-style: normal;
+}
+.nm-cover-vintage .nm-cover-date {
+  color: #5c4d42 !important;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+.nm-cover-midnight {
+  background: #0f172a !important;
+}
+.nm-cover-midnight .nm-cover-title {
+  color: #f8fafc !important;
+  font-family: var(--font-serif);
+  font-style: italic;
+  text-shadow: 0 0 10px rgba(255,255,255,0.2);
+}
+.nm-cover-midnight .nm-cover-date {
+  color: #94a3b8 !important;
+}
+
+.nm-cover-marble {
+  background: #f8f9fa !important;
+  border-left: 40px solid #cbd5e1 !important; /* Book spine effect */
+  box-sizing: border-box;
+}
+.nm-cover-marble .nm-cover-title {
+  color: #334155 !important;
+  font-family: sans-serif;
+  letter-spacing: 2px;
+  font-style: normal;
+}
+.nm-cover-marble .nm-cover-date {
+  color: #64748b !important;
+}
+
+.nm-cover-watercolor {
+  background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%) !important;
+}
+.nm-cover-watercolor .nm-cover-title {
+  color: #8b5cf6 !important;
+}
+.nm-cover-watercolor .nm-cover-date {
+  color: #a78bfa !important;
+}
+
+/* Cute / Baby */
+@keyframes floatUpDown {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-20px) rotate(5deg); }
+}
+.nm-cover-cute {
+  background: repeating-linear-gradient(45deg, #ffd1dc, #ffd1dc 20px, #ffffff 20px, #ffffff 40px) !important;
+  border: 8px solid #ffb6c1 !important;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+.nm-cover-cute::before {
+  content: "🧸";
+  position: absolute;
+  top: 10%;
+  left: 10%;
+  font-size: 100px;
+  animation: floatUpDown 4s ease-in-out infinite;
+}
+.nm-cover-cute::after {
+  content: "🍼✨";
+  position: absolute;
+  bottom: 15%;
+  right: 15%;
+  font-size: 80px;
+  animation: floatUpDown 5s ease-in-out infinite reverse;
+}
+.nm-cover-cute .nm-cover-title {
+  color: #ff6b81 !important;
+  font-family: 'Comic Sans MS', 'Chalkboard SE', 'Marker Felt', sans-serif;
+  font-weight: bold;
+  letter-spacing: 1px;
+  z-index: 1;
+}
+.nm-cover-cute .nm-cover-date {
+  color: #ff9fb3 !important;
+  font-family: sans-serif;
+  font-weight: bold;
+  z-index: 1;
+}
+
+/* Passion / Gorgeous */
+@keyframes heartbeat {
+  0%, 100% { transform: scale(1); }
+  20% { transform: scale(1.15); }
+  40% { transform: scale(1); }
+  60% { transform: scale(1.15); }
+  80% { transform: scale(1); }
+}
+.nm-cover-passion {
+  background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%) !important;
+  box-shadow: inset 0 0 50px rgba(0,0,0,0.1) !important;
+  position: relative;
+  overflow: hidden;
+}
+.nm-cover-passion::before {
+  content: "❤️";
+  position: absolute;
+  top: 15%;
+  right: 10%;
+  font-size: 120px;
+  opacity: 0.8;
+  animation: heartbeat 2s infinite;
+}
+.nm-cover-passion::after {
+  content: "🌹";
+  position: absolute;
+  bottom: 10%;
+  left: 10%;
+  font-size: 140px;
+  opacity: 0.7;
+  transform: rotate(-15deg);
+}
+.nm-cover-passion .nm-cover-title {
+  color: #ffffff !important;
+  font-family: 'Brush Script MT', 'Lucida Handwriting', cursive;
+  font-size: 48pt;
+  text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+  z-index: 1;
+}
+.nm-cover-passion .nm-cover-date {
+  color: #ffe6e6 !important;
+  font-style: italic;
+  z-index: 1;
+}
+
+/* Holographic / Animated (Fallback for print) */
+@keyframes holoGradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.nm-cover-holographic {
+  background: linear-gradient(120deg, #84fab0 0%, #8fd3f4 50%, #fbc2eb 100%) !important;
+  background-size: 200% 200% !important;
+  animation: holoGradient 4s ease infinite;
+  position: relative;
+  overflow: hidden;
+}
+.nm-cover-holographic::before {
+  content: "🦄";
+  position: absolute;
+  top: 12%;
+  left: 40%;
+  font-size: 100px;
+  animation: floatUpDown 3s ease-in-out infinite;
+}
+.nm-cover-holographic::after {
+  content: "✨🌟✨";
+  position: absolute;
+  bottom: 20%;
+  right: 15%;
+  font-size: 60px;
+  animation: spinSlow 10s linear infinite;
+}
+.nm-cover-holographic .nm-cover-title {
+  color: #ffffff !important;
+  font-family: sans-serif;
+  font-weight: 900;
+  text-transform: uppercase;
+  text-shadow: 0 4px 15px rgba(255,255,255,0.6), 0 0 30px rgba(255,255,255,0.4);
+  z-index: 1;
+}
+.nm-cover-holographic .nm-cover-date {
+  color: rgba(255,255,255,0.9) !important;
+  font-weight: bold;
+  z-index: 1;
 }

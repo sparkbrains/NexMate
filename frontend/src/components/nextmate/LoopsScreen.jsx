@@ -1,5 +1,5 @@
-import { useContext, useEffect, useMemo, useState } from 'react';
-import { Icon, TopBar, LoopRing } from './Shell';
+import { useEffect, useMemo, useState } from 'react';
+import { Icon, TopBar, LoopRing, EmptyDataOverlay } from './Shell';
 import { getLoop, listLoops, resolveLoop, reflectOnLoop } from '../../lib/api';
 import { SAMPLE_LOOP, SAMPLE_LOOPS_LIST, SAMPLE_LOOP_COUNTS } from '../../lib/tourSampleData';
 import { AppContext } from '../../context';
@@ -108,8 +108,29 @@ const formatShort = (iso) => {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-export const LoopsScreen = ({ onNav, tourSample }) => {
-  const { checkRewards } = useContext(AppContext);
+const DUMMY_LOOPS = [
+  { loop_id: 'd1', name: 'Productivity Guilt', core_belief: 'I am not doing enough', strength: 0.85, state: 'active', occurrences: 12, trigger: 'Work' },
+  { loop_id: 'd2', name: 'Social Anxiety', core_belief: 'People will judge me', strength: 0.65, state: 'active', occurrences: 8, trigger: 'Relationships' },
+  { loop_id: 'd3', name: 'Perfectionism', core_belief: 'I must be perfect', strength: 0.45, state: 'resolved', occurrences: 4, trigger: 'Feedback' },
+];
+
+const DUMMY_DETAIL = {
+  ...DUMMY_LOOPS[0],
+  description: 'This loop triggers when you face work challenges, leading to feelings of inadequacy.',
+  first_detected_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+  last_detected_at: new Date().toISOString(),
+  thread_count: 5,
+  emotions: ['anxious', 'tired'],
+  triggers: ['Work', 'Deadlines'],
+  entries: [
+    { occurrence_id: 'o1', occurred_at: new Date().toISOString(), summary: 'Felt guilty for taking a break', dominant_mood: 'anxious' },
+    { occurrence_id: 'o2', occurred_at: new Date(Date.now() - 86400000).toISOString(), summary: 'Worked late to compensate', dominant_mood: 'tired' }
+  ]
+};
+
+const DUMMY_COUNTS = { total: 3, active: 2, resolved: 1 };
+
+export const LoopsScreen = ({ onNav, threads = [] }) => {
   const [loops, setLoops] = useState([]);
   const [counts, setCounts] = useState({ total: 0, active: 0, resolved: 0 });
   const [selectedId, setSelectedId] = useState(null);
@@ -119,6 +140,12 @@ export const LoopsScreen = ({ onNav, tourSample }) => {
   const [error, setError] = useState(null);
   const [resolving, setResolving] = useState(false);
   const [reflecting, setReflecting] = useState(false);
+
+  const isEmpty = !loadingList && loops.length === 0 && threads.length === 0;
+  const displayLoops = isEmpty ? DUMMY_LOOPS : loops;
+  const displayCounts = isEmpty ? DUMMY_COUNTS : counts;
+  const displayDetail = isEmpty ? DUMMY_DETAIL : detail;
+  const displaySelectedId = isEmpty ? 'd1' : selectedId;
 
   const fetchList = async (preserveId = null) => {
     setLoadingList(true);
@@ -202,69 +229,49 @@ export const LoopsScreen = ({ onNav, tourSample }) => {
     );
   }
 
-  if (loops.length === 0 && !usingSample) {
-    return (
-      <div className="nm-main">
-        <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Loops</b></>} />
-        <div className="nm-content">
-          <div className="nm-empty-poem">
-            <div className="nm-eyebrow" style={{ marginBottom: 14 }}>Nothing has circled back — yet</div>
-            <h1>The first loop is always <em>a surprise</em>.</h1>
-            <p>
-              When the same belief returns under a familiar trigger, Nextmate names it.
-              Until then, keep reflecting.
-            </p>
-            {error && <p className="nm-meta" style={{ color: 'var(--accent)', marginTop: 14 }}>{error}</p>}
-            <div style={{ marginTop: 28 }}>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const loop = usingSample ? SAMPLE_LOOP : detail;
+  const loop = displayDetail;
 
   return (
-    <div className="nm-main">
-      <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Loops</b></>}>
+    <div className="nm-main" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Loops</b></>} />
 
-
-      </TopBar>
-
-      <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--rule)', overflowY: 'auto', background: 'var(--paper)' }} data-tour="loops-list">
-          <div style={{ padding: '26px 22px 14px' }}>
-            <div className="nm-eyebrow" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-              Pattern library
-              {usingSample && <SampleBadge />}
+      <EmptyDataOverlay 
+        active={isEmpty} 
+        title="Your journey begins here." 
+        message="Start a chat or write your first journal entry to unlock your personalized insights."
+        actionLabel="Begin a Chat"
+        onAction={() => { onNav && onNav('chat'); }}
+      >
+        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+          <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--rule)', overflowY: 'auto', background: 'var(--paper)' }}>
+            <div style={{ padding: '26px 22px 14px' }}>
+              <div className="nm-eyebrow" style={{ marginBottom: 8 }}>Pattern library</div>
+              <div className="nm-h2">{displayCounts.total} loop{displayCounts.total === 1 ? '' : 's'} tracked</div>
+              <div className="nm-meta" style={{ marginTop: 4 }}>{displayCounts.active} active · {displayCounts.resolved} resolved</div>
             </div>
-            <div className="nm-h2">{listCounts.total} loop{listCounts.total === 1 ? '' : 's'} tracked</div>
-            <div className="nm-meta" style={{ marginTop: 4 }}>{listCounts.active} active · {listCounts.resolved} resolved</div>
+            <div style={{ padding: '0 12px 24px' }}>
+              {activeLoops.length > 0 && (
+                <>
+                  <div className="nm-eyebrow" style={{ padding: '10px 10px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)' }} />Active
+                  </div>
+                  {activeLoops.map((l) => (
+                    <LoopItem key={l.loop_id} loop={l} active={displaySelectedId === l.loop_id} onClick={() => setSelectedId(l.loop_id)} />
+                  ))}
+                </>
+              )}
+              {resolvedLoops.length > 0 && (
+                <>
+                  <div className="nm-eyebrow" style={{ padding: '14px 10px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--teal)' }} />Resolved
+                  </div>
+                  {resolvedLoops.map((l) => (
+                    <LoopItem key={l.loop_id} loop={l} active={displaySelectedId === l.loop_id} onClick={() => setSelectedId(l.loop_id)} />
+                  ))}
+                </>
+              )}
+            </div>
           </div>
-          <div style={{ padding: '0 12px 24px' }}>
-            {activeLoops.length > 0 && (
-              <>
-                <div className="nm-eyebrow" style={{ padding: '10px 10px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent)' }} />Active
-                </div>
-                {activeLoops.map((l) => (
-                  <LoopItem key={l.loop_id} loop={l} active={selectedId === l.loop_id} onClick={() => setSelectedId(l.loop_id)} />
-                ))}
-              </>
-            )}
-            {resolvedLoops.length > 0 && (
-              <>
-                <div className="nm-eyebrow" style={{ padding: '14px 10px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--teal)' }} />Resolved
-                </div>
-                {resolvedLoops.map((l) => (
-                  <LoopItem key={l.loop_id} loop={l} active={selectedId === l.loop_id} onClick={() => setSelectedId(l.loop_id)} />
-                ))}
-              </>
-            )}
-          </div>
-        </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '32px 44px' }}>
           <div style={{ maxWidth: 760, margin: '0 auto' }} key={selectedId} className="nm-fade-up">
@@ -377,6 +384,7 @@ export const LoopsScreen = ({ onNav, tourSample }) => {
           </div>
         </div>
       </div>
+      </EmptyDataOverlay>
     </div>
   );
 };

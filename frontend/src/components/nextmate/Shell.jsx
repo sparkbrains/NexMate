@@ -382,3 +382,26 @@ export const LoopRing = ({ strength = 0.5, size = 72, showLabel = true, resolved
     </div>
   );
 };
+
+export const EmptyDataOverlay = ({ active, title = "We need more data to draw this chart.", message = "Keep exploring and reflecting to uncover your patterns.", actionLabel = "Begin Reflection", onAction, children }) => {
+  if (!active) return children;
+  
+  return (
+    <div className="nm-empty-overlay-wrapper">
+      <div className="nm-empty-overlay-content">
+        {children}
+      </div>
+      <div className="nm-empty-overlay-msg">
+        <h3 className="nm-h3">{title}</h3>
+        <p>{message}</p>
+        {onAction ? (
+          <button className="nm-btn accent" style={{ marginTop: 8 }} onClick={onAction}>{actionLabel}</button>
+        ) : (
+          <button className="nm-btn accent" style={{ marginTop: 8 }} onClick={() => {
+            window.location.hash = '#/';
+          }}>{actionLabel}</button>
+        )}
+      </div>
+    </div>
+  );
+};
