@@ -1,6 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
 import { getLoop, listLoops, resolveLoop, reflectOnLoop } from '../../lib/api';
+import { SAMPLE_LOOP, SAMPLE_LOOPS_LIST, SAMPLE_LOOP_COUNTS } from '../../lib/tourSampleData';
+import { AppContext } from '../../context';
+
+const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
 
 const LoopItem = ({ loop, active, onClick }) => (
   <div onClick={onClick} style={{ padding: '10px 12px', borderRadius: 4, cursor: 'pointer', marginBottom: 1, background: active ? 'var(--surface)' : 'transparent', borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent' }}>
@@ -104,7 +108,8 @@ const formatShort = (iso) => {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-export const LoopsScreen = ({ onNav }) => {
+export const LoopsScreen = ({ onNav, tourSample }) => {
+  const { checkRewards } = useContext(AppContext);
   const [loops, setLoops] = useState([]);
   const [counts, setCounts] = useState({ total: 0, active: 0, resolved: 0 });
   const [selectedId, setSelectedId] = useState(null);
@@ -147,8 +152,12 @@ export const LoopsScreen = ({ onNav }) => {
     return () => { cancelled = true; };
   }, [selectedId]);
 
-  const activeLoops = useMemo(() => loops.filter((l) => l.state === 'active'), [loops]);
-  const resolvedLoops = useMemo(() => loops.filter((l) => l.state === 'resolved'), [loops]);
+  const usingSample = Boolean(tourSample) && !loadingList && loops.length === 0;
+  const listItems = usingSample ? SAMPLE_LOOPS_LIST : loops;
+  const listCounts = usingSample ? SAMPLE_LOOP_COUNTS : counts;
+
+  const activeLoops = useMemo(() => listItems.filter((l) => l.state === 'active'), [listItems]);
+  const resolvedLoops = useMemo(() => listItems.filter((l) => l.state === 'resolved'), [listItems]);
 
   const handleResolve = async () => {
     if (!detail) return;
@@ -157,6 +166,7 @@ export const LoopsScreen = ({ onNav }) => {
       await resolveLoop(detail.loop_id);
       setDetail(prev => prev ? { ...prev, state: 'resolved' } : null);
       await fetchList(detail.loop_id);
+      checkRewards();
     } catch (e) {
       setError(e.message || 'Failed to resolve loop');
     } finally {
@@ -192,7 +202,7 @@ export const LoopsScreen = ({ onNav }) => {
     );
   }
 
-  if (loops.length === 0) {
+  if (loops.length === 0 && !usingSample) {
     return (
       <div className="nm-main">
         <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Loops</b></>} />
@@ -213,7 +223,7 @@ export const LoopsScreen = ({ onNav }) => {
     );
   }
 
-  const loop = detail;
+  const loop = usingSample ? SAMPLE_LOOP : detail;
 
   return (
     <div className="nm-main">
@@ -223,11 +233,14 @@ export const LoopsScreen = ({ onNav }) => {
       </TopBar>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--rule)', overflowY: 'auto', background: 'var(--paper)' }}>
+        <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--rule)', overflowY: 'auto', background: 'var(--paper)' }} data-tour="loops-list">
           <div style={{ padding: '26px 22px 14px' }}>
-            <div className="nm-eyebrow" style={{ marginBottom: 8 }}>Pattern library</div>
-            <div className="nm-h2">{counts.total} loop{counts.total === 1 ? '' : 's'} tracked</div>
-            <div className="nm-meta" style={{ marginTop: 4 }}>{counts.active} active · {counts.resolved} resolved</div>
+            <div className="nm-eyebrow" style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+              Pattern library
+              {usingSample && <SampleBadge />}
+            </div>
+            <div className="nm-h2">{listCounts.total} loop{listCounts.total === 1 ? '' : 's'} tracked</div>
+            <div className="nm-meta" style={{ marginTop: 4 }}>{listCounts.active} active · {listCounts.resolved} resolved</div>
           </div>
           <div style={{ padding: '0 12px 24px' }}>
             {activeLoops.length > 0 && (
@@ -263,16 +276,18 @@ export const LoopsScreen = ({ onNav }) => {
             )}
             {loop && (
               <>
+                <div data-tour="loops-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                   <span className={'nm-chip ' + (loop.state === 'resolved' ? 'teal' : 'accent')}>
                     <span className="nm-dot" />{loop.state}
                   </span>
-                  <span className="nm-tag">
+                  <span className="nm-tag" style={{ color: 'var(--ink-2)', fontWeight: 600 }}>
                     first seen {formatShort(loop.first_detected_at)} · last {formatShort(loop.last_detected_at)}
                   </span>
                   {loop.thread_count > 1 && (
-                    <span className="nm-tag">across {loop.thread_count} threads</span>
+                    <span className="nm-tag" style={{ color: 'var(--ink-2)', fontWeight: 600 }}>across {loop.thread_count} threads</span>
                   )}
+                  {usingSample && <SampleBadge />}
                 </div>
 
                 <h1 className="nm-h1" style={{ marginBottom: 28, fontStyle: 'italic', color: loop.state === 'resolved' ? 'var(--ink-3)' : 'var(--ink)' }}>
@@ -283,20 +298,23 @@ export const LoopsScreen = ({ onNav }) => {
                   <p className="nm-lede" style={{ marginBottom: 22 }}>{loop.description}</p>
                 )}
 
-                <div style={{ display: 'flex', gap: 6, marginBottom: 22 }}>
-                  {loop.state !== 'resolved' && (
-                    <>
-                      <button className="nm-btn accent" onClick={handleReflect} disabled={reflecting}>
-                        <Icon name="plus" size={12} /> {reflecting ? 'Creating thread…' : 'Reflect on this loop'}
-                      </button>
-                      <button className="nm-btn" onClick={handleResolve} disabled={resolving}>
-                        {resolving ? 'Marking…' : 'Mark resolved'}
-                      </button>
-                    </>
-                  )}
+                {!usingSample && (
+                  <div style={{ display: 'flex', gap: 6, marginBottom: 22 }}>
+                    {loop.state !== 'resolved' && (
+                      <>
+                        <button className="nm-btn accent" onClick={handleReflect} disabled={reflecting}>
+                          <Icon name="plus" size={12} /> {reflecting ? 'Creating thread…' : 'Reflect on this loop'}
+                        </button>
+                        <button className="nm-btn" onClick={handleResolve} disabled={resolving}>
+                          {resolving ? 'Marking…' : 'Mark resolved'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
                 </div>
 
-                <div className="nm-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+                <div className="nm-card" style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }} data-tour="loops-constellation">
                   <div style={{ padding: '18px 22px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                     <div>
                       <div className="nm-eyebrow">Constellation</div>
@@ -307,7 +325,7 @@ export const LoopsScreen = ({ onNav }) => {
                   <Constellation occ={loop.occurrences} resolved={loop.state === 'resolved'} />
                 </div>
 
-                <div className="nm-grid-4 nm-stagger" style={{ marginBottom: 16 }}>
+                <div className="nm-grid-4 nm-stagger" style={{ marginBottom: 16 }} data-tour="loops-stats">
                   <StatCell label="Strength" value={loop.strength.toFixed(2)} accent={loop.state !== 'resolved'} />
                   <StatCell label="Occurrences" value={loop.occurrences} />
                   <StatCell label="Avg intensity" value={loop.avg_intensity ?? '—'} />
@@ -318,7 +336,7 @@ export const LoopsScreen = ({ onNav }) => {
                   />
                 </div>
 
-                <div className="nm-card" style={{ marginBottom: 16 }}>
+                <div className="nm-card" style={{ marginBottom: 16 }} data-tour="loops-features">
                   <div className="nm-eyebrow" style={{ marginBottom: 14 }}>Extracted features</div>
                   <FRow label="Triggers" items={loop.triggers && loop.triggers.length ? loop.triggers : (loop.trigger ? [loop.trigger] : [])} />
                   <FRow label="Valence" items={loop.valence ? [loop.valence] : []} />
@@ -333,7 +351,7 @@ export const LoopsScreen = ({ onNav }) => {
                   </div>
                 )}
 
-                <div className="nm-card">
+                <div className="nm-card" data-tour="loops-timeline">
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 }}>
                     <div className="nm-eyebrow">Every time it showed up</div>
                     <div className="nm-meta">{loop.occurrences} moment{loop.occurrences === 1 ? '' : 's'}</div>

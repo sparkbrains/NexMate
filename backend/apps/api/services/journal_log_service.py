@@ -108,12 +108,28 @@ def compute_streak(user_id: int) -> dict[str, Any]:
             rows = cur.fetchall()
 
     dates = [r["entry_date"] for r in rows if r.get("entry_date")]
-    if not dates:
-        return {"current": 0, "longest": 0, "wrote_today": False, "last_entry_date": None}
 
     from datetime import date as _date, timedelta as _td
 
     today = _date.today()
+
+    if not dates:
+        last_7 = [
+            {
+                "date": (today - _td(days=offset)).isoformat(),
+                "has_entry": False,
+                "is_today": offset == 0,
+            }
+            for offset in range(6, -1, -1)
+        ]
+        return {
+            "current": 0,
+            "longest": 0,
+            "wrote_today": False,
+            "last_entry_date": None,
+            "last_7": last_7,
+        }
+
     last_entry_date = dates[0]
     wrote_today = last_entry_date == today
 

@@ -33,13 +33,14 @@ class User:
     name: str = ""
     age: int | None = None
     dob: str | None = None
+    motivation: str | None = None
+    theme: str | None = None
     subscription_tier: str = "paid"
     reminder_enabled: bool = False
     reminder_time: str = "20:00"
+    has_journaled_before: bool | None = None
+    onboarding_completed_at: str | None = None
 
-
-MIN_AGE = 13
-MAX_AGE = 120
 
 REMINDER_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 DOB_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -80,6 +81,26 @@ def _validate_dob(value: str) -> str:
     return cleaned
 
 
+MOTIVATION_MAX_LEN = 300
+
+
+def _validate_motivation(value: str) -> str:
+    cleaned = value.strip()
+    if len(cleaned) > MOTIVATION_MAX_LEN:
+        cleaned = cleaned[:MOTIVATION_MAX_LEN]
+    return cleaned
+
+
+THEMES = {"light", "dark", "playful"}
+
+
+def _validate_theme(value: str) -> str:
+    cleaned = value.strip().lower()
+    if cleaned not in THEMES:
+        raise ValueError("theme must be 'light', 'dark', or 'playful'")
+    return cleaned
+
+
 def _validate_subscription_tier(tier: str) -> str:
     cleaned = tier.strip().lower()
     if cleaned not in SUBSCRIPTION_TIERS:
@@ -92,14 +113,6 @@ def _validate_reminder_time(value: str) -> str:
     if not REMINDER_TIME_RE.match(cleaned):
         raise ValueError("reminder_time must be in HH:MM 24-hour format")
     return cleaned
-
-
-def _validate_age(age: int) -> int:
-    if not isinstance(age, int) or isinstance(age, bool):
-        raise ValueError("Age must be a whole number")
-    if age < MIN_AGE or age > MAX_AGE:
-        raise ValueError(f"Age must be between {MIN_AGE} and {MAX_AGE}")
-    return age
 
 
 def _utc_now() -> datetime:
@@ -134,14 +147,12 @@ def _verify_password(password: str, encoded: str) -> bool:
     return secrets.compare_digest(actual, expected)
 
 
-def create_user(email: str, password: str, name: str, age: int) -> User:
+def create_user(email: str, password: str) -> User:
     cleaned_email = email.strip().lower()
     if not cleaned_email or "@" not in cleaned_email:
         raise ValueError("Invalid email")
     if len(password) < 6:
         raise ValueError("Password must be at least 6 characters")
-    cleaned_name = _validate_name(name)
-    cleaned_age = _validate_age(age)
 
     created_at = _utc_now()
     password_hash = _encode_password(password)
@@ -153,11 +164,11 @@ def create_user(email: str, password: str, name: str, age: int) -> User:
 
             cur.execute(
                 """
-                INSERT INTO users (email, password_hash, created_at, name, age)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO users (email, password_hash, created_at)
+                VALUES (%s, %s, %s)
                 RETURNING id, created_at, subscription_tier
                 """,
-                (cleaned_email, password_hash, created_at, cleaned_name, cleaned_age),
+                (cleaned_email, password_hash, created_at),
             )
             row = cur.fetchone()
         conn.commit()
@@ -166,8 +177,6 @@ def create_user(email: str, password: str, name: str, age: int) -> User:
         id=int(row["id"]),
         email=cleaned_email,
         created_at=row["created_at"].isoformat(),
-        name=cleaned_name,
-        age=cleaned_age,
         subscription_tier=str(row["subscription_tier"]),
     )
 
@@ -178,8 +187,8 @@ def authenticate_user(email: str, password: str) -> User | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, email, password_hash, created_at, name, age, dob, subscription_tier,
-                       reminder_enabled, reminder_time
+                SELECT id, email, password_hash, created_at, name, age, dob, motivation, theme, subscription_tier,
+                       reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at
                 FROM users WHERE email = %s
                 """,
                 (cleaned_email,),
@@ -197,9 +206,13 @@ def authenticate_user(email: str, password: str) -> User | None:
         name=str(row.get("name") or ""),
         age=row.get("age"),
         dob=row["dob"].isoformat() if row.get("dob") else None,
+        motivation=row.get("motivation") or None,
+        theme=row.get("theme") or None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),
+        has_journaled_before=row.get("has_journaled_before"),
+        onboarding_completed_at=row["onboarding_completed_at"].isoformat() if row.get("onboarding_completed_at") else None,
     )
 
 
@@ -228,8 +241,9 @@ def get_user_by_token(token: str) -> User | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT u.id, u.email, u.created_at, u.name, u.age, u.dob, u.subscription_tier,
-                       u.reminder_enabled, u.reminder_time, s.expires_at
+                SELECT u.id, u.email, u.created_at, u.name, u.age, u.dob, u.motivation, u.theme, u.subscription_tier,
+                       u.reminder_enabled, u.reminder_time, u.has_journaled_before,
+                       u.onboarding_completed_at, s.expires_at
                 FROM sessions s
                 JOIN users u ON s.user_id = u.id
                 WHERE s.token = %s
@@ -253,9 +267,13 @@ def get_user_by_token(token: str) -> User | None:
         name=str(row.get("name") or ""),
         age=row.get("age"),
         dob=row["dob"].isoformat() if row.get("dob") else None,
+        motivation=row.get("motivation") or None,
+        theme=row.get("theme") or None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),
+        has_journaled_before=row.get("has_journaled_before"),
+        onboarding_completed_at=row["onboarding_completed_at"].isoformat() if row.get("onboarding_completed_at") else None,
     )
 
 
@@ -305,14 +323,12 @@ def _send_otp_email(to_email: str, code: str) -> None:
         server.sendmail(sender, [to_email], msg.as_string())
 
 
-def request_signup_otp(email: str, password: str, name: str, age: int) -> None:
+def request_signup_otp(email: str, password: str) -> None:
     cleaned_email = email.strip().lower()
     if not cleaned_email or "@" not in cleaned_email:
         raise ValueError("Invalid email")
     if len(password) < 6:
         raise ValueError("Password must be at least 6 characters")
-    cleaned_name = _validate_name(name)
-    cleaned_age = _validate_age(age)
 
     now = _utc_now()
 
@@ -337,18 +353,16 @@ def request_signup_otp(email: str, password: str, name: str, age: int) -> None:
 
             cur.execute(
                 """
-                INSERT INTO pending_signups (email, password_hash, otp_hash, attempts, expires_at, last_sent_at, name, age)
-                VALUES (%s, %s, %s, 0, %s, %s, %s, %s)
+                INSERT INTO pending_signups (email, password_hash, otp_hash, attempts, expires_at, last_sent_at)
+                VALUES (%s, %s, %s, 0, %s, %s)
                 ON CONFLICT (email) DO UPDATE SET
                     password_hash = EXCLUDED.password_hash,
                     otp_hash = EXCLUDED.otp_hash,
                     attempts = 0,
                     expires_at = EXCLUDED.expires_at,
-                    last_sent_at = EXCLUDED.last_sent_at,
-                    name = EXCLUDED.name,
-                    age = EXCLUDED.age
+                    last_sent_at = EXCLUDED.last_sent_at
                 """,
-                (cleaned_email, password_hash, otp_hash, expires_at, now, cleaned_name, cleaned_age),
+                (cleaned_email, password_hash, otp_hash, expires_at, now),
             )
         conn.commit()
 
@@ -687,8 +701,8 @@ def update_reminder_settings(user_id: int, enabled: bool, reminder_time: str) ->
                 """
                 UPDATE users SET reminder_enabled = %s, reminder_time = %s
                 WHERE id = %s
-                RETURNING id, email, created_at, name, age, dob, subscription_tier,
-                          reminder_enabled, reminder_time
+                RETURNING id, email, created_at, name, age, dob, motivation, theme, subscription_tier,
+                          reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at
                 """,
                 (bool(enabled), cleaned_time, user_id),
             )
@@ -704,17 +718,42 @@ def update_reminder_settings(user_id: int, enabled: bool, reminder_time: str) ->
         name=str(row.get("name") or ""),
         age=row.get("age"),
         dob=row["dob"].isoformat() if row.get("dob") else None,
+        motivation=row.get("motivation") or None,
+        theme=row.get("theme") or None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),
+        has_journaled_before=row.get("has_journaled_before"),
+        onboarding_completed_at=row["onboarding_completed_at"].isoformat() if row.get("onboarding_completed_at") else None,
     )
 
 
-def update_profile(user_id: int, name: str, email: str, dob: str | None, subscription_tier: str) -> User:
-    cleaned_name = _validate_name(name)
+def update_profile(
+    user_id: int,
+    name: str,
+    email: str,
+    dob: str | None,
+    motivation: str | None,
+    theme: str | None,
+    subscription_tier: str | None,
+) -> User:
+    # Name is validated (non-empty, length) only when one is actually being
+    # set — it's no longer collected at signup, so a profile patch that's
+    # only touching dob (with name defaulted from an as-yet-unset current
+    # value) shouldn't be blocked on a name that isn't part of this request.
+    cleaned_name = _validate_name(name) if name and name.strip() else ""
     cleaned_email = _validate_email(email)
     cleaned_dob = _validate_dob(dob) if dob else None
-    cleaned_tier = _validate_subscription_tier(subscription_tier)
+    # Same idea for motivation: an empty/omitted value just leaves whatever
+    # is already stored untouched rather than blanking it out.
+    cleaned_motivation = _validate_motivation(motivation) if motivation and motivation.strip() else None
+    # Same idea for theme: an empty/omitted value leaves whatever's already
+    # stored untouched instead of resetting the account to no preference.
+    cleaned_theme = _validate_theme(theme) if theme else None
+    # Same idea for subscription_tier: only validate/change it when the
+    # caller explicitly provided one, so a name- or dob-only patch doesn't
+    # need to round-trip (and revalidate) whatever tier is already stored.
+    cleaned_tier = _validate_subscription_tier(subscription_tier) if subscription_tier else None
 
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -724,12 +763,13 @@ def update_profile(user_id: int, name: str, email: str, dob: str | None, subscri
 
             cur.execute(
                 """
-                UPDATE users SET name = %s, email = %s, dob = %s, subscription_tier = %s
+                UPDATE users SET name = %s, email = %s, dob = %s, motivation = %s, theme = %s,
+                       subscription_tier = COALESCE(%s, subscription_tier)
                 WHERE id = %s
-                RETURNING id, email, created_at, name, age, dob, subscription_tier,
-                          reminder_enabled, reminder_time
+                RETURNING id, email, created_at, name, age, dob, motivation, theme, subscription_tier,
+                          reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at
                 """,
-                (cleaned_name, cleaned_email, cleaned_dob, cleaned_tier, user_id),
+                (cleaned_name, cleaned_email, cleaned_dob, cleaned_motivation, cleaned_theme, cleaned_tier, user_id),
             )
             row = cur.fetchone()
             if not row:
@@ -743,9 +783,49 @@ def update_profile(user_id: int, name: str, email: str, dob: str | None, subscri
         name=str(row.get("name") or ""),
         age=row.get("age"),
         dob=row["dob"].isoformat() if row.get("dob") else None,
+        motivation=row.get("motivation") or None,
+        theme=row.get("theme") or None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),
+        has_journaled_before=row.get("has_journaled_before"),
+        onboarding_completed_at=row["onboarding_completed_at"].isoformat() if row.get("onboarding_completed_at") else None,
+    )
+
+
+def complete_onboarding(user_id: int, has_journaled_before: bool | None) -> User:
+    now = _utc_now()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE users SET has_journaled_before = %s, onboarding_completed_at = %s
+                WHERE id = %s
+                RETURNING id, email, created_at, name, age, dob, motivation, theme, subscription_tier,
+                          reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at
+                """,
+                (has_journaled_before, now, user_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("Account not found")
+        conn.commit()
+
+    return User(
+        id=int(row["id"]),
+        email=str(row["email"]),
+        created_at=row["created_at"].isoformat(),
+        name=str(row.get("name") or ""),
+        age=row.get("age"),
+        dob=row["dob"].isoformat() if row.get("dob") else None,
+        motivation=row.get("motivation") or None,
+        theme=row.get("theme") or None,
+        subscription_tier=str(row.get("subscription_tier") or "paid"),
+        reminder_enabled=bool(row.get("reminder_enabled") or False),
+        reminder_time=str(row.get("reminder_time") or "20:00"),
+        has_journaled_before=row.get("has_journaled_before"),
+        onboarding_completed_at=row["onboarding_completed_at"].isoformat() if row.get("onboarding_completed_at") else None,
     )
 
 
@@ -790,7 +870,7 @@ def seed_dummy_users(users: Iterable[tuple[str, str]]) -> dict[str, int]:
     skipped = 0
     for email, password in users:
         try:
-            create_user(email=email, password=password, name="Demo User", age=25)
+            create_user(email=email, password=password)
             seeded += 1
         except ValueError:
             skipped += 1

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
 import { useChatSocket } from '../../hooks/useChatSocket';
 import {
@@ -7,28 +7,21 @@ import {
   listJournalBooks, createJournalBook,
   saveThreadSummaryAsJournalEntry,
 } from '../../lib/api';
+import { AppContext } from '../../context';
 
 const NEW_BOOK_OPTION = '__new__';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
 
-const Msg = ({ from, text, meta, quoted, choices, className }) => {
-  const containerStyle = {
-    display: from === 'me' ? 'flex' : 'flex',
-    justifyContent: from === 'me' ? 'flex-end' : 'flex-start',
-    marginBottom: from === 'me' ? 16 : 22,
-    gap: from === 'me' ? undefined : 12,
-    ...(className ? {} : {}),
-  };
-
+const Msg = ({ from, text, meta, quoted, choices, className, pending }) => {
   if (from === 'me') {
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }} className={className}>
         <div
           style={{
             maxWidth: '78%',
-            background: 'var(--ink)',
-            color: 'var(--paper)',
+            background: 'var(--chat-user-bg)',
+            color: 'var(--chat-user-fg)',
             padding: '11px 15px',
             borderRadius: '14px 14px 3px 14px',
             fontSize: 14.5,
@@ -48,13 +41,13 @@ const Msg = ({ from, text, meta, quoted, choices, className }) => {
           width: 28,
           height: 28,
           borderRadius: '50%',
-          background: 'var(--accent)',
+          background: 'var(--chat-bot-bg)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
           marginTop: 2,
-          color: '#fff',
+          color: 'var(--chat-bot-fg)',
           fontFamily: 'var(--font-display)',
           fontSize: 13,
         }}
@@ -64,15 +57,20 @@ const Msg = ({ from, text, meta, quoted, choices, className }) => {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
+            display: 'inline-block',
+            maxWidth: '92%',
+            background: 'var(--chat-bot-bg)',
+            color: 'var(--chat-bot-fg)',
+            padding: '11px 15px',
+            borderRadius: '3px 14px 14px 14px',
             fontFamily: 'var(--font-serif)',
             fontSize: 16.5,
             lineHeight: 1.55,
-            color: 'var(--ink)',
             letterSpacing: '-0.005em',
             whiteSpace: 'pre-wrap',
           }}
         >
-          {text}
+          {pending && !text ? <ThinkingDots color="var(--chat-bot-fg)" /> : text}
         </div>
         {quoted && (
           <div
@@ -114,7 +112,7 @@ const Msg = ({ from, text, meta, quoted, choices, className }) => {
   );
 };
 
-const ThinkingDots = () => (
+const ThinkingDots = ({ color = 'var(--accent)' }) => (
   <div style={{ display: 'inline-flex', gap: 4 }}>
     {[0, 1, 2].map((i) => (
       <span
@@ -123,7 +121,7 @@ const ThinkingDots = () => (
           width: 5,
           height: 5,
           borderRadius: '50%',
-          background: 'var(--accent)',
+          background: color,
           animation: `nm-blink 1.4s ${i * 0.2}s infinite ease-in-out`,
         }}
       />
@@ -140,7 +138,9 @@ export const ChatScreen = ({
   initialMessage,
   onAuthExpired,
 }) => {
+  const { checkRewards } = useContext(AppContext);
   const [draft, setDraft] = useState('');
+  const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [loops, setLoops] = useState([]);
   const [threadSummary, setThreadSummary] = useState(null);
   const [showSaveToJournal, setShowSaveToJournal] = useState(false);
@@ -211,6 +211,7 @@ export const ChatScreen = ({
         unspokenTextRef.current = '';
       }
       if (onMessageDone) onMessageDone();
+      checkRewards();
     },
     context,
     onAuthExpired,
@@ -522,12 +523,20 @@ export const ChatScreen = ({
 
   useEffect(() => {
     setDraft('');
+    setAwaitingResponse(false);
     setShowSaveToJournal(false);
     setJournalTargetBookId('');
     setNewJournalBookName('');
     setJournalSaveMessage('');
     setJournalSaveError(false);
   }, [threadId]);
+
+  // The socket only appends the "nex" placeholder once its "start" event
+  // arrives, so there's a bare gap (network + model warm-up) after send()
+  // where no bubble exists yet to carry a loading indicator.
+  useEffect(() => {
+    if (streaming || error) setAwaitingResponse(false);
+  }, [streaming, error]);
 
   const toggleSaveToJournal = (checked) => {
     setShowSaveToJournal(checked);
@@ -563,6 +572,7 @@ export const ChatScreen = ({
       }
       await saveThreadSummaryAsJournalEntry({ thread_id: threadId, body: threadSummary.summary_text, book_id: bookId });
       setJournalSaveMessage(`Saved to ${bookName || 'journal'}.`);
+      checkRewards();
     } catch (e) {
       setJournalSaveError(true);
       setJournalSaveMessage(e?.message || 'Failed to save entry.');
@@ -598,7 +608,7 @@ export const ChatScreen = ({
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, streaming]);
+  }, [messages, streaming, awaitingResponse]);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -618,7 +628,10 @@ export const ChatScreen = ({
     }
     unspokenTextRef.current = '';
 
-    if (send(text)) setDraft('');
+    if (send(text)) {
+      setDraft('');
+      setAwaitingResponse(true);
+    }
   };
 
   const onKey = (e) => {
@@ -665,13 +678,15 @@ export const ChatScreen = ({
                   <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px dashed var(--rule)' }} />
                 </div>
                 {messages.map((m, i) => (
-                  <Msg key={i} {...m} className="nm-msg" />
+                  <Msg
+                    key={i}
+                    {...m}
+                    className="nm-msg"
+                    pending={streaming && i === messages.length - 1 && m.from === 'nex'}
+                  />
                 ))}
-                {streaming && (
-                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', margin: '16px 0', color: 'var(--ink-4)' }}>
-                    <ThinkingDots />
-                    <span className="nm-meta">Nextmate is reflecting…</span>
-                  </div>
+                {awaitingResponse && !streaming && (
+                  <Msg from="nex" text="" className="nm-msg" pending />
                 )}
                 {error && (
                   <div className="nm-body" style={{ color: 'var(--accent)', fontSize: 12 }}>{error}</div>
@@ -680,8 +695,15 @@ export const ChatScreen = ({
             </div>
           )}
 
+          {messages.length === 0 && threadId && (
+            <div className="nm-chat-empty">
+              <div className="nm-chat-empty-art" />
+              <p className="nm-chat-empty-line">No rush, no agenda.<br />Say whatever's sitting with you.</p>
+            </div>
+          )}
+
           {/* Input — sits at the bottom of the chat column only, never touches the side panel */}
-          <div style={{ padding: '12px 40px 20px', flexShrink: 0 }}>
+          <div style={{ padding: '12px 40px 20px', flexShrink: 0 }} data-tour="chat-input">
             <div style={{ maxWidth: 680, margin: '0 auto' }}>
               <div style={{
                 display: 'flex',
@@ -757,8 +779,11 @@ export const ChatScreen = ({
               )}
 
               <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-                <label className="nm-meta" style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-                  <input type="checkbox" checked={voiceOutputEnabled} onChange={(e) => setVoiceOutputEnabled(e.target.checked)} style={{ margin: 0 }} />
+                <label className="nm-meta" style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <span className="nm-switch">
+                    <input type="checkbox" checked={voiceOutputEnabled} onChange={(e) => setVoiceOutputEnabled(e.target.checked)} />
+                    <span className="nm-switch-slider"></span>
+                  </span>
                   Say it out loud
                 </label>
                 {voiceOutputEnabled && (
@@ -798,6 +823,7 @@ export const ChatScreen = ({
         {/* Side panel */}
         <div
           className={`nm-side-panel${showSidePanel ? '' : ' collapsed'}`}
+          data-tour="chat-panel"
           style={{
             width: 300,
             flexShrink: 0,

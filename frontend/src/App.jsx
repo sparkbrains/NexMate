@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/nextmate/Shell';
+import { NamePrompt, DobPrompt } from './components/nextmate/ProfilePrompts';
+import { MotivationPrompt } from './components/nextmate/MotivationPrompt';
+import { ThemePrompt } from './components/nextmate/ThemePrompt';
+import { OnboardingIntake } from './components/nextmate/OnboardingIntake';
+import { TourSpotlight } from './components/nextmate/TourSpotlight';
+import { TourNudgeCard } from './components/nextmate/TourNudgeCard';
+import { TourCompleteToast } from './components/nextmate/TourCompleteToast';
+import { ReminderSetupCard } from './components/nextmate/ReminderSetupCard';
 import { PromptPackPop } from './components/nextmate/PromptPackPop';
+import { RewardsPanel } from './components/nextmate/RewardsPanel';
+import { RewardBadgeToast } from './components/nextmate/RewardBadgeToast';
 import { TodayScreen } from './components/nextmate/TodayScreen';
 import { ChatScreen } from './components/nextmate/ChatScreen';
 import { LoopsScreen } from './components/nextmate/LoopsScreen';
@@ -10,12 +20,16 @@ import { JournalScreen } from './components/nextmate/JournalScreen';
 import { PromptPacksScreen } from './components/nextmate/PromptPacksScreen';
 import PricingScreen from './components/nextmate/PricingScreen';
 import { LandingPage } from './components/nextmate/LandingPage';
+import LogoIco from './assets/ic_logo.svg';
 import { ProfilePage } from './components/nextmate/ProfilePage';
 import { SupportWidget } from './components/nextmate/SupportWidget';
 import { JournalReminderToast } from './components/nextmate/JournalReminderToast';
 import { clearSession, deleteThread as deleteThreadApi, getMe, getToken, getUser, listThreads, logout as apiLogout, persistUser } from './lib/api';
 import { AppContext } from './context';
 import { useJournalReminder } from './hooks/useJournalReminder';
+import { useRewardsWatcher } from './hooks/useRewardsWatcher';
+import { useOnboardingTour } from './hooks/useOnboardingTour';
+import { useProfilePrompts } from './hooks/useProfilePrompts';
 
 const newThreadId = () =>
   (crypto.randomUUID ? crypto.randomUUID() : `t-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
@@ -48,6 +62,18 @@ export default function App() {
   }, []);
 
   const { reminder, dismissReminder, snoozeReminder } = useJournalReminder(user);
+  const rewards = useRewardsWatcher(user);
+  const onUserUpdate = (updated) => { setUser(updated); persistUser(updated); };
+  const profilePrompts = useProfilePrompts(user, onUserUpdate);
+  const tour = useOnboardingTour(user, onUserUpdate);
+  const activeRoute = location.pathname.split('/')[1] || 'today';
+
+  // Lets the tour's state machine notice the user actually clicked the
+  // pulsing nav item (or Begin Reflection) it was nudging them toward.
+  useEffect(() => {
+    if (profilePrompts.done && tour.tourActive) tour.onRouteChange(activeRoute);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRoute, profilePrompts.done, tour.tourActive]);
 
   // Theme state — auth screen always light; restore saved theme after login
   const [theme, setTheme] = useState(() => {
@@ -57,6 +83,10 @@ export default function App() {
 
   // Mobile sidebar open state
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Rewards panel — opened via the trophy button in TopBar (lives outside
+  // Shell.jsx to avoid a circular import with Icon, same as PromptPackPop).
+  const [rewardsOpen, setRewardsOpen] = useState(false);
 
   useEffect(() => {
     // Force light mode on auth screen, apply saved theme when logged in
@@ -117,7 +147,23 @@ export default function App() {
   if (!user) {
     if (location.pathname === '/pricing') {
       return (
-        <div style={{ minHeight: '100vh', background: 'var(--surface)' }}>
+        <div className="nm-land" style={{ height: 'auto', minHeight: '100vh' }}>
+          <nav className="nm-land-nav">
+            <img
+              src={LogoIco}
+              alt="Nextmate"
+              height="30"
+              className="nm-logo"
+              style={{ cursor: 'pointer' }}
+              onClick={() => navigate('/')}
+            />
+            <div className="nm-land-nav-actions">
+              <button className="nm-land-nav-link" onClick={() => navigate('/login')}>Sign In</button>
+              <button className="nm-land-nav-cta" onClick={() => navigate('/signup')}>Make a Space</button>
+            </div>
+          </nav>
+          <img className="nm-pricing-sticker nm-pricing-sticker-left" src="/stickers/picnic/jam-jar.png" alt="" aria-hidden="true" />
+          <img className="nm-pricing-sticker nm-pricing-sticker-right" src="/stickers/scrapbook/great-wave.png" alt="" aria-hidden="true" />
           <PricingScreen isLanding={true} />
         </div>
       );
@@ -128,7 +174,24 @@ export default function App() {
     return <LandingPage onAuth={setUser} authMode={authMode} />;
   }
 
-  const activeRoute = location.pathname.split('/')[1] || 'today';
+  // True while any first-run overlay (name/dob prompts, the tour intake,
+  // or the bubble tour itself) is in play — used to hold off other
+  // attention-grabbing popups until the user's through it.
+  const onboardingInProgress = !profilePrompts.done || tour.active || tour.justFinished || tour.reminderPromptOpen;
+
+  // The app behind the card stays blurred through the required identity
+  // steps — name, dob, intent — so there's nothing legible to peek at
+  // before those are answered. Theme is optional polish, not required, so
+  // it doesn't hold the blur.
+  const blurBackground = ['name', 'dob', 'motivation'].includes(profilePrompts.stage);
+
+  // The tour itself must not start until the name/dob/motivation/theme
+  // prompts are behind us — otherwise a stale `intakeDone` carried over in
+  // localStorage (e.g. from before those prompts existed) can let the tour
+  // race ahead and render on top of them.
+  const tourReady = profilePrompts.done && tour.tourActive;
+
+  const tourSampleFor = (key) => tourReady && tour.phase === 'walk' && tour.section === key;
 
   const chatEl = (
     <ChatScreen
@@ -153,6 +216,7 @@ export default function App() {
       }}
       threads={threads}
       user={user}
+      tourSample={tourSampleFor('today')}
     />
   );
 
@@ -165,51 +229,126 @@ export default function App() {
           navigateTo(r);
         }
       }}
+      tourSample={tourSampleFor('loops')}
     />
   );
 
   return (
-    <AppContext.Provider value={{ theme, setTheme, sidebarOpen, setSidebarOpen }}>
+    <AppContext.Provider value={{
+      theme, setTheme, sidebarOpen, setSidebarOpen, rewardsOpen, setRewardsOpen,
+      hasUnseenReward: rewards.hasUnseen, rewardPoints: rewards.points, checkRewards: rewards.checkRewards, markRewardsSeen: rewards.markSeen,
+    }}>
       <div className="nm-app" data-screen-label={`Nextmate — ${activeRoute}`}>
-        <Sidebar
-          active={activeRoute}
-          onNav={navigateTo}
-          threads={threads}
-          activeThreadId={currentThreadId}
-          onSelectThread={openThread}
-          onNewThread={beginReflection}
-          onDeleteThread={onDeleteThread}
-          user={user}
-          onLogout={onLogout}
-        />
-        <Routes>
-          <Route path="/today" element={todayEl} />
-          <Route path="/chat" element={chatEl} />
-          <Route path="/chat/:threadId" element={chatEl} />
-          <Route path="/journal" element={<JournalScreen user={user} />} />
-          <Route path="/prompt-packs" element={<PromptPacksScreen />} />
-          <Route path="/loops" element={loopsEl} />
-          <Route path="/insights" element={<InsightsScreen />} />
-          <Route
-            path="/profile"
-            element={(
-              <ProfilePage
-                onLogout={onLogout}
-                onUserUpdate={(updated) => { setUser(updated); persistUser(updated); }}
-              />
-            )}
+        <div className={`nm-app-content${blurBackground ? ' nm-app-blurred' : ''}`}>
+          <Sidebar
+            active={activeRoute}
+            onNav={navigateTo}
+            threads={threads}
+            activeThreadId={currentThreadId}
+            onSelectThread={openThread}
+            onNewThread={beginReflection}
+            onDeleteThread={onDeleteThread}
+            user={user}
+            onLogout={onLogout}
+            tourNudgeTarget={tourReady && tour.phase === 'nudge' ? tour.nudgeTarget : null}
+            tourHypeReflection={tourReady && tour.phase === 'reflect-hype'}
           />
-          <Route path="/pricing" element={<Navigate to="/today" replace />} />
-          <Route path="/" element={<Navigate to="/today" replace />} />
-          <Route path="*" element={<Navigate to="/today" replace />} />
-        </Routes>
-        <PromptPackPop />
+          <Routes>
+            <Route path="/today" element={todayEl} />
+            <Route path="/chat" element={chatEl} />
+            <Route path="/chat/:threadId" element={chatEl} />
+            <Route path="/journal" element={<JournalScreen user={user} />} />
+            <Route path="/prompt-packs" element={<PromptPacksScreen />} />
+            <Route path="/loops" element={loopsEl} />
+            <Route path="/insights" element={<InsightsScreen tourSample={tourSampleFor('insights')} />} />
+            <Route
+              path="/profile"
+              element={(
+                <ProfilePage
+                  onLogout={onLogout}
+                  onUserUpdate={onUserUpdate}
+                />
+              )}
+            />
+            <Route path="/pricing" element={<Navigate to="/today" replace />} />
+            <Route path="/" element={<Navigate to="/today" replace />} />
+            <Route path="*" element={<Navigate to="/today" replace />} />
+          </Routes>
+        </div>
+        {!onboardingInProgress && <PromptPackPop />}
+        <RewardsPanel open={rewardsOpen} onClose={() => setRewardsOpen(false)} />
+        <RewardBadgeToast badge={rewards.toastBadge} onDismiss={rewards.dismissToast} />
         <SupportWidget />
-        <JournalReminderToast
-          reminder={reminder}
-          onDismiss={dismissReminder}
-          onSnooze={snoozeReminder}
-          onJournal={() => { dismissReminder(); navigateTo('journal'); }}
+        {!onboardingInProgress && (
+          <JournalReminderToast
+            reminder={reminder}
+            onDismiss={dismissReminder}
+            onSnooze={snoozeReminder}
+            onJournal={() => { dismissReminder(); navigateTo('journal'); }}
+          />
+        )}
+        <NamePrompt
+          open={profilePrompts.stage === 'name'}
+          steps={profilePrompts.steps}
+          onSubmit={profilePrompts.submitName}
+          onSkip={profilePrompts.skipName}
+          saving={profilePrompts.saving}
+          error={profilePrompts.error}
+        />
+        <DobPrompt
+          open={profilePrompts.stage === 'dob'}
+          steps={profilePrompts.steps}
+          onSubmit={profilePrompts.submitDob}
+          onSkip={profilePrompts.skipDob}
+          saving={profilePrompts.saving}
+          error={profilePrompts.error}
+        />
+        <MotivationPrompt
+          open={profilePrompts.stage === 'motivation'}
+          steps={profilePrompts.steps}
+          onSubmit={profilePrompts.submitMotivation}
+          onSkip={profilePrompts.skipMotivation}
+          saving={profilePrompts.saving}
+          error={profilePrompts.error}
+        />
+        <ThemePrompt
+          open={profilePrompts.stage === 'theme'}
+          steps={profilePrompts.steps}
+          currentTheme={theme}
+          onPreview={setTheme}
+          onSubmit={profilePrompts.submitTheme}
+          onSkip={profilePrompts.skipTheme}
+          saving={profilePrompts.saving}
+          error={profilePrompts.error}
+        />
+        <OnboardingIntake
+          open={profilePrompts.done && tour.showIntake}
+          userName={user.name}
+          onAnswer={tour.answerIntake}
+          onSkip={tour.skipAll}
+        />
+        <TourSpotlight
+          open={Boolean(
+            tourReady
+            && (tour.phase === 'walk' || tour.phase === 'chat-walk')
+            && activeRoute === (tour.phase === 'chat-walk' ? 'chat' : tour.section)
+          )}
+          steps={tour.steps}
+          stepIndex={tour.stepIdx}
+          onNext={tour.next}
+          onBack={tour.back}
+          onSkip={tour.skipAll}
+        />
+        <TourNudgeCard
+          open={tourReady && (tour.phase === 'nudge' || tour.phase === 'reflect-hype')}
+          copyKey={tour.phase === 'reflect-hype' ? 'reflect' : tour.nudgeTarget}
+          onSkip={tour.skipAll}
+        />
+        <TourCompleteToast open={tour.justFinished} onDismiss={tour.dismissFinished} />
+        <ReminderSetupCard
+          open={tour.reminderPromptOpen}
+          onUserUpdate={onUserUpdate}
+          onDismiss={tour.dismissReminderPrompt}
         />
       </div>
     </AppContext.Provider>

@@ -82,7 +82,7 @@ export const PromptPacksScreen = () => {
 
   return (
     <div className="nm-main">
-      <TopBar crumb={<><b>Prompt Packs</b></>} />
+      <TopBar crumb={<><b>Discover Yourself</b></>} />
       <div className="nm-journal-container" style={{ overflowY: 'auto' }}>
         <div className="nm-journal-welcome">
           <div className="nm-journal-welcome-text">

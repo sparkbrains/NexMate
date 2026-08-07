@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, TopBar, ConfirmDialog } from './Shell';
 import {
   createJournalBook,
@@ -10,9 +10,9 @@ import {
   listJournalEntries,
   updateJournalEntry,
 } from '../../lib/api';
-import WelcomeBookImg from '../../assets/ic_welcome_book.png';
 import { TemplateModal } from './TemplateModal';
 import { PAPER_STYLES } from '../../lib/templates';
+import { AppContext } from '../../context';
 
 
 
@@ -178,7 +178,7 @@ const StreakBlock = ({ streak }) => {
   const lit = streak.current > 0;
 
   return (
-    <div className="nm-streak-duo" style={{ background: '#6C5CE7', color: 'white', padding: '14px 16px', borderRadius: 16, marginBottom: 20, textAlign: 'center', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)' }}>
+    <div className="nm-streak-duo" style={{ position: 'relative', background: 'var(--accent)', color: 'white', padding: '14px 16px', borderRadius: 16, marginBottom: 20, textAlign: 'left', boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)' }}>
       <div style={{ textTransform: 'uppercase', fontSize: 10, fontWeight: 'bold', letterSpacing: '0.1em', opacity: 0.9, marginBottom: 6 }}>
         Streak Society
       </div>
@@ -268,6 +268,7 @@ const DayAccordion = ({ k, items, handleDeleteEntry, handleEditInMain }) => {
 };
 
 export const JournalScreen = ({ user }) => {
+  const { checkRewards } = useContext(AppContext);
   const [books, setBooks] = useState([]);
   const [activeBookId, setActiveBookId] = useState(null);
   const [editingEntryId, setEditingEntryId] = useState(null);
@@ -596,6 +597,7 @@ export const JournalScreen = ({ user }) => {
       setEntryDate(todayISO());
       setBgImage('');
       await Promise.all([fetchEntries(activeBookId), fetchBooks(activeBookId), fetchStreak()]);
+      checkRewards();
     } catch (e) {
       setError(e.message || 'Failed to save');
     } finally {
@@ -696,9 +698,11 @@ export const JournalScreen = ({ user }) => {
       <div className="nm-journal-container">
         <div className="nm-journal">
           {/* Bookshelf */}
-          <aside className="nm-journal-shelf">
+          <aside className="nm-journal-shelf" data-tour="journal-shelf">
 
+          <div data-tour="journal-streak">
           <StreakBlock streak={streak} />
+          </div>
 
           <div className="nm-card">
             <div className="nm-journal-shelf-list" style={{ marginTop: 8 }}>
@@ -769,7 +773,6 @@ export const JournalScreen = ({ user }) => {
                 <h3>Welcome back, {displayName}!</h3>
                 <p>Your daily journal is a space for clarity,<br></br> growth and self reflection.</p>
               </div>
-              <img src={WelcomeBookImg} alt='welcome'/>
             </div>
 
             {!activeBook && !loadingBooks && (
@@ -795,7 +798,7 @@ export const JournalScreen = ({ user }) => {
                 </header>
 
                 {/* Compose */}
-                <div className="nm-compose">
+                <div className="nm-compose" data-tour="journal-compose">
                   {/* Date */}
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 22 }}>
                     <input
@@ -1025,7 +1028,7 @@ export const JournalScreen = ({ user }) => {
                           overflow: 'hidden',
                           borderRadius: 4,
                           boxShadow: '0 10px 30px rgba(0,0,0,0.15), 0 1px 0 rgba(0,0,0,0.04)',
-                          backgroundColor: bgImage ? undefined : '#e5d7fd80',
+                          backgroundColor: bgImage ? undefined : 'var(--surface)',
                           ...(bgImage === '__custom__'
                             ? { backgroundImage: `url(${customThemeUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }
                             : bgImage ? (PAPER_STYLES[bgImage] || {}) : {})
@@ -1198,6 +1201,7 @@ export const JournalScreen = ({ user }) => {
                 </div>
 
                 {/* Past entries */}
+                <div data-tour="journal-entries">
                 {entries.length === 0 ? (
                   <div className="nm-empty-poem" style={{ padding: '40px 20px' }}>
                     <p style={{ fontSize: 16 }}>
@@ -1228,6 +1232,7 @@ export const JournalScreen = ({ user }) => {
                     </div>
                   </>
                 )}
+                </div>
               </>
             )}
           </div>

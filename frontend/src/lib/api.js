@@ -74,10 +74,10 @@ async function request(path, { method = 'GET', body, auth = true, signal } = {})
   return data;
 }
 
-export async function signup(email, password, name, age) {
+export async function signup(email, password) {
   const data = await request('/api/auth/signup', {
     method: 'POST',
-    body: { email, password, name, age },
+    body: { email, password },
     auth: false,
   });
   setSession(data.token, data.user);
@@ -85,12 +85,13 @@ export async function signup(email, password, name, age) {
 }
 
 // Step 1 of OTP signup: request a code be emailed to the address. No
-// account exists yet — the backend holds a pending signup (including
-// name/age) until it's verified.
-export async function signupRequestOtp(email, password, name, age, plan) {
+// account exists yet — the backend holds a pending signup until it's
+// verified. Name and date of birth aren't collected here; they're asked
+// for inside the app after signup.
+export async function signupRequestOtp(email, password, plan) {
   return request('/api/auth/signup/request-otp', {
     method: 'POST',
-    body: { email, password, name, age, plan },
+    body: { email, password, plan },
     auth: false,
   });
 }
@@ -225,10 +226,19 @@ export function updateReminderSettings(enabled, reminderTime) {
   });
 }
 
-export function updateProfile({ name, email, dob, subscription_tier }) {
+// Marks first-run onboarding as done. has_journaled_before is nullable —
+// pass null when the user skipped the intake question entirely.
+export function completeOnboarding(hasJournaledBefore) {
+  return request('/api/auth/onboarding', {
+    method: 'PATCH',
+    body: { has_journaled_before: hasJournaledBefore },
+  });
+}
+
+export function updateProfile({ name, email, dob, motivation, theme, subscription_tier }) {
   return request('/api/auth/profile', {
     method: 'PATCH',
-    body: { name, email, dob, subscription_tier },
+    body: { name, email, dob, motivation, theme, subscription_tier },
   });
 }
 
@@ -277,6 +287,10 @@ export function getPromptHistory() {
 
 export function getAllPromptPacks() {
   return request('/api/dashboard/prompt-pack/all');
+}
+
+export function listRewards() {
+  return request('/api/rewards');
 }
 
 export function listLoops() {

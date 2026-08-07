@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
 import { getDashboardInsights, answerDailyQuestion, reflectOnLoop } from '../../lib/api';
+import { SAMPLE_TODAY_TRIGGERS } from '../../lib/tourSampleData';
+
+const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
 
 const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last, onClick }) => (
   <div onClick={onClick} style={{ padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--rule-soft)', cursor: 'pointer' }} >
@@ -176,7 +179,7 @@ const fmtDelta = (cur, prev) => {
   return diff > 0 ? `+${diff}` : `${diff}`;
 };
 
-export const TodayScreen = ({ onNav, threads = [], user }) => {
+export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -257,7 +260,9 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   const intensityDelta = fmtDelta(avgIntensity, prevAvgIntensity);
 
   const topLoop = insights?.loops?.items?.find((l) => l.state === 'active');
-  const topTriggers = (insights?.top_triggers || []).slice(0, 4);
+  const realTriggers = (insights?.top_triggers || []).slice(0, 4);
+  const usingSampleTriggers = tourSample && realTriggers.length === 0;
+  const topTriggers = usingSampleTriggers ? SAMPLE_TODAY_TRIGGERS : realTriggers;
   const dailyQuestions = Array.isArray(insights?.daily_question) ? insights.daily_question : [];
   const pendingQuestions = dailyQuestions.filter((q) => q.status === 'pending');
   const currentQuestion = pendingQuestions[currentQuestionIdx] || pendingQuestions[0] || null;
@@ -280,29 +285,30 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
 
   return (
     <div className="nm-main">
-      <TopBar crumb={<><b>Today</b> <span className="sep">/</span> {dateLabel}</>} />
+      <TopBar crumb={<><b>Home</b> <span className="sep">/</span> {dateLabel}</>} />
 
       <div className="nm-content">
         <div style={{ maxWidth: 960, margin: '0 auto' }} className="nm-fade-up">
           {/* Hero */}
-          <div style={{ marginBottom: 32 }}>
+          <div style={{ marginBottom: 32 }} data-tour="today-hero">
             <div className="nm-eyebrow" style={{ marginBottom: 14 }}>
               {greeting()}, {userName}
             </div>
-            <div style={{ 
-              borderLeft: '4px solid #6C5CE7', 
-              paddingLeft: 24, 
-              marginBottom: 32, 
-              maxWidth: 750 
+            <div className="nm-quote-card" style={{
+              position: 'relative',
+              borderLeft: '4px solid var(--accent)',
+              paddingLeft: 24,
+              marginBottom: 32,
+              maxWidth: 750
             }}>
               <div style={{ fontFamily: 'var(--font-serif)', fontSize: 34, lineHeight: 1.3, fontWeight: 'bold', letterSpacing: '-0.01em', color: 'var(--ink)', marginBottom: 16 }}>
                 “{quote.text}”
               </div>
-              <div style={{ color: '#6C5CE7', fontSize: 18, fontStyle: 'italic', fontWeight: 'bold' }}>
+              <div style={{ color: 'var(--accent)', fontSize: 18, fontStyle: 'italic', fontWeight: 'bold' }}>
                 — {quote.author}
               </div>
             </div>
-            <p className="nm-body" style={{ fontSize: 15, color: 'var(--ink-2)' }}>
+            <p className="nm-body" style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>
               Emotion intensity {avgIntensity ?? '—'} this week. Keep showing up.
             </p>
             {error && (
@@ -342,7 +348,7 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
 
           {/* Content Columns */}
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
-            <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+            <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }} data-tour="today-week">
               <div>
                 <div className="nm-eyebrow" style={{ marginBottom: 16 }}>This week</div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
@@ -375,8 +381,11 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
               </div>
             </div>
 
-            <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <div className="nm-meta" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
+            <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }} data-tour="today-triggers">
+              <div className="nm-meta" style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+                Triggers, last 7 days
+                {usingSampleTriggers && <SampleBadge />}
+              </div>
               {topTriggers.length === 0 ? (
                 <div className="nm-meta-data">No triggers detected yet.</div>
               ) : (
@@ -387,7 +396,7 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
             </div>
           </div>
 
-          <div className="nm-card" style={{ marginBottom: 16 }}>
+          <div className="nm-card" style={{ marginBottom: 16 }} data-tour="today-question">
             <div className="nm-meta" style={{ marginBottom: 10 }}>Today's question</div>
             {dailyQuestions.length === 0 ? (
               <div className="nm-meta-data" style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.5 }}>Your question is on its way — something thoughtful is being prepared for you.</div>

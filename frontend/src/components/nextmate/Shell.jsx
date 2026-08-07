@@ -33,6 +33,8 @@ export const Icon = ({ name, size = 14, style }) => {
     logout: <><rect x="2" y="4" width="9" height="10" rx="1" /><path d="M10 10l4-2-4-2M7 8h7" /></>,
     user: <><circle cx="8" cy="5.5" r="2.5" /><path d="M2.8 14a5.2 5.2 0 0110.4 0" /></>,
     lock: <><rect x="3.5" y="7" width="9" height="7" rx="1.2" /><path d="M5.5 7V4.8a2.5 2.5 0 015 0V7" /></>,
+    bell: <><path d="M8 2.2a3 3 0 00-3 3v1.9c0 1-.35 1.96-1 2.7L3 11h10l-1-1.2c-.65-.74-1-1.7-1-2.7V5.2a3 3 0 00-3-3z" /><path d="M6.3 13a1.8 1.8 0 003.4 0" /></>,
+    trophy: <><path d="M4 3h8v3.5a4 4 0 01-8 0V3z" /><path d="M4 4H2.2A1.2 1.2 0 001 5.2v.6A2.7 2.7 0 003.7 8.5M12 4h1.8A1.2 1.2 0 0115 5.2v.6a2.7 2.7 0 01-2.7 2.7" /><path d="M8 10.5V13M5.5 13.5h5" /></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={style}>
@@ -99,9 +101,12 @@ const NAV_PATH = {
   profile: '/profile',
 };
 
-const NavItem = ({ icon, label, k, active, onNav, count }) => (
-  <Link to={NAV_PATH[k] || '/today'} className={"nm-nav-item" + (active === k ? " active" : "")} onClick={() => onNav && onNav(k)}>
-    <span className="nm-nav-ic"><Icon name={icon} /></span>
+const NavItem = ({ icon, label, k, active, onNav, count, pending, dataTour }) => (
+  <Link to={NAV_PATH[k] || '/today'} className={"nm-nav-item" + (active === k ? " active" : "")} onClick={() => onNav && onNav(k)} data-tour={dataTour}>
+    <span className="nm-nav-ic" style={{ position: 'relative' }}>
+      <Icon name={icon} />
+      {pending && <span className="nm-nav-bubble" />}
+    </span>
     <span>{label}</span>
     {count && <span className="nm-nav-count">{count}</span>}
   </Link>
@@ -117,7 +122,8 @@ const fmtWhen = (iso) => {
   return `${Math.floor(days / 7)}w`;
 };
 
-export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onNewThread, onDeleteThread, user, onLogout }) => {
+export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onNewThread, onDeleteThread, user, onLogout, tourNudgeTarget, tourHypeReflection }) => {
+  const isPending = (k) => tourNudgeTarget === k;
   const { sidebarOpen, setSidebarOpen } = useContext(AppContext);
   const [collapsed, setCollapsed] = useState(false);
   const [openSections, setOpenSections] = useState({ regular: true, reflecting: false, daily: false });
@@ -210,16 +216,21 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
 
         {!collapsed && (
           <>
-        <button className="nm-btn accent" style={{ width: 'calc(100% - 32px)', margin: '0 16px 16px 16px', justifyContent: 'center' }} onClick={() => { onNewThread && onNewThread(); setSidebarOpen(false); }}>
-          <Icon name="plus" size={12} /> Begin reflection
+        <button
+          className={"nm-btn accent" + (tourHypeReflection ? ' nm-tour-hype' : '')}
+          data-tour="nav-begin-reflection"
+          style={{ width: 'calc(100% - 32px)', margin: '0 16px 16px 16px', justifyContent: 'center' }}
+          onClick={() => { onNewThread && onNewThread(); setSidebarOpen(false); }}
+        >
+          <Icon name="plus" size={12} /> Let's Talk
         </button>
 
         <div className="nm-nav-section">Workspace</div>
-        <NavItem icon="home" label="Today" k="today" active={active} onNav={onNav} />
-        <NavItem icon="book" label="Journal" k="journal" active={active} onNav={onNav} />
-        <NavItem icon="sparkle" label="Prompt Packs" k="prompt-packs" active={active} onNav={onNav} />
-        <NavItem icon="loops" label="Loops" k="loops" active={active} onNav={onNav} />
-        <NavItem icon="insights" label="Insights" k="insights" active={active} onNav={onNav} />
+        <NavItem icon="home" label="Home" k="today" active={active} onNav={onNav} pending={isPending('today')} />
+        <NavItem icon="book" label="Journal" k="journal" active={active} onNav={onNav} pending={isPending('journal')} dataTour="nav-journal" />
+        <NavItem icon="sparkle" label="Discover Yourself" k="prompt-packs" active={active} onNav={onNav} pending={isPending('prompt-packs')} />
+        <NavItem icon="loops" label="Loops" k="loops" active={active} onNav={onNav} pending={isPending('loops')} dataTour="nav-loops" />
+        <NavItem icon="insights" label="Insights" k="insights" active={active} onNav={onNav} pending={isPending('insights')} dataTour="nav-insights" />
 
         <div className="nm-nav-section" style={{ marginTop: 12 }}>Conversations</div>
 
@@ -238,12 +249,18 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
 
         {collapsed && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 8 }}>
-            <button className="nm-btn ghost" style={{ padding: 6 }} title="Begin reflection" onClick={() => { onNewThread?.(); setSidebarOpen(false); }}><Icon name="plus" size={16} /></button>
-            <Link to="/today" className={"nm-btn ghost" + (active === 'today' ? ' active' : '')} style={{ padding: 6 }} title="Today" onClick={() => onNav?.('today')}><Icon name="home" size={16} /></Link>
-            <Link to="/journal" className={"nm-btn ghost" + (active === 'journal' ? ' active' : '')} style={{ padding: 6 }} title="Journal" onClick={() => onNav?.('journal')}><Icon name="book" size={16} /></Link>
-            <Link to="/prompt-packs" className={"nm-btn ghost" + (active === 'prompt-packs' ? ' active' : '')} style={{ padding: 6 }} title="Prompt Packs" onClick={() => onNav?.('prompt-packs')}><Icon name="sparkle" size={16} /></Link>
-            <Link to="/loops" className={"nm-btn ghost" + (active === 'loops' ? ' active' : '')} style={{ padding: 6 }} title="Loops" onClick={() => onNav?.('loops')}><Icon name="loops" size={16} /></Link>
-            <Link to="/insights" className={"nm-btn ghost" + (active === 'insights' ? ' active' : '')} style={{ padding: 6 }} title="Insights" onClick={() => onNav?.('insights')}><Icon name="insights" size={16} /></Link>
+            <button
+              className={"nm-btn ghost" + (tourHypeReflection ? ' nm-tour-hype' : '')}
+              data-tour="nav-begin-reflection"
+              style={{ padding: 6 }}
+              title="Let's Talk"
+              onClick={() => { onNewThread?.(); setSidebarOpen(false); }}
+            ><Icon name="plus" size={16} /></button>
+            <Link to="/today" className={"nm-btn ghost" + (active === 'today' ? ' active' : '')} style={{ padding: 6, position: 'relative' }} title="Home" onClick={() => onNav?.('today')}><Icon name="home" size={16} />{isPending('today') && <span className="nm-nav-bubble" />}</Link>
+            <Link to="/journal" className={"nm-btn ghost" + (active === 'journal' ? ' active' : '')} style={{ padding: 6, position: 'relative' }} title="Journal" onClick={() => onNav?.('journal')} data-tour="nav-journal"><Icon name="book" size={16} />{isPending('journal') && <span className="nm-nav-bubble" />}</Link>
+            <Link to="/prompt-packs" className={"nm-btn ghost" + (active === 'prompt-packs' ? ' active' : '')} style={{ padding: 6, position: 'relative' }} title="Discover Yourself" onClick={() => onNav?.('prompt-packs')}><Icon name="sparkle" size={16} />{isPending('prompt-packs') && <span className="nm-nav-bubble" />}</Link>
+            <Link to="/loops" className={"nm-btn ghost" + (active === 'loops' ? ' active' : '')} style={{ padding: 6, position: 'relative' }} title="Loops" onClick={() => onNav?.('loops')} data-tour="nav-loops"><Icon name="loops" size={16} />{isPending('loops') && <span className="nm-nav-bubble" />}</Link>
+            <Link to="/insights" className={"nm-btn ghost" + (active === 'insights' ? ' active' : '')} style={{ padding: 6, position: 'relative' }} title="Insights" onClick={() => onNav?.('insights')} data-tour="nav-insights"><Icon name="insights" size={16} />{isPending('insights') && <span className="nm-nav-bubble" />}</Link>
           </div>
         )}
 
@@ -297,14 +314,18 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
   );
 };
 
+const THEME_CYCLE = { light: 'dark', dark: 'playful', playful: 'light' };
+const THEME_ICON = { light: 'sun', dark: 'moon', playful: 'sparkle' };
+const THEME_NEXT_LABEL = { light: 'Switch to dark mode', dark: 'Switch to playful mode', playful: 'Switch to light mode' };
+
 export const TopBar = ({ crumb, children }) => {
-  const { setSidebarOpen, theme, setTheme } = useContext(AppContext);
+  const { setSidebarOpen, theme, setTheme, setRewardsOpen, hasUnseenReward, rewardPoints } = useContext(AppContext);
 
   return (
     <div className="nm-topbar">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button 
-          className="nm-btn ghost nm-menu-btn" 
+        <button
+          className="nm-btn ghost nm-menu-btn"
           onClick={() => setSidebarOpen(true)}
           title="Open Menu"
           style={{ padding: 6 }}
@@ -313,16 +334,28 @@ export const TopBar = ({ crumb, children }) => {
         </button>
         <div className="nm-crumb">{crumb}</div>
       </div>
-      
+
       <div className="nm-top-actions">
         {children}
         <button
           className="nm-btn ghost"
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          onClick={() => setRewardsOpen(true)}
+          title="Milestones"
+          style={{ padding: 6, color: 'var(--ink)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+        >
+          <span className="nm-reward-points">{rewardPoints}</span>
+          <span style={{ position: 'relative', display: 'inline-flex' }}>
+            <Icon name="trophy" size={16} />
+            {hasUnseenReward && <span className="nm-nav-bubble" />}
+          </span>
+        </button>
+        <button
+          className="nm-btn ghost"
+          onClick={() => setTheme(THEME_CYCLE[theme] || 'light')}
+          title={THEME_NEXT_LABEL[theme] || 'Switch to dark mode'}
           style={{ padding: 6, color: 'var(--ink)' }}
         >
-          <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
+          <Icon name={THEME_ICON[theme] || 'sun'} size={16} />
         </button>
       </div>
     </div>

@@ -52,6 +52,7 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
   const [editDob, setEditDob] = useState('');
+  const [editMotivation, setEditMotivation] = useState('');
   const [editPlan, setEditPlan] = useState('bronze');
   const [editErr, setEditErr] = useState(null);
   const [editLoading, setEditLoading] = useState(false);
@@ -89,6 +90,7 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
     setEditName(user?.name || '');
     setEditEmail(user?.email || '');
     setEditDob(user?.dob || '');
+    setEditMotivation(user?.motivation || '');
     setEditPlan((user?.subscription_tier || 'bronze').toLowerCase());
     setEditErr(null);
     setEditModal(true);
@@ -98,7 +100,7 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
     e.preventDefault();
     setEditLoading(true); setEditErr(null);
     try {
-      const data = await updateProfile({ name: editName, email: editEmail, dob: editDob || null, subscription_tier: editPlan });
+      const data = await updateProfile({ name: editName, email: editEmail, dob: editDob || null, motivation: editMotivation, subscription_tier: editPlan });
       setUser(data.user);
       onUserUpdate && onUserUpdate(data.user);
       setEditModal(false);
@@ -188,6 +190,7 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
     { label: 'Email', value: user?.email || '—' },
     { label: 'Date of birth', value: user?.dob ? formatMemberSince(user.dob) : '—' },
     { label: 'Age', value: displayAge != null ? String(displayAge) : '—' },
+    { label: 'Why you’re here', value: user?.motivation || '—' },
     { label: 'Member since', value: formatMemberSince(user?.created_at) },
     { label: 'Plan', value: user?.subscription_tier ? capitalize(user.subscription_tier) : '—' },
   ];
@@ -340,6 +343,17 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
                       value={editDob}
                       onChange={e => setEditDob(e.target.value)}
                       max={new Date().toISOString().slice(0, 10)}
+                      style={{ width: '100%', boxSizing: 'border-box', background: 'var(--surface-2, var(--ink-6))', border: '1px solid var(--rule)', borderRadius: 6, color: 'var(--ink)', fontFamily: 'var(--font-display)', fontSize: 14, padding: '8px 10px', outline: 'none' }}
+                    />
+                  </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <div className="nm-tag" style={{ marginBottom: 6 }}>Why you’re here</div>
+                    <input
+                      type="text"
+                      value={editMotivation}
+                      onChange={e => setEditMotivation(e.target.value)}
+                      maxLength={300}
+                      placeholder="A companion, managing stress, untangling a thought…"
                       style={{ width: '100%', boxSizing: 'border-box', background: 'var(--surface-2, var(--ink-6))', border: '1px solid var(--rule)', borderRadius: 6, color: 'var(--ink)', fontFamily: 'var(--font-display)', fontSize: 14, padding: '8px 10px', outline: 'none' }}
                     />
                   </div>

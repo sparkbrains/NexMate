@@ -2,6 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
 import { getDashboardInsights, getKnowledgeGraph } from '../../lib/api';
 import {
+  SAMPLE_TREND,
+  SAMPLE_MOOD_BREAKDOWN,
+  SAMPLE_INTENSITY_DISTRIBUTION,
+  SAMPLE_TRIGGER_HEATMAP,
+  SAMPLE_KNOWLEDGE_GRAPH,
+} from '../../lib/tourSampleData';
+
+const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
+import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ComposedChart, Bar, Line, Legend
@@ -846,7 +855,7 @@ const KG_RANGES = RANGES.filter(r => r.k !== '1y');
 
 const GRANULARITY_LABELS = { day: 'Today', week: 'This week', month: 'This month' };
 
-export const InsightsScreen = () => {
+export const InsightsScreen = ({ tourSample }) => {
   const [rangeKey, setRangeKey] = useState('30d');
   const [granularity, setGranularity] = useState('month');
   const [insights, setInsights] = useState(null);
@@ -876,22 +885,28 @@ export const InsightsScreen = () => {
     return () => { cancelled = true; };
   }, [kgDays]);
 
+  const totalEntries = insights?.total_entries ?? 0;
+  // A fresh account has nothing to point an arrow at, so the tour swaps in
+  // clearly-badged sample data for the charts it walks through.
+  const usingSample = Boolean(tourSample) && totalEntries === 0;
+
   // Slice emotion_trend to the granularity window
   const visibleTrend = useMemo(() => {
     const window = GRANULARITY_WINDOW[granularity] ?? 30;
+    if (usingSample) return sliceLast(SAMPLE_TREND, window);
     const sliced = sliceLast(insights?.emotion_trend, window);
     const firstDataIdx = sliced.findIndex(d => d.count > 0);
     if (firstDataIdx === -1) return sliced;
     return sliced.slice(firstDataIdx);
-  }, [insights, granularity]);
+  }, [insights, granularity, usingSample]);
 
   // Slice each trigger row's intensity cells to the granularity window
   const visibleHeatmap = useMemo(() => {
     const window = GRANULARITY_WINDOW[granularity] ?? 30;
+    if (usingSample) return sliceHeatmap(SAMPLE_TRIGGER_HEATMAP, window);
     return sliceHeatmap(insights?.trigger_heatmap, window);
-  }, [insights, granularity]);
+  }, [insights, granularity, usingSample]);
 
-  const totalEntries = insights?.total_entries ?? 0;
   const threadCount = insights?.thread_count ?? 0;
   const messageCount = insights?.message_count ?? 0;
 
@@ -901,7 +916,9 @@ export const InsightsScreen = () => {
   const low = insights?.intensity_stats?.low;
   const lowDay = insights?.intensity_stats?.low_day;
 
-  const moods = insights?.mood_breakdown || [];
+  const moods = usingSample ? SAMPLE_MOOD_BREAKDOWN : (insights?.mood_breakdown || []);
+  const intensityDistribution = usingSample ? SAMPLE_INTENSITY_DISTRIBUTION : insights?.intensity_distribution;
+  const displayGraph = usingSample ? SAMPLE_KNOWLEDGE_GRAPH : knowledgeGraph;
 
   const growthCur = insights?.growth?.current;
   const growthPrev = insights?.growth?.previous;
@@ -953,14 +970,21 @@ export const InsightsScreen = () => {
           <header className="nm-hero">
             <div>
               <h1 className="nm-h1">
-                {totalEntries === 0 ? <>A blank window —<br /><em>begin reflecting</em>.</> : <>The shape of your <em>{days <= 7 ? 'week' : days <= 30 ? 'month' : 'season'}</em>.</>}
+                {usingSample
+                  ? <>A preview of <em>what's ahead</em>.</>
+                  : totalEntries === 0 ? <>A blank window —<br /><em>begin reflecting</em>.</> : <>The shape of your <em>{days <= 7 ? 'week' : days <= 30 ? 'month' : 'season'}</em>.</>}
               </h1>
             </div>
           </header>
 
-          {totalEntries === 0 && !loading && (
+          {totalEntries === 0 && !loading && !usingSample && (
             <div className="nm-empty-poem">
               <p>Patterns surface only after the page is filled. Open a thread, write a sentence, and these charts begin to mean something.</p>
+            </div>
+          )}
+          {usingSample && (
+            <div className="nm-empty-poem">
+              <p>The charts below are sample data so you can see what they'll look like — yours will fill in as you write.</p>
             </div>
           )}
 
@@ -972,11 +996,14 @@ export const InsightsScreen = () => {
 
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, marginBottom: 14 }}>
             {/* Emotion Trend card */}
-            <div className="nm-card" style={{ overflow: 'hidden' }}>
+            <div className="nm-card" style={{ overflow: 'hidden' }} data-tour="insights-trend">
               <div style={{ marginBottom: 14 }}>
-                <div className="nm-eyebrow">Emotion Trend · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
+                <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Emotion Trend · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
+                  {usingSample && <SampleBadge />}
+                </div>
                 <div className="nm-h3" style={{ marginTop: 4 }}>
-                  {totalEntries === 0 ? 'Start reflecting to see your trend.' : 'Emotions over time'}
+                  {usingSample ? 'A preview, once entries start coming in' : totalEntries === 0 ? 'Start reflecting to see your trend.' : 'Emotions over time'}
                 </div>
                 <EmotionMixBars
                   trend={visibleTrend}
@@ -998,18 +1025,24 @@ export const InsightsScreen = () => {
 
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14, marginBottom: 14 }}>
             {/* Cognitive Load card */}
-            <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-load">
               <div style={{ marginBottom: 14 }}>
-                <div className="nm-eyebrow">Cognitive Load · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
+                <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Cognitive Load · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
+                  {usingSample && <SampleBadge />}
+                </div>
                 <div className="nm-h3" style={{ marginTop: 4 }}>Thought Volume vs. Intensity</div>
                 <CognitiveLoad trend={visibleTrend} granularity={granularity} />
               </div>
             </div>
 
             {/* Emotional Spectrum card */}
-            <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-spectrum">
               <div style={{ marginBottom: 14 }}>
-                <div className="nm-eyebrow">The Emotional Spectrum</div>
+                <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  The Emotional Spectrum
+                  {usingSample && <SampleBadge />}
+                </div>
                 <div className="nm-h3" style={{ marginTop: 4 }}>Your emotional shape</div>
                 <EmotionalSpectrum moods={moods} />
               </div>
@@ -1022,7 +1055,7 @@ export const InsightsScreen = () => {
               <div style={{ marginBottom: 14 }}>
                 <div className="nm-eyebrow">Emotional Bandwidth</div>
                 <div className="nm-h3" style={{ marginTop: 4 }}>Intensity Distribution</div>
-                <EmotionalBandwidth distribution={insights?.intensity_distribution} />
+                <EmotionalBandwidth distribution={intensityDistribution} />
               </div>
             </div>
 
@@ -1099,14 +1132,17 @@ export const InsightsScreen = () => {
             </div>
           </div>
 
-          <div className="nm-card" style={{ marginBottom: 14 }}>
+          <div className="nm-card" style={{ marginBottom: 14 }} data-tour="insights-graph">
             <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
-                <div className="nm-eyebrow">Knowledge Graph</div>
+                <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Knowledge Graph
+                  {usingSample && <SampleBadge />}
+                </div>
                 <div className="nm-h3" style={{ marginTop: 4 }}>How your triggers and core beliefs connect</div>
               </div>
-              <select 
-                value={kgRangeKey} 
+              <select
+                value={kgRangeKey}
                 onChange={(e) => setKgRangeKey(e.target.value)}
                 style={{ padding: '6px 28px 6px 12px', borderRadius: 20, border: '1px solid var(--rule)', background: 'var(--surface-0)', fontSize: 12, fontWeight: 500, color: 'var(--ink)', cursor: 'pointer' }}
               >
@@ -1116,13 +1152,16 @@ export const InsightsScreen = () => {
               </select>
             </div>
             <div style={{ position: 'relative', width: '100%', height: 320, border: '1px solid var(--rule-soft)', borderRadius: 8, overflow: 'hidden', marginTop: 12 }}>
-              <KnowledgeGraph graph={knowledgeGraph} />
+              <KnowledgeGraph graph={displayGraph} />
             </div>
           </div>
 
-          <div className="nm-card" style={{ marginBottom: 14 }}>
+          <div className="nm-card" style={{ marginBottom: 14 }} data-tour="insights-heatmap">
             <div style={{ marginBottom: 14 }}>
-              <div className="nm-eyebrow">Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
+              <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
+                {usingSample && <SampleBadge />}
+              </div>
             </div>
             <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />
           </div>

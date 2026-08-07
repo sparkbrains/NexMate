@@ -75,6 +75,30 @@ def init_postgres() -> None:
                 ADD COLUMN IF NOT EXISTS reminder_time TEXT NOT NULL DEFAULT '20:00'
                 """
             )
+            # onboarding_completed_at gates whether the first-run onboarding
+            # flow shows for a user. Check for the column before adding it so
+            # the backfill below only ever runs the one time it's introduced
+            # in a given environment — not on every boot — otherwise it would
+            # wipe out onboarding_completed_at=NULL for users who are mid-flow
+            # whenever the server restarts.
+            cur.execute(
+                """
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'onboarding_completed_at'
+                """
+            )
+            onboarding_column_existed = cur.fetchone() is not None
+            cur.execute(
+                """
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS has_journaled_before BOOLEAN,
+                ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ
+                """
+            )
+            if not onboarding_column_existed:
+                cur.execute(
+                    "UPDATE users SET onboarding_completed_at = created_at WHERE onboarding_completed_at IS NULL"
+                )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -400,4 +424,19 @@ def init_postgres() -> None:
             )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_support_chat_logs_user ON support_chat_logs(user_id) WHERE user_id IS NOT NULL"
+            )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_badges (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    badge_key TEXT NOT NULL,
+                    unlocked_at TIMESTAMPTZ NOT NULL,
+                    UNIQUE (user_id, badge_key)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id)"
             )

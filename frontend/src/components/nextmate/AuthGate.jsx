@@ -26,8 +26,8 @@ const HeroMark = () => (
   <svg className="nm-breathe" width="72" height="72" viewBox="0 0 72 72" aria-hidden>
     <defs>
       <linearGradient id="nm-arc" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="var(--accent)" />
-        <stop offset="100%" stopColor="var(--accent-2)" />
+        <stop offset="0%" stopColor="var(--land-blue)" />
+        <stop offset="100%" stopColor="var(--land-cherry)" />
       </linearGradient>
     </defs>
     <circle cx="36" cy="36" r="30" fill="none" stroke="var(--rule)" strokeWidth="1" />
@@ -41,7 +41,7 @@ const HeroMark = () => (
       transform="rotate(-90 36 36)"
       style={{ animation: 'nm-draw 2.2s cubic-bezier(.2,.7,.3,1) 0.3s both' }}
     />
-    <circle cx="36" cy="36" r="3" fill="var(--accent)" />
+    <circle cx="36" cy="36" r="3" fill="var(--land-navy)" />
   </svg>
 );
 
@@ -66,8 +66,6 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
   const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [dob, setDob] = useState('');
   const [otp, setOtp] = useState(Array(OTP_LENGTH).fill(''));
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -108,16 +106,6 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
-    if (isSignup) {
-      if (!name.trim()) {
-        setErr('Tell us what to call you.');
-        return;
-      }
-      if (!dob) {
-        setErr('Enter your date of birth.');
-        return;
-      }
-    }
     setBusy(true); setErr(null);
     try {
       if (isLogin) {
@@ -129,18 +117,12 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
           setErr('Password must be 8+ chars with uppercase, lowercase, number and special character.');
           return;
         }
-        // Step 1 of signup: request an OTP be sent to the email.
-        // Backend stores the pending signup (email + hashed password +
-        // name/age) keyed to the OTP, and only creates the user once
-        // it's verified.
-        // Calculate age from dob
-        const dobDate = new Date(dob);
-        let age = new Date().getFullYear() - dobDate.getFullYear();
-        const m = new Date().getMonth() - dobDate.getMonth();
-        if (m < 0 || (m === 0 && new Date().getDate() < dobDate.getDate())) {
-          age--;
-        }
-        await signupRequestOtp(email.trim(), password, name.trim(), age, dob);
+        // Step 1 of signup: request an OTP be sent to the email. Backend
+        // stores the pending signup (email + hashed password) keyed to the
+        // OTP, and only creates the user once it's verified. Name and date
+        // of birth aren't collected here — we ask for those once inside
+        // the app, after signup.
+        await signupRequestOtp(email.trim(), password);
         setCooldown(RESEND_COOLDOWN);
         setMode('otp');
       }
@@ -220,10 +202,6 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
   const toggle = () => {
     setErr(null);
     setNotice(null);
-    if (!isLogin) {
-      setName('');
-      setDob('');
-    }
     const nextMode = isLogin ? 'signup' : 'login';
     setMode(nextMode);
     navigate(`/${nextMode}`);
@@ -329,15 +307,17 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
     <div className="nm-auth">
       {/* LEFT — editorial hero */}
       <section className="nm-auth-hero">
+        <img className="nm-auth-sticker nm-auth-sticker-1" src="/stickers/picnic/strawberry.png" alt="" aria-hidden="true" />
+        <img className="nm-auth-sticker nm-auth-sticker-2" src="/stickers/scrapbook/butterfly.png" alt="" aria-hidden="true" />
         <header className="nm-auth-mast nm-reveal" data-d="1" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: onScrollToPricing ? 20 : 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             {onBack && (
-              <button 
+              <button
                 type="button"
-                onClick={onBack} 
-                style={{ background: 'none', border: 'none', color: 'var(--ink-3)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', transition: 'color 0.2s', padding: 0 }}
-                onMouseOver={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
-                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; }}
+                onClick={onBack}
+                style={{ background: 'none', border: 'none', color: 'var(--ink)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', transition: 'color 0.2s', padding: 0 }}
+                onMouseOver={(e) => { e.currentTarget.style.color = 'var(--land-cherry)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
               >
                 ←
               </button>
@@ -348,9 +328,9 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
             <button 
               type="button"
               onClick={onScrollToPricing} 
-              style={{ background: 'var(--surface-0)', color: 'var(--ink)', border: '1px solid var(--rule)', padding: '6px 14px', borderRadius: 20, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, transition: 'all 0.2s' }}
+              style={{ background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--rule)', padding: '6px 14px', borderRadius: 20, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, transition: 'all 0.2s' }}
               onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--ink-4)'; }}
-              onMouseOut={(e) => { e.currentTarget.style.background = 'var(--surface-0)'; e.currentTarget.style.borderColor = 'var(--rule)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--rule)'; }}
             >
               Pricing
             </button>
@@ -373,7 +353,7 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
               gap: 12,
             }}
           >
-            <span style={{ color: 'var(--accent)', fontStyle: 'italic', textTransform: 'none', fontFamily: 'var(--font-display)', fontSize: 14, letterSpacing: '-0.01em' }}>
+            <span style={{ color: 'var(--land-navy)', fontStyle: 'italic', textTransform: 'none', fontFamily: 'var(--font-display)', fontSize: 14, letterSpacing: '-0.01em' }}>
               a quiet place to think out loud
             </span>
           </div>
@@ -429,6 +409,7 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
 
       {/* RIGHT — entry form */}
       <section className="nm-auth-pane">
+        <img className="nm-auth-pane-sticker" src="/stickers/picnic/jam-jar.png" alt="" aria-hidden="true" />
         <div className="nm-auth-pane-head nm-reveal" data-d="2">
           <span>
             {isOtp && 'One more step —'}
@@ -465,38 +446,6 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
               />
               <span className="nm-field-mark" />
             </div>
-
-            {isSignup && (
-              <div style={{ display: 'flex', gap: 16 }}>
-                <div className="nm-field" style={{ flex: 2 }}>
-                  <label htmlFor="nm-name" className="nm-field-label">Name</label>
-                  <input
-                    id="nm-name"
-                    className="nm-field-input"
-                    type="text"
-                    autoComplete="name"
-                    placeholder="what should we call you"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                  <span className="nm-field-mark" />
-                </div>
-
-                <div className="nm-field" style={{ flex: 1 }}>
-                  <label htmlFor="nm-dob" className="nm-field-label">DOB</label>
-                  <input
-                    id="nm-dob"
-                    className="nm-field-input"
-                    type="date"
-                    value={dob}
-                    onChange={(e) => setDob(e.target.value)}
-                    required
-                  />
-                  <span className="nm-field-mark" />
-                </div>
-              </div>
-            )}
 
             <div className="nm-field">
               <label htmlFor="nm-pass" className="nm-field-label">
@@ -730,7 +679,14 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
               <span style={{ color: 'var(--ink-2)', fontSize: 14 }}>
                 {isLogin ? 'New here?' : 'Been here before?'}
               </span>
-              <button className="nm-btn primary" style={{ background: 'var(--accent)', color: 'white', padding: '10px 20px', borderRadius: 24, fontSize: 14, fontWeight: 500 }} onClick={toggle} type="button">
+              <button
+                className="nm-btn primary"
+                style={{ background: 'var(--land-cherry)', color: 'white', padding: '10px 20px', borderRadius: 24, fontSize: 14, fontWeight: 500, transition: 'background 0.2s ease' }}
+                onClick={toggle}
+                type="button"
+                onMouseOver={(e) => { e.currentTarget.style.background = 'var(--land-cherry-deep)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'var(--land-cherry)'; }}
+              >
                 {isLogin ? 'Make a space' : 'Sign in'}
               </button>
             </div>

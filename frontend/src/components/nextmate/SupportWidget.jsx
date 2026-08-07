@@ -16,6 +16,23 @@ const buildSupportWsUrl = () => {
 const REVEAL_INTERVAL_MS = 18;
 const REVEAL_CHARS_PER_TICK = 2;
 
+const ThinkingDots = ({ color = 'var(--chat-bot-fg)' }) => (
+  <div style={{ display: 'inline-flex', gap: 4 }}>
+    {[0, 1, 2].map((i) => (
+      <span
+        key={i}
+        style={{
+          width: 5,
+          height: 5,
+          borderRadius: '50%',
+          background: color,
+          animation: `nm-blink 1.4s ${i * 0.2}s infinite ease-in-out`,
+        }}
+      />
+    ))}
+  </div>
+);
+
 export const SupportWidget = () => {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -254,8 +271,8 @@ export const SupportWidget = () => {
                     maxWidth: '85%',
                     padding: '8px 12px',
                     borderRadius: m.role === 'user' ? '10px 10px 2px 10px' : '10px 10px 10px 2px',
-                    background: m.role === 'user' ? 'var(--ink)' : 'var(--accent-wash)',
-                    color: m.role === 'user' ? 'var(--paper)' : 'var(--ink)',
+                    background: m.role === 'user' ? 'var(--chat-user-bg)' : 'var(--chat-bot-bg)',
+                    color: m.role === 'user' ? 'var(--chat-user-fg)' : 'var(--chat-bot-fg)',
                     fontSize: 13,
                     lineHeight: 1.5,
                     whiteSpace: 'pre-wrap',
@@ -266,7 +283,17 @@ export const SupportWidget = () => {
               </div>
             ))}
             {waitingFirstChunk && (
-              <div style={{ fontSize: 11, color: 'var(--ink-4)' }}>thinking…</div>
+              <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 10 }}>
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '10px 10px 10px 2px',
+                    background: 'var(--chat-bot-bg)',
+                  }}
+                >
+                  <ThinkingDots />
+                </div>
+              </div>
             )}
           </div>
 

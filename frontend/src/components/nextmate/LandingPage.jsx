@@ -11,38 +11,59 @@ export const LandingPage = ({ onAuth, authMode = null }) => {
   }
 
   return (
-    <div style={{ height: '100vh', width: '100vw', overflowY: 'auto', overflowX: 'hidden', background: '#eae4f3' }}>
-      
+    <div className="nm-land">
+
       {/* Top Navbar */}
-      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '24px 40px', position: 'sticky', top: 0, background: 'rgba(234, 228, 243, 0.9)', backdropFilter: 'blur(10px)', zIndex: 100 }}>
+      <nav className="nm-land-nav">
         <img src={LogoIco} alt="Nextmate" height="30" className="nm-logo" />
-        <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-          <button onClick={() => window.open('/pricing', '_blank')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Pricing</button>
-          <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Sign In</button>
-          <button onClick={() => navigate('/signup')} style={{ background: 'var(--ink)', color: '#ffffff', border: 'none', padding: '8px 16px', borderRadius: 20, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Make a Space</button>
+        <div className="nm-land-nav-actions">
+          <button className="nm-land-nav-link" onClick={() => window.open('/pricing', '_blank')}>Pricing</button>
+          <button className="nm-land-nav-link" onClick={() => navigate('/login')}>Sign In</button>
+          <button className="nm-land-nav-cta" onClick={() => navigate('/signup')}>Make a Space</button>
         </div>
       </nav>
 
       {/* Hero Section */}
-      <section style={{ minHeight: '80vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '0 20px' }}>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '0.22em', textTransform: 'uppercase', color: 'var(--ink-4)', marginBottom: 24 }}>
-          NexMate · <span style={{ color: 'var(--accent)', fontStyle: 'italic', textTransform: 'none', fontFamily: 'var(--font-display)', fontSize: 14, letterSpacing: '-0.01em' }}>a quiet place to think out loud</span>
+      <section className="nm-land-hero">
+        <img className="nm-land-sticker nm-land-sticker-bl-1" src="/stickers/picnic/strawberry.png" alt="" aria-hidden="true" />
+        <img className="nm-land-sticker nm-land-sticker-bl-2" src="/stickers/picnic/gingham-star.png" alt="" aria-hidden="true" />
+        <img className="nm-land-sticker nm-land-sticker-bl-3" src="/stickers/scrapbook/butterfly.png" alt="" aria-hidden="true" />
+        <img className="nm-land-sticker nm-land-sticker-bl-4" src="/stickers/scrapbook/starry-night.png" alt="" aria-hidden="true" />
+        <img className="nm-land-sticker nm-land-sticker-bl-5" src="/stickers/picnic/star-patch.png" alt="" aria-hidden="true" />
+        <img className="nm-land-sticker nm-land-sticker-bl-6" src="/stickers/picnic/apple-slice.png" alt="" aria-hidden="true" />
+
+        <img className="nm-land-sticker nm-land-sticker-br-1" src="/stickers/scrapbook/great-wave.png" alt="" aria-hidden="true" />
+        <img className="nm-land-sticker nm-land-sticker-br-2" src="/stickers/picnic/jam-jar.png" alt="" aria-hidden="true" />
+        <img className="nm-land-sticker nm-land-sticker-br-3" src="/stickers/picnic/cherry-candy.png" alt="" aria-hidden="true" />
+        <img className="nm-land-sticker nm-land-sticker-br-4" src="/stickers/scrapbook/flower-spray.png" alt="" aria-hidden="true" />
+        <img className="nm-land-sticker nm-land-sticker-br-5" src="/stickers/picnic/gingham-heart.png" alt="" aria-hidden="true" />
+
+        <div className="nm-land-eyebrow">
+          NexMate · <span className="nm-land-eyebrow-em">a quiet place to think out loud</span>
         </div>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 64, fontWeight: 500, lineHeight: 1.1, letterSpacing: '-0.018em', color: 'var(--ink)', maxWidth: 800, marginBottom: 24 }}>
-          Unlock your <em style={{ fontStyle: 'italic', color: 'var(--accent)' }}>subconscious</em> potential.
+
+        <h1 className="nm-land-headline">
+          Unlock your <em>subconscious</em> potential.
         </h1>
-        <p style={{ fontSize: 18, lineHeight: 1.5, color: 'var(--ink-3)', maxWidth: 600, marginBottom: 40 }}>
+
+        <p className="nm-land-sub">
           Track daily emotional loops, uncover hidden behavioral patterns, and build a powerful thinking practice. NexMate provides unhurried reflection to help you understand your mind.
         </p>
-        <button onClick={() => navigate('/signup')} style={{ background: 'var(--ink)', color: '#ffffff', border: 'none', padding: '16px 32px', borderRadius: 30, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 14, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>
+
+        <button className="nm-land-cta" onClick={() => navigate('/signup')}>
           Start Journaling
         </button>
+
+        <div className="nm-land-chips">
+          <span className="nm-land-chip">90 days of memory</span>
+          <span className="nm-land-chip">unhurried reflection</span>
+          <span className="nm-land-chip">pattern-spotting, not grading</span>
+        </div>
       </section>
 
-
-
       {/* Footer */}
-      <footer style={{ padding: '40px', textAlign: 'center', borderTop: '1px solid var(--rule)', background: 'var(--surface)', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+      <footer className="nm-land-footer">
+        <img className="nm-land-footer-sticker" src="/stickers/picnic/croissant.png" alt="" aria-hidden="true" />
         © {new Date().getFullYear()} Nexmate. All rights reserved.
       </footer>
     </div>

@@ -8,6 +8,7 @@ from apps.api.services.auth_service import (
     User,
     authenticate_user,
     change_password,
+    complete_onboarding,
     create_session,
     create_user,
     delete_session,
@@ -35,9 +36,13 @@ def _user_payload(user: User) -> dict[str, Any]:
         "name": user.name,
         "age": user.age,
         "dob": user.dob,
+        "motivation": user.motivation,
+        "theme": user.theme,
         "subscription_tier": user.subscription_tier,
         "reminder_enabled": user.reminder_enabled,
         "reminder_time": user.reminder_time,
+        "has_journaled_before": user.has_journaled_before,
+        "onboarding_completed_at": user.onboarding_completed_at,
     }
 
 
@@ -45,13 +50,8 @@ def _user_payload(user: User) -> dict[str, Any]:
 def signup(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     email = str(payload.get("email", "")).strip()
     password = str(payload.get("password", ""))
-    name = str(payload.get("name", "")).strip()
     try:
-        age = int(payload.get("age"))
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Age is required")
-    try:
-        user = create_user(email=email, password=password, name=name, age=age)
+        user = create_user(email=email, password=password)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -63,13 +63,8 @@ def signup(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 def signup_request_otp(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     email = str(payload.get("email", "")).strip()
     password = str(payload.get("password", ""))
-    name = str(payload.get("name", "")).strip()
     try:
-        age = int(payload.get("age"))
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="Age is required")
-    try:
-        request_signup_otp(email=email, password=password, name=name, age=age)
+        request_signup_otp(email=email, password=password)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"message": "Code sent"}
@@ -144,15 +139,37 @@ def update_profile_route(
     name = str(payload.get("name", current_user.name))
     email = str(payload.get("email", current_user.email))
     dob = payload.get("dob", current_user.dob)
-    subscription_tier = str(payload.get("subscription_tier", current_user.subscription_tier))
+    motivation = payload.get("motivation", current_user.motivation)
+    theme = payload.get("theme", current_user.theme)
+    # Only validate/change the tier when the caller is actually setting one —
+    # a name- or dob-only patch shouldn't require re-sending (and revalidating)
+    # whatever tier the account already has, including legacy values like the
+    # 'paid' default that predate the Bronze/Silver/Gold tiers.
+    subscription_tier = payload.get("subscription_tier")
     try:
         user = update_profile(
             current_user.id,
             name=name,
             email=email,
             dob=dob,
+            motivation=motivation,
+            theme=theme,
             subscription_tier=subscription_tier,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"user": _user_payload(user)}
+
+
+@router.patch("/onboarding")
+def complete_onboarding_route(
+    payload: dict[str, Any] = Body(...),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    raw = payload.get("has_journaled_before")
+    has_journaled_before = raw if isinstance(raw, bool) else None
+    try:
+        user = complete_onboarding(current_user.id, has_journaled_before)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"user": _user_payload(user)}
