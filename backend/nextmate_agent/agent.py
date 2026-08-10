@@ -1,6 +1,9 @@
 import atexit
 import threading
 
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+
 from langgraph.graph import END, START, StateGraph
 from langgraph.checkpoint.postgres import PostgresSaver
 
@@ -29,7 +32,7 @@ def _should_detect_loops(state: NextMateState) -> str:
     return "choose_response_mode"
 
 _lock = threading.Lock()
-_checkpointer_cm = None
+_checkpointer_pool: ConnectionPool | None = None
 _checkpointer = None
 _graph = None
 _reply_graph = None
@@ -41,26 +44,38 @@ def checkpoint_thread_id(user_id: int, thread_id: str) -> str:
 
 
 def _get_checkpointer() -> PostgresSaver:
-    global _checkpointer_cm, _checkpointer
+    global _checkpointer_pool, _checkpointer
 
     with _lock:
         if _checkpointer is None:
             database_url = get_settings().database_url
             if not database_url:
                 raise RuntimeError("DATABASE_URL is required for LangGraph Postgres checkpointing")
-            _checkpointer_cm = PostgresSaver.from_conn_string(database_url)
-            _checkpointer = _checkpointer_cm.__enter__()
+            # PostgresSaver serializes every DB call through its own internal
+            # lock regardless of connection type, so a pool doesn't add
+            # concurrency here -- what it adds is resilience. A single raw
+            # Connection that drops (DB restart, network blip) stays dead for
+            # the rest of the process's life, breaking every chat turn until
+            # a manual restart; psycopg_pool detects a bad connection and
+            # replaces it automatically.
+            _checkpointer_pool = ConnectionPool(
+                conninfo=database_url,
+                min_size=1,
+                max_size=4,
+                kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+            )
+            _checkpointer = PostgresSaver(_checkpointer_pool)
             _checkpointer.setup()
     return _checkpointer
 
 
 def close_checkpointer() -> None:
-    global _checkpointer_cm, _checkpointer
+    global _checkpointer_pool, _checkpointer
 
     with _lock:
-        if _checkpointer_cm is not None:
-            _checkpointer_cm.__exit__(None, None, None)
-            _checkpointer_cm = None
+        if _checkpointer_pool is not None:
+            _checkpointer_pool.close()
+            _checkpointer_pool = None
             _checkpointer = None
 
 

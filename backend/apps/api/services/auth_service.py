@@ -237,6 +237,9 @@ def get_user_by_token(token: str) -> User | None:
     if not token:
         return None
 
+    now = _utc_now()
+    ttl = timedelta(days=SESSION_TTL_DAYS)
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -255,10 +258,23 @@ def get_user_by_token(token: str) -> User | None:
                 return None
 
             expires_at = row["expires_at"]
-            if expires_at < _utc_now():
+            if expires_at < now:
                 cur.execute("DELETE FROM sessions WHERE token = %s", (token,))
                 conn.commit()
                 return None
+
+            # Sliding expiry: an actively-used session keeps getting pushed
+            # back out to a full TTL from "now", so a user who's still
+            # around doesn't get hard-logged-out mid-use. Only write when
+            # the session is more than halfway to expiring, so a busy user
+            # doesn't cause a DB write on every single request.
+            if expires_at - now < ttl / 2:
+                new_expires_at = now + ttl
+                cur.execute(
+                    "UPDATE sessions SET expires_at = %s WHERE token = %s",
+                    (new_expires_at, token),
+                )
+                conn.commit()
 
     return User(
         id=int(row["id"]),
@@ -284,6 +300,92 @@ def delete_session(token: str) -> None:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM sessions WHERE token = %s", (token,))
         conn.commit()
+
+
+WS_TICKET_TTL_SECONDS = int(os.getenv("WS_TICKET_TTL_SECONDS", "30"))
+
+
+# --- WebSocket connection tickets ---------------------------------------
+#
+# Browsers can't attach an Authorization header to a WebSocket handshake,
+# so the session token would otherwise have to travel as a `?token=...`
+# query param -- which lands in access logs, browser history, and any
+# intermediary proxy logs for as long as that (up to SESSION_TTL_DAYS-lived,
+# reusable) token is valid. Instead, the client exchanges its real session
+# token for a short-lived, single-use ticket over a normal authenticated
+# REST call (token stays in the Authorization header), and only the ticket
+# -- worthless once consumed or after WS_TICKET_TTL_SECONDS -- goes in the
+# WS URL.
+
+def create_ws_ticket(token: str) -> str | None:
+    user = get_user_by_token(token)
+    if not user:
+        return None
+
+    ticket = secrets.token_urlsafe(32)
+    now = _utc_now()
+    expires_at = now + timedelta(seconds=WS_TICKET_TTL_SECONDS)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO ws_tickets (ticket, user_id, session_token, created_at, expires_at)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (ticket, user.id, token, now, expires_at),
+            )
+        conn.commit()
+    return ticket
+
+
+def consume_ws_ticket(ticket: str) -> str | None:
+    """Single-use: looks up and deletes the ticket in one shot, then returns
+    the real session token it was minted from (so the caller can resolve
+    the user and revalidate the underlying session for the connection's
+    lifetime), or None if the ticket is missing/expired/already used.
+    """
+    if not ticket:
+        return None
+
+    now = _utc_now()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM ws_tickets WHERE ticket = %s RETURNING session_token, expires_at",
+                (ticket,),
+            )
+            row = cur.fetchone()
+        conn.commit()
+
+    if not row or row["expires_at"] < now:
+        return None
+    return str(row["session_token"])
+
+
+def cleanup_expired_records() -> dict[str, int]:
+    """Purges rows that are past their expires_at but were never touched
+    again (so the lazy per-lookup deletes in get_user_by_token / the OTP
+    flows never ran on them). Meant to be called periodically, not on the
+    request path.
+    """
+    now = _utc_now()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM sessions WHERE expires_at < %s", (now,))
+            sessions_deleted = cur.rowcount
+            cur.execute("DELETE FROM pending_signups WHERE expires_at < %s", (now,))
+            pending_signups_deleted = cur.rowcount
+            cur.execute("DELETE FROM password_resets WHERE expires_at < %s", (now,))
+            password_resets_deleted = cur.rowcount
+            cur.execute("DELETE FROM ws_tickets WHERE expires_at < %s", (now,))
+            ws_tickets_deleted = cur.rowcount
+        conn.commit()
+    return {
+        "sessions": sessions_deleted,
+        "pending_signups": pending_signups_deleted,
+        "password_resets": password_resets_deleted,
+        "ws_tickets": ws_tickets_deleted,
+    }
 
 
 # --- signup OTP flow ---------------------------------------------------

@@ -428,6 +428,21 @@ def init_postgres() -> None:
 
             cur.execute(
                 """
+                CREATE TABLE IF NOT EXISTS ws_tickets (
+                    ticket TEXT PRIMARY KEY,
+                    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    session_token TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL,
+                    expires_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ws_tickets_expires_at ON ws_tickets(expires_at)"
+            )
+
+            cur.execute(
+                """
                 CREATE TABLE IF NOT EXISTS user_badges (
                     id BIGSERIAL PRIMARY KEY,
                     user_id BIGINT NOT NULL,

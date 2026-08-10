@@ -363,11 +363,20 @@ export function translateJournalEntry({ body, mood_emoji = '', mood_label = '' }
   });
 }
 
-export function chatSocketUrl(threadId) {
+// Browsers can't attach an Authorization header to a WebSocket handshake,
+// so whatever goes in the URL ends up in access/proxy logs and browser
+// history. Rather than put the long-lived, reusable session token there,
+// we exchange it (over a normal authenticated REST call, token in the
+// header as usual) for a short-lived single-use ticket, and only that
+// ticket goes in the WS URL.
+export function createWsTicket() {
+  return request('/api/auth/ws-ticket', { method: 'POST' });
+}
+
+export function chatSocketUrl(threadId, ticket) {
   const httpBase = API_BASE_URL;
   const wsBase = httpBase.replace(/^http/i, (m) => (m.toLowerCase() === 'https' ? 'wss' : 'ws'));
-  const token = encodeURIComponent(getToken() || '');
-  return `${wsBase}/ws/chat/${encodeURIComponent(threadId)}?token=${token}`;
+  return `${wsBase}/ws/chat/${encodeURIComponent(threadId)}?ticket=${encodeURIComponent(ticket)}`;
 }
 
 export async function answerDailyQuestion(questionId) {
