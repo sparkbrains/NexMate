@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.concurrency import run_in_threadpool
 
+from apps.api.services.auth_service import consume_ws_ticket
 from apps.api.services.support_bot_service import stream_support_reply
 from apps.api.services.support_chat_log_service import (
     log_support_exchange,
@@ -21,15 +22,17 @@ MAX_MESSAGE_LENGTH = 2000
 
 @router.websocket("/ws")
 async def support_chat_ws(websocket: WebSocket) -> None:
-    token = websocket.query_params.get("token")
+    ticket = websocket.query_params.get("ticket")
     await websocket.accept()
 
     user_id: int | None = None
-    if token:
+    if ticket:
         try:
-            user_id = await run_in_threadpool(resolve_user_id_from_token, token)
+            token = await run_in_threadpool(consume_ws_ticket, ticket)
+            if token:
+                user_id = await run_in_threadpool(resolve_user_id_from_token, token)
         except Exception as exc:  # noqa: BLE001
-            logger.exception("support widget token lookup failed: %s", exc)
+            logger.exception("support widget ticket lookup failed: %s", exc)
             user_id = None
 
     history: list[dict[str, str]] = []

@@ -2,15 +2,17 @@ from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from apps.api.deps.auth import get_current_user
+from apps.api.deps.auth import get_bearer_token, get_current_user
 from apps.api.services.user_profile_service import get_user_profile_text
 from apps.api.services.auth_service import (
+    WS_TICKET_TTL_SECONDS,
     User,
     authenticate_user,
     change_password,
     complete_onboarding,
     create_session,
     create_user,
+    create_ws_ticket,
     delete_session,
     delete_user,
     request_password_reset_otp,
@@ -105,17 +107,30 @@ def login(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 
 
 @router.post("/logout")
-def logout(current_user: User = Depends(get_current_user), payload: dict[str, Any] | None = Body(default=None)) -> dict[str, Any]:
-    payload = payload or {}
-    token = str(payload.get("token", "")).strip()
-    if token:
-        delete_session(token)
+def logout(current_user: User = Depends(get_current_user), token: str = Depends(get_bearer_token)) -> dict[str, Any]:
+    delete_session(token)
     return {"ok": True, "user_id": current_user.id}
 
 
 @router.get("/me")
 def me(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     return {"user": _user_payload(current_user)}
+
+
+@router.post("/ws-ticket")
+def ws_ticket(
+    current_user: User = Depends(get_current_user),
+    token: str = Depends(get_bearer_token),
+) -> dict[str, Any]:
+    """Mints a short-lived, single-use ticket for opening a chat WebSocket.
+    Browsers can't send an Authorization header on a WS handshake, so the
+    long-lived session token never has to appear in the WS URL (and thus
+    in access/proxy logs) -- only this one-shot ticket does.
+    """
+    ticket = create_ws_ticket(token)
+    if not ticket:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    return {"ticket": ticket, "expires_in": WS_TICKET_TTL_SECONDS}
 
 @router.patch("/reminder")
 def update_reminder(

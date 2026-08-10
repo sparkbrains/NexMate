@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 from fastapi import FastAPI
@@ -18,9 +19,28 @@ from apps.api.routers.prompt_pack import router as prompt_pack_router
 from apps.api.routers.ws import router as ws_router
 from apps.api.routers.profile import router as profile_router
 from apps.api.routers.rewards import router as rewards_router
-from apps.api.services.auth_service import init_auth_db, seed_dummy_users_from_env
+from apps.api.services.auth_service import cleanup_expired_records, init_auth_db, seed_dummy_users_from_env
 from apps.api.routers.support import router as support_router
 app = FastAPI(title="NextMate Web")
+
+EXPIRED_RECORDS_CLEANUP_INTERVAL_SECONDS = int(
+    os.getenv("EXPIRED_RECORDS_CLEANUP_INTERVAL_SECONDS", str(60 * 60))
+)
+
+# Held for the lifetime of the app so asyncio doesn't garbage-collect the
+# loop task mid-run (create_task only keeps a weak reference internally).
+_startup_tasks: set[asyncio.Task] = set()
+
+
+async def _cleanup_expired_records_loop() -> None:
+    while True:
+        try:
+            deleted = await asyncio.to_thread(cleanup_expired_records)
+            if any(deleted.values()):
+                logger.info("Cleaned up expired auth records: %s", deleted)
+        except Exception:
+            logger.exception("Expired auth records cleanup pass failed")
+        await asyncio.sleep(EXPIRED_RECORDS_CLEANUP_INTERVAL_SECONDS)
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -52,7 +72,6 @@ async def startup() -> None:
         seed_result["skipped"],
     )
     # Pre-warm user profile summaries for all users with answers
-    import asyncio
     from apps.api.services.user_profile_service import get_or_refresh_user_profile
     from apps.db import get_connection
     with get_connection() as conn:
@@ -64,6 +83,10 @@ async def startup() -> None:
             user_ids = [r["user_id"] for r in rows]
     for uid in user_ids:
         asyncio.create_task(get_or_refresh_user_profile(uid))
+
+    cleanup_task = asyncio.create_task(_cleanup_expired_records_loop())
+    _startup_tasks.add(cleanup_task)
+    cleanup_task.add_done_callback(_startup_tasks.discard)
 
 
 if __name__ == "__main__":

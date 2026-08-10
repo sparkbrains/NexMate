@@ -1,5 +1,6 @@
 from typing import Any
 
+from apps.api.services.auth_service import get_user_by_token
 from apps.db import get_connection, utc_now
 
 
@@ -23,19 +24,10 @@ def log_support_exchange(
 
 
 def resolve_user_id_from_token(token: str | None) -> int | None:
-    if not token:
-        return None
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT user_id FROM sessions
-                WHERE token = %s AND expires_at > %s
-                """,
-                (token, utc_now()),
-            )
-            row = cur.fetchone()
-    return int(row["user_id"]) if row else None
+    # Delegates to the same expiry/validity check auth uses everywhere else,
+    # so this endpoint can't silently drift from what "a valid session" means.
+    user = get_user_by_token(token or "")
+    return user.id if user else None
 
 
 def _log_to_dict(row: dict[str, Any]) -> dict[str, Any]:

@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { getToken } from '../../lib/api';
+import { createWsTicket, getToken } from '../../lib/api';
 
 const WS_BASE = (() => {
   const apiBase = import.meta.env.VITE_API_BASE_URL || window.location.origin;
   return apiBase.replace(/^http/, 'ws');
 })();
 
-const buildSupportWsUrl = () => {
-  const token = getToken();
+// Ticket, not the raw session token, goes in the URL -- see chatSocketUrl
+// in lib/api.js for why (WS handshakes can't carry an Authorization header,
+// so anything in the URL ends up in access/proxy logs).
+const buildSupportWsUrl = (ticket) => {
   const url = `${WS_BASE}/api/support/ws`;
-  return token ? `${url}?token=${encodeURIComponent(token)}` : url;
+  return ticket ? `${url}?ticket=${encodeURIComponent(ticket)}` : url;
 };
 
 // higher = faster
@@ -44,6 +46,7 @@ export const SupportWidget = () => {
   const wsRef = useRef(null);
   const streamingIndexRef = useRef(null);
   const scrollRef = useRef(null);
+  const mountedRef = useRef(true);
 
   // Reveal-buffer state: text received from the socket but not yet shown,
   // drained a couple characters at a time on revealTimerRef's interval.
@@ -92,12 +95,27 @@ export const SupportWidget = () => {
     }, REVEAL_INTERVAL_MS);
   };
 
-  const connect = () => {
+  const connect = async () => {
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return;
     }
     setStatus('connecting');
-    const socket = new WebSocket(buildSupportWsUrl());
+
+    let ticket = null;
+    if (getToken()) {
+      try {
+        const data = await createWsTicket();
+        ticket = data.ticket;
+      } catch {
+        // Session might be expired/invalid -- fall back to an anonymous
+        // support connection (which the backend already allows) rather
+        // than blocking the whole widget on an auth hiccup.
+        ticket = null;
+      }
+    }
+    if (!mountedRef.current) return;
+
+    const socket = new WebSocket(buildSupportWsUrl(ticket));
     wsRef.current = socket;
 
     socket.onopen = () => setStatus('open');
@@ -140,6 +158,7 @@ export const SupportWidget = () => {
 
   useEffect(() => {
     return () => {
+      mountedRef.current = false;
       if (wsRef.current) wsRef.current.close();
       stopRevealTimer();
     };
