@@ -63,19 +63,16 @@ const THEME_TO_COVER_MAP = {
 };
 
 const COVERS = [
-  'Cover 1.jpg', 'Cover 2.jpg', 'Cover 3.jpg', 'Cover 4.jpg', 'Cover 5.jpg',
-  'Cover 6.jpg', 'cover 7.jpg', 'Cover 8.jpg', 'Cover 9.jpg', 'Cover 10.jpg',
-  'Cover 11.jpg', 'Cover 12.jpg', 'Cover 13.jpg', 'Cover 14.jpg', 'Cover 15.jpg',
-  'Cover 16.jpg', 'Cover 17.jpg', 'Cover 18.jpg', 'Cover 19.jpg', 'Cover 20.jpg',
-  'Cover 21.jpg', 'Cover 22.jpg', 'Cover 23.jpg', 'Cover 24.jpg'
+  'Cover1.jpg', 'Cover2.jpg', 'Cover3.png', 'Cover4.png', 'Cover5.png',
+  'Cover6.png', 'Cover7.png', 'Cover8.png', 'Cover9.png', 'Cover11.png',
+  'Cover12.png', 'Cover13.png'
 ];
 
 const BACKGROUNDS = [
-  'Background 1.jpg', 'Background 2.jpg', 'Background 3.jpg', 'Background 4.jpg',
-  'Background 5.jpg', 'Background 6.jpg', 'Background 7.jpg', 'Background 8.jpg',
-  'Background 9.jpg', 'Background 10.jpg', 'Background 11.jpg', 'Background 12.jpg',
-  'Background 13.jpg', 'Background 14.jpg', 'Background 15.jpg', 'Background 16.jpg',
-  'Background 17.jpg', 'Background 18.jpg', 'Background 19.jpg', 'Background 20.jpg'
+  'Background1.png', 'Background2.png', 'Background3.png', 'Background4.png',
+  'Background5.png', 'Background6.png', 'Background7.png', 'Background8.png',
+  'Background9.png', 'Background10.png', 'Background11.png', 'Background12.png',
+  'Background13.png', 'Background14.png'
 ];
 
 const A4_WIDTH = 794;
@@ -408,11 +405,10 @@ export const JournalScreen = ({ user }) => {
   const [zoom, setZoom] = useState(1);
 
   const STICKERS = [
-    '/stickers/sticker-1.jpg', '/stickers/sticker-2.jpg', '/stickers/sticker-3.jpg',
-    '/stickers/sticker-4.jpg', '/stickers/sticker-5.jpg', '/stickers/sticker-6.png', 
-    '/stickers/sticker-7.png', '/stickers/sticker-8.png', '/stickers/sticker-9.png', 
-    '/stickers/Sticker-10.png', '/stickers/sticker-11.png', 
-    '/stickers/sticker-butterfly.jpg', '/stickers/sticker-flowers.jpg', '/stickers/sticker-music.jpg'
+    '/stickers/sticker-1.png', '/stickers/sticker-2.png', '/stickers/sticker-3.png',
+    '/stickers/sticker-4.png', '/stickers/sticker-5.png', '/stickers/sticker-6.png',
+    '/stickers/sticker-7.png', '/stickers/sticker-8.png', '/stickers/sticker-9.png',
+    '/stickers/sticker-10.png', '/stickers/sticker-11.png',
   ];
 
   const addSticker = (src) => {
@@ -515,6 +511,7 @@ export const JournalScreen = ({ user }) => {
   };
 
   const dragState = useRef(null);
+  const stickerNodeRefs = useRef({});
   const savedRangeRef = useRef(null);
 
   const saveSelection = () => {
@@ -612,17 +609,28 @@ export const JournalScreen = ({ user }) => {
 
   const onStickerMouseDown = (e, id) => {
     e.preventDefault();
-    const rect = editorWrapRef.current.getBoundingClientRect();
-    dragState.current = { id, startX: e.clientX, startY: e.clientY, rect };
+    e.stopPropagation();
+    setSelectedSticker(id);
+    const sticker = stickers.find(s => s.id === id);
+    if (!sticker) return;
+    let curX = sticker.x, curY = sticker.y;
+    dragState.current = { id, startX: e.clientX, startY: e.clientY };
+    const node = stickerNodeRefs.current[id];
     const onMove = (me) => {
       if (!dragState.current) return;
       const dx = (me.clientX - dragState.current.startX) / zoom;
       const dy = (me.clientY - dragState.current.startY) / zoom;
-      setStickers(prev => prev.map(s => s.id === id ? { ...s, x: s.x + dx, y: s.y + dy } : s));
+      curX += dx; curY += dy;
       dragState.current.startX = me.clientX;
       dragState.current.startY = me.clientY;
+      if (node) { node.style.left = curX + 'px'; node.style.top = curY + 'px'; }
     };
-    const onUp = () => { dragState.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    const onUp = () => {
+      dragState.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setStickers(prev => prev.map(s => s.id === id ? { ...s, x: curX, y: curY } : s));
+    };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   };
@@ -869,30 +877,25 @@ export const JournalScreen = ({ user }) => {
     stickers.filter(s => (s.page || 'journal') === targetPage).map(s => {
       const isSelected = selectedSticker === s.id;
       return (
-        <div key={s.id}
-          style={{ position: 'absolute', left: s.x, top: s.y, zIndex: 10, userSelect: 'none', transform: `rotate(${s.rotate || 0}deg)` }}
-          onMouseDown={(e) => { e.stopPropagation(); setSelectedSticker(s.id); }}
+        <div key={s.id} ref={el => stickerNodeRefs.current[s.id] = el} className="sticker-wrap"
+          style={{ position: 'absolute', left: s.x, top: s.y, zIndex: isSelected ? 15 : 10, userSelect: 'none', transform: `rotate(${s.rotate || 0}deg)` }}
+          onClick={(e) => e.stopPropagation()}
         >
           {isSelected && (
-            <div style={{ position: 'absolute', top: -30, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 3, background: 'rgba(0,0,0,0.75)', borderRadius: 8, padding: '3px 6px', whiteSpace: 'nowrap', zIndex: 20 }}>
-              <button onMouseDown={(e) => { e.stopPropagation(); resizeSticker(s.id, -15); }}
-                style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>−</button>
-              <button onMouseDown={(e) => { e.stopPropagation(); resizeSticker(s.id, 15); }}
-                style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>+</button>
-              <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: '0 2px' }}>|</span>
-              <button onMouseDown={(e) => { e.stopPropagation(); rotateSticker(s.id, -15); }}
-                style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>↺</button>
-              <button onMouseDown={(e) => { e.stopPropagation(); rotateSticker(s.id, 15); }}
-                style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>↻</button>
-              <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12, padding: '0 2px' }}>|</span>
-              <button onMouseDown={(e) => { e.stopPropagation(); removeSticker(s.id); }}
-                style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '0 4px' }}>✕</button>
+            <div className="sticker-toolbar" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+              <button onClick={(e) => { e.stopPropagation(); resizeSticker(s.id, -15); }}>−</button>
+              <button onClick={(e) => { e.stopPropagation(); resizeSticker(s.id, 15); }}>+</button>
+              <span>|</span>
+              <button onClick={(e) => { e.stopPropagation(); rotateSticker(s.id, -15); }}>↺</button>
+              <button onClick={(e) => { e.stopPropagation(); rotateSticker(s.id, 15); }}>↻</button>
+              <span>|</span>
+              <button className="remove" onClick={(e) => { e.stopPropagation(); removeSticker(s.id); }}>✕</button>
             </div>
           )}
           <img src={s.src} alt="sticker"
             onMouseDown={(e) => onStickerMouseDown(e, s.id)}
             style={{ width: s.w, height: 'auto', objectFit: 'contain', cursor: 'grab', display: 'block',
-              filter: isSelected ? 'drop-shadow(0 0 0 2px var(--accent)) drop-shadow(0 3px 6px rgba(0,0,0,0.25))' : 'drop-shadow(0 2px 5px rgba(0,0,0,0.15))' }}
+              filter: isSelected ? 'drop-shadow(0 0 0 3px var(--accent))' : 'drop-shadow(0 2px 5px rgba(0,0,0,0.15))' }}
           />
         </div>
       );
@@ -1056,7 +1059,7 @@ export const JournalScreen = ({ user }) => {
                 <h3>Welcome back, {displayName}!</h3>
                 <p>Your daily journal is a space for clarity,<br></br> growth and self reflection.</p>
               </div>
-              <img src={WelcomeBookImg} alt='welcome'/>
+
             </div>
 
             {!activeBook && !loadingBooks && (

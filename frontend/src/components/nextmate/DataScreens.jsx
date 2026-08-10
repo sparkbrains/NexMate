@@ -887,8 +887,9 @@ const DUMMY_INSIGHTS = {
   ]
 };
 
-export const InsightsScreen = ({ tourSample, threads = [] }) => {
-  const navigate = useNavigate();
+export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
+  const _navigate = useNavigate();
+  const goChat = () => onNav ? onNav('chat') : _navigate('/chat');
   const [rangeKey, setRangeKey] = useState('30d');
   const [granularity, setGranularity] = useState('month');
   const [insights, setInsights] = useState(null);
@@ -1034,7 +1035,7 @@ export const InsightsScreen = ({ tourSample, threads = [] }) => {
               title="Your journey begins here."
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
-              onAction={() => navigate('/chat')}
+              onAction={goChat}
             >
               <div className="nm-card" style={{ overflow: 'hidden' }} data-tour="insights-trend">
                 <div style={{ marginBottom: 14 }}>
@@ -1071,7 +1072,7 @@ export const InsightsScreen = ({ tourSample, threads = [] }) => {
               title="Your journey begins here."
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
-              onAction={() => navigate('/chat')}
+              onAction={goChat}
             >
               <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-load">
                 <div style={{ marginBottom: 14 }}>
@@ -1091,7 +1092,7 @@ export const InsightsScreen = ({ tourSample, threads = [] }) => {
               title="Your journey begins here."
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
-              onAction={() => navigate('/chat')}
+              onAction={goChat}
             >
               <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-spectrum">
                 <div style={{ marginBottom: 14 }}>
@@ -1113,7 +1114,7 @@ export const InsightsScreen = ({ tourSample, threads = [] }) => {
               title="Your journey begins here."
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
-              onAction={() => navigate('/chat')}
+              onAction={goChat}
             >
               <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                 <div style={{ marginBottom: 14 }}>
@@ -1130,7 +1131,7 @@ export const InsightsScreen = ({ tourSample, threads = [] }) => {
               title="Your journey begins here." 
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
-              onAction={() => navigate('/chat')}
+              onAction={goChat}
             >
               <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', background: 'linear-gradient(145deg, var(--surface-1), var(--surface-2))', border: '1px solid var(--rule-soft)' }}>
                 <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Growth & Awareness</div>
@@ -1209,7 +1210,7 @@ export const InsightsScreen = ({ tourSample, threads = [] }) => {
             title={isEmpty ? "Your journey begins here." : "We need more data to draw this chart."}
             message={isEmpty ? "Start a chat or write your first journal entry to unlock your personalized insights." : "Your Knowledge Graph is building. Keep journaling! 🧠"}
             actionLabel={isEmpty ? "Begin a Chat" : "Begin Reflection"}
-            onAction={isEmpty ? () => navigate('/chat') : undefined}
+            onAction={isEmpty ? goChat : undefined}
           >
             <div className="nm-card" style={{ marginBottom: 14 }}>
               <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -1238,7 +1239,7 @@ export const InsightsScreen = ({ tourSample, threads = [] }) => {
             title="Your journey begins here."
             message="Start a chat or write your first journal entry to unlock your personalized insights."
             actionLabel="Begin a Chat"
-            onAction={() => navigate('/chat')}
+            onAction={goChat}
           >
             <div className="nm-card" style={{ marginBottom: 14 }} data-tour="insights-heatmap">
               <div style={{ marginBottom: 14 }}>

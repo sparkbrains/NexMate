@@ -4200,3 +4200,31 @@ body {
   font-weight: bold;
   z-index: 1;
 }
+
+/* ─── Sticker toolbar ─── */
+.sticker-wrap { isolation: isolate; }
+.sticker-toolbar {
+  position: absolute;
+  top: -36px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(0,0,0,0.78);
+  border-radius: 8px;
+  padding: 3px 6px;
+  white-space: nowrap;
+  z-index: 20;
+}
+.sticker-toolbar button {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.sticker-toolbar button.remove { color: #ff6b6b; }
+.sticker-toolbar span { color: rgba(255,255,255,0.3); font-size: 12px; padding: 0 2px; }

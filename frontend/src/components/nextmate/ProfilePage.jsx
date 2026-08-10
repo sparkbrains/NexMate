@@ -100,7 +100,8 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
     e.preventDefault();
     setEditLoading(true); setEditErr(null);
     try {
-      const data = await updateProfile({ name: editName, email: editEmail, dob: editDob || null, motivation: editMotivation, subscription_tier: editPlan });
+      const cleanDob = editDob && /^\d{4}-\d{2}-\d{2}$/.test(editDob) && parseInt(editDob.slice(0,4),10) >= 1900 ? editDob : null;
+      const data = await updateProfile({ name: editName, email: editEmail, dob: cleanDob, motivation: editMotivation, subscription_tier: editPlan });
       setUser(data.user);
       onUserUpdate && onUserUpdate(data.user);
       setEditModal(false);

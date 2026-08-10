@@ -35,6 +35,14 @@ export function useProfilePrompts(user, onUserUpdate) {
     { key: 'theme', state: user?.theme ? 'done' : stage === 'theme' ? 'current' : 'upcoming' },
   ];
 
+  const sanitizeDob = (dob) => {
+    if (!dob) return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) return null;
+    const year = parseInt(dob.slice(0, 4), 10);
+    if (year < 1900 || year > new Date().getFullYear()) return null;
+    return dob;
+  };
+
   const save = async (fields) => {
     if (saving) return;
     setSaving(true);
@@ -57,7 +65,11 @@ export function useProfilePrompts(user, onUserUpdate) {
     error,
     submitName: (name) => save({ name }),
     skipName: () => setSkippedName(true),
-    submitDob: (dob) => save({ dob }),
+    submitDob: (dob) => {
+      const clean = sanitizeDob(dob);
+      if (!clean) { setError('Please enter a valid date of birth.'); return; }
+      save({ dob: clean });
+    },
     skipDob: () => setSkippedDob(true),
     submitMotivation: (motivation) => save({ motivation }),
     skipMotivation: () => setSkippedMotivation(true),

@@ -227,3 +227,8 @@ backend/data/memory/*.db
 # Log files
 backend/data/logs/*
 
+
+# local artifacts
+backend/nexmate.db
+backend/profiling/*.prof
+.idea/

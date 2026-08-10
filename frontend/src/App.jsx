@@ -261,7 +261,7 @@ export default function App() {
             <Route path="/journal" element={<JournalScreen user={user} />} />
             <Route path="/prompt-packs" element={<PromptPacksScreen />} />
             <Route path="/loops" element={loopsEl} />
-            <Route path="/insights" element={<InsightsScreen tourSample={tourSampleFor('insights')} threads={threads} />} />
+            <Route path="/insights" element={<InsightsScreen tourSample={tourSampleFor('insights')} threads={threads} onNav={(r) => { if (r === 'chat') beginReflection(); else navigateTo(r); }} />} />
             <Route
               path="/profile"
               element={(

@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { Icon, TopBar, LoopRing, EmptyDataOverlay } from './Shell';
 import { getLoop, listLoops, resolveLoop, reflectOnLoop } from '../../lib/api';
-import { SAMPLE_LOOP, SAMPLE_LOOPS_LIST, SAMPLE_LOOP_COUNTS } from '../../lib/tourSampleData';
 import { AppContext } from '../../context';
 
 const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
@@ -131,6 +130,7 @@ const DUMMY_DETAIL = {
 const DUMMY_COUNTS = { total: 3, active: 2, resolved: 1 };
 
 export const LoopsScreen = ({ onNav, threads = [] }) => {
+  const { checkRewards } = useContext(AppContext);
   const [loops, setLoops] = useState([]);
   const [counts, setCounts] = useState({ total: 0, active: 0, resolved: 0 });
   const [selectedId, setSelectedId] = useState(null);
@@ -179,9 +179,9 @@ export const LoopsScreen = ({ onNav, threads = [] }) => {
     return () => { cancelled = true; };
   }, [selectedId]);
 
-  const usingSample = Boolean(tourSample) && !loadingList && loops.length === 0;
-  const listItems = usingSample ? SAMPLE_LOOPS_LIST : loops;
-  const listCounts = usingSample ? SAMPLE_LOOP_COUNTS : counts;
+  const usingSample = isEmpty;
+  const listItems = isEmpty ? DUMMY_LOOPS : loops;
+  const listCounts = displayCounts;
 
   const activeLoops = useMemo(() => listItems.filter((l) => l.state === 'active'), [listItems]);
   const resolvedLoops = useMemo(() => listItems.filter((l) => l.state === 'resolved'), [listItems]);
