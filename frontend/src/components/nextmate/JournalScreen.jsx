@@ -1618,17 +1618,17 @@ export const JournalScreen = ({ user }) => {
 
 
                         {/* PDF Download Options Menu */}
-                        <div style={{ position: 'relative', display: 'inline-block', marginLeft: 8 }}>
+                        <div className="nm-dropdown-group" style={{ position: 'relative', display: 'inline-block', marginLeft: 8 }}>
                           <button
                             type="button"
                             title="Download PDF"
-                            onClick={() => setShowPdfMenu(!showPdfMenu)}
+                            onClick={() => setActiveMenu(activeMenu === 'pdf' ? null : 'pdf')}
                             className="nm-btn primary"
                             style={{ padding: '5px 12px', fontSize: 13, borderRadius: '16px' }}
                           >
                             <Icon name="download" size={13} style={{ marginRight: 6 }} /> Download PDF ▾
                           </button>
-                          {showPdfMenu && (
+                          {activeMenu === 'pdf' && (
                             <div style={{
                               position: 'absolute', left: 0, top: '100%', marginTop: 6,
                               background: 'var(--surface)', border: '1px solid var(--rule)',
@@ -1660,7 +1660,7 @@ export const JournalScreen = ({ user }) => {
                                 onMouseEnter={e => e.target.style.background = 'var(--surface-2)'}
                                 onMouseLeave={e => e.target.style.background = 'none'}
                               >
-                                📚 Complete Book ({entries.length} {entries.length === 1 ? 'entry' : 'entries'})
+                                📚 Complete Book
                               </button>
                             </div>
                           )}
