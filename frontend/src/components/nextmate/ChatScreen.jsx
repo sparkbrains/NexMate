@@ -1,25 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { Icon, TopBar, LoopRing } from './Shell';
 import { useChatSocket } from '../../hooks/useChatSocket';
-import { getThreadMessages, listLoops } from '../../lib/api';
+import {
+  getThreadMessages, listLoops, chatSocketUrl,
+  getThreadSummary, finalizeThreadSummary,
+  listJournalBooks, createJournalBook,
+  saveThreadSummaryAsJournalEntry,
+} from '../../lib/api';
+import { AppContext } from '../../context';
 
-const Msg = ({ from, text, meta, quoted, choices, className }) => {
-  const containerStyle = {
-    display: from === 'me' ? 'flex' : 'flex',
-    justifyContent: from === 'me' ? 'flex-end' : 'flex-start',
-    marginBottom: from === 'me' ? 16 : 22,
-    gap: from === 'me' ? undefined : 12,
-    ...(className ? {} : {}),
-  };
+const NEW_BOOK_OPTION = '__new__';
 
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/$/, '');
+
+const Msg = ({ from, text, meta, quoted, choices, className, pending }) => {
   if (from === 'me') {
     return (
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }} className={className}>
         <div
           style={{
             maxWidth: '78%',
-            background: 'var(--ink)',
-            color: 'var(--paper)',
+            background: 'var(--chat-user-bg)',
+            color: 'var(--chat-user-fg)',
             padding: '11px 15px',
             borderRadius: '14px 14px 3px 14px',
             fontSize: 14.5,
@@ -39,13 +41,13 @@ const Msg = ({ from, text, meta, quoted, choices, className }) => {
           width: 28,
           height: 28,
           borderRadius: '50%',
-          background: 'var(--accent)',
+          background: 'var(--chat-bot-bg)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
           marginTop: 2,
-          color: '#fff',
+          color: 'var(--chat-bot-fg)',
           fontFamily: 'var(--font-display)',
           fontSize: 13,
         }}
@@ -55,15 +57,20 @@ const Msg = ({ from, text, meta, quoted, choices, className }) => {
       <div style={{ flex: 1, minWidth: 0 }}>
         <div
           style={{
+            display: 'inline-block',
+            maxWidth: '92%',
+            background: 'var(--chat-bot-bg)',
+            color: 'var(--chat-bot-fg)',
+            padding: '11px 15px',
+            borderRadius: '3px 14px 14px 14px',
             fontFamily: 'var(--font-serif)',
             fontSize: 16.5,
             lineHeight: 1.55,
-            color: 'var(--ink)',
             letterSpacing: '-0.005em',
             whiteSpace: 'pre-wrap',
           }}
         >
-          {text}
+          {pending && !text ? <ThinkingDots color="var(--chat-bot-fg)" /> : text}
         </div>
         {quoted && (
           <div
@@ -105,7 +112,7 @@ const Msg = ({ from, text, meta, quoted, choices, className }) => {
   );
 };
 
-const ThinkingDots = () => (
+const ThinkingDots = ({ color = 'var(--accent)' }) => (
   <div style={{ display: 'inline-flex', gap: 4 }}>
     {[0, 1, 2].map((i) => (
       <span
@@ -114,26 +121,11 @@ const ThinkingDots = () => (
           width: 5,
           height: 5,
           borderRadius: '50%',
-          background: 'var(--accent)',
+          background: color,
           animation: `nm-blink 1.4s ${i * 0.2}s infinite ease-in-out`,
         }}
       />
     ))}
-  </div>
-);
-
-const StatLine = ({ label, value, teal }) => (
-  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 11.5 }}>
-    <span className="nm-tag">{label}</span>
-    <span
-      style={{
-        fontFamily: 'var(--font-mono)',
-        fontSize: 11,
-        color: teal ? 'var(--teal)' : 'var(--ink-2)',
-      }}
-    >
-      {value}
-    </span>
   </div>
 );
 
@@ -144,9 +136,21 @@ export const ChatScreen = ({
   onMessageDone,
   context,
   initialMessage,
+  onAuthExpired,
 }) => {
+  const { checkRewards } = useContext(AppContext);
   const [draft, setDraft] = useState('');
+  const [awaitingResponse, setAwaitingResponse] = useState(false);
   const [loops, setLoops] = useState([]);
+  const [threadSummary, setThreadSummary] = useState(null);
+  const [showSaveToJournal, setShowSaveToJournal] = useState(false);
+  const [loadingJournalBooks, setLoadingJournalBooks] = useState(false);
+  const [journalBooks, setJournalBooks] = useState([]);
+  const [journalTargetBookId, setJournalTargetBookId] = useState('');
+  const [newJournalBookName, setNewJournalBookName] = useState('');
+  const [savingToJournal, setSavingToJournal] = useState(false);
+  const [journalSaveMessage, setJournalSaveMessage] = useState('');
+  const [journalSaveError, setJournalSaveError] = useState(false);
   const [recording, setRecording] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);
   const [voiceError, setVoiceError] = useState('');
@@ -154,12 +158,19 @@ export const ChatScreen = ({
   const [audioSupported, setAudioSupported] = useState(false);
   const [voiceRecording, setVoiceRecording] = useState(null);
   const [currentVoiceLog, setCurrentVoiceLog] = useState(null);
-  const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [voiceOutputEnabled, setVoiceOutputEnabled] = useState(() => {
+    const saved = window.localStorage.getItem('nm_voice_enabled');
+    return saved !== null ? saved === 'true' : true;
+  });
+  useEffect(() => {
+    window.localStorage.setItem('nm_voice_enabled', voiceOutputEnabled);
+  }, [voiceOutputEnabled]);
+
   const [voiceGender, setVoiceGender] = useState('female'); // 'female' | 'male' | 'custom'
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoiceName, setSelectedVoiceName] = useState('');
   const [showSidePanel, setShowSidePanel] = useState(true);
-
   const recognitionRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
@@ -168,6 +179,7 @@ export const ChatScreen = ({
   const voiceInterimRef = useRef('');
   const scrollRef = useRef(null);
   const unspokenTextRef = useRef('');
+  const textareaRef = useRef(null);
 
 
   const { messages, streaming, status, error, send, loadHistory } = useChatSocket(threadId, {
@@ -199,8 +211,10 @@ export const ChatScreen = ({
         unspokenTextRef.current = '';
       }
       if (onMessageDone) onMessageDone();
+      checkRewards();
     },
     context,
+    onAuthExpired,
   });
 
   // Load available voices (browser voices load asynchronously)
@@ -391,6 +405,8 @@ export const ChatScreen = ({
 
     recorder.onstop = async () => {
       const blob = new Blob(mediaChunks, { type: 'audio/webm' });
+      setTranscribing(true);
+
       blobToDataURL(blob).then((audioDataUrl) => {
         const entry = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -404,11 +420,9 @@ export const ChatScreen = ({
 
       try {
         const token = localStorage.getItem('nextmate.token');
-        const response = await fetch('http://127.0.0.1:8010/api/transcribe', {
+        const response = await fetch(`${API_BASE_URL}/api/transcribe`, {
           method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: { Authorization: `Bearer ${token}` },
           body: blob,
         });
 
@@ -421,8 +435,7 @@ export const ChatScreen = ({
         }
 
         if (!response.ok) {
-          const errorMessage = data?.detail || responseText || 'Transcription failed';
-          throw new Error(errorMessage);
+          throw new Error(data?.detail || responseText || 'Transcription failed');
         }
 
         if (!data || typeof data !== 'object') {
@@ -443,16 +456,14 @@ export const ChatScreen = ({
           return updated;
         });
 
-        // Voice input now fills the draft instead of auto-sending, so the
-        // person can review/edit the transcript and use the Send button
-        // (or Enter) the same way they would for typed text.
-        const fullText = `${voiceBaseRef.current}${transcript ? ` ${transcript}` : ''}`.trim();
-        if (fullText) {
-          setDraft(fullText);
-        }
-      } catch (error) {
-        console.error('Transcription error:', error);
-        setVoiceError(`Transcription error: ${error?.message || 'Unknown error'}`);
+        const base = voiceBaseRef.current;
+        const fullText = base ? `${base} ${transcript}` : transcript;
+        setDraft(fullText);
+      } catch (err) {
+        console.error('Transcription error:', err);
+        setVoiceError(`Transcription error: ${err?.message || 'Unknown error'}`);
+      } finally {
+        setTranscribing(false);
       }
     };
 
@@ -501,9 +512,95 @@ export const ChatScreen = ({
     refreshLoops();
   }, []);
 
+  const refreshThreadSummary = () => {
+    if (!threadId) { setThreadSummary(null); return; }
+    getThreadSummary(threadId)
+      .then((data) => setThreadSummary(data && data.summary_text ? data : null))
+      .catch(() => setThreadSummary(null));
+  };
+
+  useEffect(() => { refreshThreadSummary(); }, [threadId]);
+
   useEffect(() => {
-    if (!streaming) refreshLoops();
+    setDraft('');
+    setAwaitingResponse(false);
+    setShowSaveToJournal(false);
+    setJournalTargetBookId('');
+    setNewJournalBookName('');
+    setJournalSaveMessage('');
+    setJournalSaveError(false);
+  }, [threadId]);
+
+  // The socket only appends the "nex" placeholder once its "start" event
+  // arrives, so there's a bare gap (network + model warm-up) after send()
+  // where no bubble exists yet to carry a loading indicator.
+  useEffect(() => {
+    if (streaming || error) setAwaitingResponse(false);
+  }, [streaming, error]);
+
+  const toggleSaveToJournal = (checked) => {
+    setShowSaveToJournal(checked);
+    setJournalSaveMessage('');
+    setJournalSaveError(false);
+    if (checked && journalBooks.length === 0 && !loadingJournalBooks) {
+      setLoadingJournalBooks(true);
+      listJournalBooks()
+        .then((data) => {
+          const list = data.books || [];
+          setJournalBooks(list);
+          setJournalTargetBookId(list[0] ? String(list[0].id) : NEW_BOOK_OPTION);
+        })
+        .catch(() => { setJournalBooks([]); setJournalTargetBookId(NEW_BOOK_OPTION); })
+        .finally(() => setLoadingJournalBooks(false));
+    }
+  };
+
+  const handleSaveSummaryToJournal = async () => {
+    if (!threadSummary?.summary_text) return;
+    setSavingToJournal(true); setJournalSaveMessage(''); setJournalSaveError(false);
+    try {
+      let bookId = journalTargetBookId;
+      let bookName = journalBooks.find((b) => String(b.id) === String(bookId))?.name;
+      if (bookId === NEW_BOOK_OPTION) {
+        const name = newJournalBookName.trim();
+        if (!name) throw new Error('Name the new book first.');
+        const created = await createJournalBook({ name, color: '' });
+        bookId = created.book.id; bookName = created.book.name;
+        setJournalBooks((prev) => [...prev, created.book]);
+        setJournalTargetBookId(String(bookId));
+        setNewJournalBookName('');
+      }
+      await saveThreadSummaryAsJournalEntry({ thread_id: threadId, body: threadSummary.summary_text, book_id: bookId });
+      setJournalSaveMessage(`Saved to ${bookName || 'journal'}.`);
+      checkRewards();
+    } catch (e) {
+      setJournalSaveError(true);
+      setJournalSaveMessage(e?.message || 'Failed to save entry.');
+    } finally {
+      setSavingToJournal(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!streaming) {
+      refreshLoops();
+      refreshThreadSummary();
+      const t1 = setTimeout(refreshLoops, 3000);
+      const t2 = setTimeout(refreshLoops, 8000);
+      const t3 = setTimeout(refreshLoops, 15000);
+      return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    }
   }, [streaming]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && threadId) {
+        finalizeThreadSummary(threadId).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [threadId]);
 
   const activeLoops = loops.filter((l) => l.state === 'active');
   const topLoop = activeLoops[0];
@@ -511,7 +608,14 @@ export const ChatScreen = ({
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, streaming]);
+  }, [messages, streaming, awaitingResponse]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+  }, [draft]);
 
   const canSend = Boolean(draft.trim()) && Boolean(threadId) && !streaming && status === 'open';
 
@@ -524,7 +628,10 @@ export const ChatScreen = ({
     }
     unspokenTextRef.current = '';
 
-    if (send(text)) setDraft('');
+    if (send(text)) {
+      setDraft('');
+      setAwaitingResponse(true);
+    }
   };
 
   const onKey = (e) => {
@@ -555,62 +662,168 @@ export const ChatScreen = ({
           <span className="nm-dot" />
           {status === 'open' ? 'live' : status}
         </span>
-
-        {/* Side panel toggle */}
-        
       </TopBar>
 
       <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-        <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '28px 40px' }}>
-          <div style={{ maxWidth: 680, margin: '0 auto' }}>
-            <div className="nm-eyebrow" style={{ textAlign: 'center', marginBottom: 24, position: 'relative' }}>
-              <span
-                style={{
-                  background: 'var(--surface)',
-                  padding: '0 14px',
-                  position: 'relative',
-                  zIndex: 1,
-                }}
-              >
-                {threadId ? 'Conversation' : 'No thread selected'}
-              </span>
-              <div
-                style={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: 0,
-                  right: 0,
-                  borderTop: '1px dashed var(--rule)',
-                }}
-              />
+
+        {/* Chat column: scroll area + input stacked */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, justifyContent: messages.length === 0 ? 'center' : undefined }}>
+          {messages.length > 0 && (
+            <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '28px 40px 28px' }}>
+              <div style={{ maxWidth: 680, margin: '0 auto' }}>
+                <div className="nm-eyebrow" style={{ textAlign: 'center', marginBottom: 24, position: 'relative' }}>
+                  <span style={{ background: 'var(--surface)', padding: '0 14px', position: 'relative', zIndex: 1 }}>
+                    {threadId ? 'Conversation' : 'No thread selected'}
+                  </span>
+                  <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '1px dashed var(--rule)' }} />
+                </div>
+                {messages.map((m, i) => (
+                  <Msg
+                    key={i}
+                    {...m}
+                    className="nm-msg"
+                    pending={streaming && i === messages.length - 1 && m.from === 'nex'}
+                  />
+                ))}
+                {awaitingResponse && !streaming && (
+                  <Msg from="nex" text="" className="nm-msg" pending />
+                )}
+                {error && (
+                  <div className="nm-body" style={{ color: 'var(--accent)', fontSize: 12 }}>{error}</div>
+                )}
+              </div>
             </div>
-            {messages.map((m, i) => (
-              <Msg key={i} {...m} className="nm-msg" />
-            ))}
-            {streaming && (
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  alignItems: 'center',
-                  margin: '16px 0',
-                  color: 'var(--ink-4)',
-                }}
-              >
-                <ThinkingDots />
-                <span className="nm-meta">Nextmate is reflecting…</span>
+          )}
+
+          {messages.length === 0 && threadId && (
+            <div className="nm-chat-empty">
+              <div className="nm-chat-empty-art" />
+              <p className="nm-chat-empty-line">No rush, no agenda.<br />Say whatever's sitting with you.</p>
+            </div>
+          )}
+
+          {/* Input — sits at the bottom of the chat column only, never touches the side panel */}
+          <div style={{ padding: '12px 40px 20px', flexShrink: 0 }} data-tour="chat-input">
+            <div style={{ maxWidth: 680, margin: '0 auto' }}>
+              <div style={{
+                display: 'flex',
+                alignItems: 'flex-end',
+                border: '1px solid var(--rule)',
+                borderRadius: 14,
+                background: 'var(--surface-2)',
+                padding: '6px 8px',
+                gap: 6,
+              }}>
+                <button
+                  className="nm-btn ghost"
+                  onClick={toggleVoice}
+                  disabled={!threadId || streaming || status !== 'open' || !speechSupported || !audioSupported}
+                  title={recording ? 'Stop recording' : 'Voice input'}
+                  style={{
+                    padding: 7,
+                    flexShrink: 0,
+                    alignSelf: 'flex-end',
+                    borderRadius: 8,
+                    background: recording ? 'var(--accent)' : 'transparent',
+                    color: recording ? '#fff' : 'var(--ink-3)',
+                    animation: recording ? 'nm-pulse 1.2s infinite' : undefined,
+                  }}
+                >
+                  <Icon name="mic" size={16} />
+                </button>
+
+                <textarea
+                  ref={textareaRef}
+                  placeholder={
+                    transcribing ? 'Transcribing…' :
+                    recording ? 'Listening…' :
+                    threadId ? 'Stay with the thought…' :
+                    'Start a new reflection from the sidebar.'
+                  }
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={onKey}
+                  rows={1}
+                  disabled={!threadId}
+                  style={{
+                    flex: 1,
+                    height: 36,
+                    maxHeight: 160,
+                    padding: '8px 4px',
+                    fontSize: 15,
+                    fontFamily: 'var(--font-serif)',
+                    color: 'var(--ink)',
+                    border: 'none',
+                    background: 'transparent',
+                    resize: 'none',
+                    outline: 'none',
+                    boxShadow: 'none',
+                    overflowY: 'auto',
+                    lineHeight: 1.5,
+                  }}
+                />
+
+                <button
+                  className="nm-btn accent"
+                  onClick={submit}
+                  disabled={!draft.trim() || streaming || status !== 'open'}
+                  style={{ padding: 7, flexShrink: 0, alignSelf: 'flex-end', borderRadius: 8 }}
+                  title="Send"
+                >
+                  <Icon name="arrow" size={16} />
+                </button>
               </div>
-            )}
-            {error && (
-              <div className="nm-body" style={{ color: 'var(--accent)', fontSize: 12 }}>
-                {error}
+
+              {voiceError && (
+                <div className="nm-meta" style={{ marginTop: 6, color: 'var(--accent)' }}>{voiceError}</div>
+              )}
+
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
+                <label className="nm-meta" style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                  <span className="nm-switch">
+                    <input type="checkbox" checked={voiceOutputEnabled} onChange={(e) => setVoiceOutputEnabled(e.target.checked)} />
+                    <span className="nm-switch-slider"></span>
+                  </span>
+                  Say it out loud
+                </label>
+                {voiceOutputEnabled && (
+                  <label className="nm-meta" style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                    Voice:
+                    <select
+                      value={voiceGender}
+                      onChange={(e) => { setVoiceGender(e.target.value); if (e.target.value !== 'custom') setSelectedVoiceName(''); }}
+                      style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', cursor: 'pointer' }}
+                    >
+                      <option value="female">Female</option>
+                      <option value="male">Male</option>
+                      <option value="custom">Custom…</option>
+                    </select>
+                  </label>
+                )}
+                {voiceOutputEnabled && voiceGender === 'custom' && availableVoices.length > 0 && (
+                  <label className="nm-meta" style={{ fontSize: 11.5, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                    Pick voice:
+                    <select
+                      value={selectedVoiceName}
+                      onChange={(e) => setSelectedVoiceName(e.target.value)}
+                      style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '1px 4px', maxWidth: 200, cursor: 'pointer' }}
+                    >
+                      <option value="">— choose —</option>
+                      {availableVoices.map((v) => (
+                        <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </div>
 
+        {/* Side panel */}
         <div
           className={`nm-side-panel${showSidePanel ? '' : ' collapsed'}`}
+          data-tour="chat-panel"
           style={{
             width: 300,
             flexShrink: 0,
@@ -620,28 +833,14 @@ export const ChatScreen = ({
             overflowY: 'auto',
           }}
         >
-          <div className="nm-eyebrow" style={{ marginBottom: 12 }}>
-            Active patterns
-          </div>
+          <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Active patterns</div>
 
           {topLoop ? (
             <div className="nm-card" style={{ padding: 12, marginBottom: 16 }}>
-              <div
-                style={{ display: 'flex', gap: 10, alignItems: 'center' }}
-                title={topLoop.core_belief || topLoop.name}
-              >
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }} title={topLoop.core_belief || topLoop.name}>
                 <LoopRing strength={topLoop.strength} size={36} showLabel={false} />
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div
-                    style={{
-                      fontFamily: 'var(--font-display)',
-                      fontSize: 13,
-                      fontStyle: 'italic',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     "{topLoop.core_belief || topLoop.name}"
                   </div>
                   <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 2 }}>
@@ -650,238 +849,79 @@ export const ChatScreen = ({
                 </div>
               </div>
               {activeLoops.length > 1 && (
-                <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 8 }}>
-                  +{activeLoops.length - 1} more active
-                </div>
+                <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 8 }}>+{activeLoops.length - 1} more active</div>
               )}
             </div>
           ) : (
             <div className="nm-card" style={{ padding: 12, marginBottom: 16 }}>
-              <div className="nm-meta" style={{ lineHeight: 1.5 }}>
-                No active loops yet. Patterns name themselves once they recur.
-              </div>
+              <div className="nm-meta" style={{ lineHeight: 1.5 }}>No active loops yet. Patterns name themselves once they recur.</div>
             </div>
           )}
 
           <div className="nm-hr dotted" />
-          <div className="nm-eyebrow" style={{ marginBottom: 10 }}>
-            This thread
-          </div>
-          <StatLine label="Messages" value={messages.length} />
-          <StatLine label="Connection" value={status} teal={status === 'open'} />
-          <StatLine label="Active loops" value={activeLoops.length} />
 
-          <div className="nm-hr dotted" />
-          <div className="nm-meta" style={{ lineHeight: 1.5, color: 'var(--ink-4)' }}>
-            Nextmate doesn't provide clinical advice. Safety screens run on every message.
-          </div>
-        </div>
-      </div>
-
-      <div style={{ borderTop: '1px solid var(--rule)', padding: '14px 40px', background: 'var(--surface)' }}>
-        <div
-          style={{
-            maxWidth: 680,
-            margin: '0 auto',
-            display: 'flex',
-            gap: 8,
-            alignItems: 'flex-end',
-          }}
-        >
-          {/* 1. Audio input — shown first, fills the draft below rather than auto-sending */}
-          <button
-            className="nm-btn"
-            onClick={toggleVoice}
-            disabled={
-              !threadId || streaming || status !== 'open' || !speechSupported || !audioSupported
-            }
-            title={
-              recording
-                ? 'Stop voice input'
-                : !audioSupported
-                ? 'Audio recording is not supported'
-                : speechSupported
-                ? 'Start voice input'
-                : 'Voice not supported'
-            }
-            style={{
-              padding: 8,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              background: recording ? 'var(--accent)' : undefined,
-              color: recording ? '#fff' : undefined,
-              animation: recording ? 'nm-pulse 1.2s infinite' : undefined,
-            }}
-          >
-            <Icon name="mic" />
-            {recording && (
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: '#fff',
-                  animation: 'nm-blink 1.2s infinite ease-in-out',
-                }}
-              />
-            )}
-          </button>
-
-          {/* 2. Text draft — typed directly, or filled in by the transcript above */}
-          <textarea
-            className="nm-textarea"
-            placeholder={threadId ? 'Stay with the thought, or send a new one…' : 'Start a new reflection from the sidebar.'}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={onKey}
-            rows={1}
-            disabled={!threadId}
-            style={{ minHeight: 42, maxHeight: 140, padding: '10px 14px', fontSize: 15, flex: 1 }}
-          />
-
-          {/* 3. Send — the explicit action, alongside Enter-to-send */}
-          <button
-            className="nm-btn primary"
-            onClick={submit}
-            disabled={!canSend}
-            title="Send message"
-            style={{
-              padding: '10px 16px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              flexShrink: 0,
-            }}
-          >
-            Send
-            <Icon name="arrow" size={13} />
-          </button>
-        </div>
-
-        {!recording && voiceError && (
-          <div className="nm-meta" style={{ marginTop: 10, marginLeft: 6, color: 'var(--accent)' }}>
-            {voiceError}
-          </div>
-        )}
-        {voiceDebug && (
-          <div className="nm-meta" style={{ marginTop: 10, marginLeft: 6, color: 'var(--ink-4)' }}>
-            Voice debug: {voiceDebug}
-          </div>
-        )}
-        {voiceRecording && (
-          <div style={{ marginTop: 14, marginLeft: 6, width: '100%', display: 'grid', gap: 10 }}>
-            <div className="nm-eyebrow">Latest voice recording</div>
-            <audio controls src={voiceRecording.audioDataUrl} style={{ width: '100%' }} />
-            <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>
-              <strong>Transcript:</strong>{' '}
-              {voiceRecording.transcript || 'No transcript detected'}
-            </div>
-          </div>
-        )}
-
-        {/* Voice output controls */}
-        {!recording && (
-          <div style={{ marginTop: 10, marginLeft: 6, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-            {/* Enable toggle */}
-            <label
-              className="nm-meta"
-              style={{
-                fontSize: 11.5,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                cursor: 'pointer',
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={voiceOutputEnabled}
-                onChange={(e) => setVoiceOutputEnabled(e.target.checked)}
-                style={{ margin: 0 }}
-              />
-              SAY IT OUT LOUD !!
-            </label>
-
-            {/* Voice gender / picker — only shown when voice output is on */}
-            {voiceOutputEnabled && (
-              <>
-                <label
-                  className="nm-meta"
-                  style={{
-                    fontSize: 11.5,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    cursor: 'pointer',
-                  }}
-                >
-                  Voice:
-                  <select
-                    value={voiceGender}
-                    onChange={(e) => {
-                      setVoiceGender(e.target.value);
-                      // Reset custom selection when switching away
-                      if (e.target.value !== 'custom') setSelectedVoiceName('');
-                    }}
-                    style={{
-                      fontSize: 11.5,
-                      fontFamily: 'var(--font-mono)',
-                      border: '1px solid var(--rule)',
-                      background: 'var(--surface)',
-                      color: 'var(--ink)',
-                      borderRadius: 4,
-                      padding: '1px 4px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <option value="female">Female</option>
-                    <option value="male">Male</option>
-                    <option value="custom">Custom…</option>
-                  </select>
-                </label>
-
-                {/* Custom voice picker — only shown when "Custom…" is selected */}
-                {voiceGender === 'custom' && availableVoices.length > 0 && (
-                  <label
-                    className="nm-meta"
-                    style={{
-                      fontSize: 11.5,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Pick voice:
-                    <select
-                      value={selectedVoiceName}
-                      onChange={(e) => setSelectedVoiceName(e.target.value)}
-                      style={{
-                        fontSize: 11.5,
-                        fontFamily: 'var(--font-mono)',
-                        border: '1px solid var(--rule)',
-                        background: 'var(--surface)',
-                        color: 'var(--ink)',
-                        borderRadius: 4,
-                        padding: '1px 4px',
-                        maxWidth: 200,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <option value="">— choose —</option>
-                      {availableVoices.map((v) => (
-                        <option key={v.name} value={v.name}>
-                          {v.name} ({v.lang})
-                        </option>
-                      ))}
-                    </select>
+          {threadSummary && (
+            <>
+              <div className="nm-eyebrow" style={{ marginBottom: 10 }}>This thread, so far</div>
+              <div className="nm-card" style={{ padding: 12, marginBottom: 16 }}>
+                <div className="nm-body" style={{ fontSize: 12.5, lineHeight: 1.55 }}>{threadSummary.summary_text}</div>
+                <div className="nm-meta" style={{ fontSize: 9.5, marginTop: 8 }}>
+                  last updated {new Date(threadSummary.updated_at).toLocaleDateString()}
+                </div>
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--rule)' }}>
+                  <label className="nm-meta" style={{ fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <span className="nm-switch">
+                      <input type="checkbox" checked={showSaveToJournal} onChange={(e) => toggleSaveToJournal(e.target.checked)} />
+                      <span className="nm-switch-slider"></span>
+                    </span>
+                    Save this summary as a journal entry
                   </label>
-                )}
-              </>
-            )}
+                  {showSaveToJournal && (
+                    <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                      {loadingJournalBooks ? (
+                        <div className="nm-meta" style={{ fontSize: 11 }}>Loading books…</div>
+                      ) : (
+                        <>
+                          <select
+                            value={journalTargetBookId}
+                            onChange={(e) => setJournalTargetBookId(e.target.value)}
+                            style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '4px 6px' }}
+                          >
+                            {journalBooks.map((b) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+                            <option value={NEW_BOOK_OPTION}>+ New book…</option>
+                          </select>
+                          {journalTargetBookId === NEW_BOOK_OPTION && (
+                            <input type="text" value={newJournalBookName} onChange={(e) => setNewJournalBookName(e.target.value)} placeholder="Name this book…"
+                              style={{ fontSize: 12, border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', borderRadius: 4, padding: '6px 8px' }}
+                            />
+                          )}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <button className="nm-btn primary" style={{ fontSize: 11.5, padding: '6px 10px' }}
+                              onClick={handleSaveSummaryToJournal}
+                              disabled={savingToJournal || !threadSummary.summary_text || (journalTargetBookId === NEW_BOOK_OPTION && !newJournalBookName.trim())}
+                            >
+                              {savingToJournal ? 'Saving…' : 'Save entry'}
+                            </button>
+                            {journalSaveMessage && (
+                              <span className="nm-meta" style={{ fontSize: 10.5, color: journalSaveError ? 'var(--accent)' : 'var(--teal)' }}>
+                                {journalSaveMessage}
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="nm-hr dotted" />
+            </>
+          )}
+
+          <div className="nm-meta" style={{ lineHeight: 1.5, color: 'var(--ink-4)' }}>
+            Nextmate doesn’t provide clinical advice. Safety screens run on every message.
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

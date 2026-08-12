@@ -1,100 +1,253 @@
-/* Nextmate — Core Design Tokens & CSS Reset */
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=Baloo+2:wght@400;500;600;700;800&family=Quicksand:wght@400;500;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300..700;1,8..60,300..700&family=JetBrains+Mono:wght@400;500&display=swap");
 
-:root {
-  /* Obsidian Dark — richer, more diverse warm tones */
-  --paper:    #1a0f07;
-  --paper-2:  #2a1a0d;
-  --paper-3:  #3d2a18;
-  --surface:  #1e1208;
-  --surface-2: #2c1c10;
-  --surface-3: #3a2619;
-
-  --ink:   #f7f0e8;
-  --ink-2: #d4b896;
-  --ink-3: #8c6e52;
-  --ink-4: #6c5040;
-
-  --rule:      rgba(247, 240, 232, 0.08);
-  --rule-soft: rgba(247, 240, 232, 0.04);
-
-  --accent:      #d97c4a;
-  --accent-2:    #bc5e2e;
-  --accent-soft: rgba(217, 124, 74, 0.2);
-  --accent-wash: rgba(217, 124, 74, 0.06);
-
-  --teal:      #2db896;
-  --teal-soft: rgba(45, 184, 150, 0.15);
-  --sage:      #7aad6e;
-  --sage-soft: rgba(122, 173, 110, 0.15);
-
-  --clay: #c97c3a;
-  --gold: #d4a843;
-  --plum: #b87ac4;
-
-  --loop-strong: #d97c4a;
-  --loop-medium: #c97c3a;
-  --loop-light:  #4a3224;
-
-
-  --font-serif: "Plus Jakarta Sans", "Inter", sans-serif;
-  --font-sans: "Inter", -apple-system, sans-serif;
-  --font-display: "Plus Jakarta Sans", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
-
-  --radius: 8px;
-  --radius-lg: 16px;
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
-}
-
-
+/* ══════════════════════════════════════════════════════════════════
+   Theme 1 — "Canvas" (light): a page torn from a dusty-blue scrapbook — fine
+   notebook-grid paper, a woven gingham swatch under the nav, cloud
+   washes and star stickers in the corners. Editorial serif display,
+   airy geometric sans, vibrant but classy blue accent duo.
+   ══════════════════════════════════════════════════════════════════ */
+:root,
 [data-theme="light"] {
-  --paper:    #fdf6ee;
-  --paper-2:  #f5ece0;
-  --paper-3:  #ede0d0;
-  --surface:  #ffffff;
-  --surface-2: #fdf6ee;
-  --surface-3: #f5ece0;
+  --paper:     #eef4fc;
+  --paper-2:   #e3edfa;
+  --paper-3:   #d2e3f6;
+  --surface:   #ffffff;
+  --surface-2: #f4f9fe;
+  --surface-3: #e9f2fc;
 
-  --ink:   #2d1a0a;
-  --ink-2: #7a4c28;
-  --ink-3: #b87c4e;
-  --ink-4: #886a4d;
+  --ink:   #17233a;
+  --ink-2: #3d5170;
+  --ink-3: #6c7f9e;
+  --ink-4: #9fb0c8;
 
-  --rule:      rgba(45, 26, 10, 0.08);
-  --rule-soft: rgba(45, 26, 10, 0.04);
+  --rule:      #d6dce4;
+  --rule-soft: #e7eaef;
 
-  --accent:      #c45e2a;
-  --accent-2:    #a34420;
-  --accent-soft: rgba(196, 94, 42, 0.15);
-  --accent-wash: rgba(196, 94, 42, 0.04);
+  --accent:      #5c7a9e;
+  --accent-2:    #38bdf8;
+  --accent-soft: #dce4ec;
+  --accent-wash: #eef1f5;
 
-  --teal:      #1a9e7c;
-  --teal-soft: rgba(26, 158, 124, 0.12);
-  --sage:      #5c9450;
-  --sage-soft: rgba(92, 148, 80, 0.12);
+  --teal:      #14b8a6;
+  --teal-soft: #d7f5f0;
+  --sage:      #5c7a9e;
+  --sage-soft: #dce4ec;
 
-  --clay: #b86e2a;
-  --gold: #c49230;
-  --plum: #9c5eb8;
+  --clay: #60a5fa;
+  --gold: #f5b942;
+  --plum: #1e3a8a;
 
-  --loop-strong: #c45e2a;
-  --loop-medium: #b86e2a;
-  --loop-light:  #d9b99a;
+  --loop-strong: #5c7a9e;
+  --loop-medium: #8fa3bd;
+  --loop-light:  #dce4ec;
 
-  --shadow-sm: 0 1px 2px rgba(45, 26, 10, 0.06);
-  --shadow:    0 8px 32px rgba(45, 26, 10, 0.08), 0 0 0 1px rgba(45, 26, 10, 0.04);
+  --indigo:      #5c7a9e;
+  --indigo-soft: #eef1f5;
+
+  /* chat bubbles: deep scrapbook-blue bar for Nextmate, a solid light-grey
+     blob for the user -- keeps the loud picnic cherry out of this theme's
+     dusty-blue register */
+  --chat-bot-bg: #1e3a8a;
+  --chat-bot-fg: #ffffff;
+  --chat-user-bg: color-mix(in srgb, var(--ink-3) 55%, var(--paper));
+  --chat-user-fg: var(--ink);
+
+  --font-display: "Fraunces", "Source Serif 4", serif;
+  --font-sans:    "Plus Jakarta Sans", "Inter", -apple-system, sans-serif;
+  --font-serif:   "Source Serif 4", Georgia, serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+
+  --heading-tracking: -0.018em;
+  --heading-style: italic;
+  --display-scale: 1;
+
+  --radius:    7px;
+  --radius-lg: 18px;
+
+  --shadow-sm: 0 1px 2px rgba(23, 35, 58, 0.05);
+  --shadow:    0 1px 3px rgba(47, 111, 237, 0.07), 0 14px 32px -18px rgba(47, 111, 237, 0.22);
+
+  /* atmosphere: soft ambient wallpaper blobs (auth screen + app shell) */
+  --atmo-1: rgba(56, 189, 248, 0.14);
+  --atmo-2: rgba(47, 111, 237, 0.10);
+
+  /* texture tokens consumed by pattern layers in styles.css */
+  --tex-line:   rgba(47, 111, 237, 0.09);
+  --tex-strong: rgba(47, 111, 237, 0.16);
+  --tex-cloud-1: rgba(219, 234, 254, 0.9);
+  --tex-cloud-2: rgba(224, 242, 254, 0.65);
+  /* dusty-blue gingham swatch — the torn-fabric-patch motif from the moodboard */
+  --tex-gingham: rgba(45, 87, 178, 0.11);
+  --tex-motif:   #3d5170;
+  /* fine paper-fiber grain, shared by every theme unless overridden below */
+  --tex-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-::selection {
-  background: var(--paper-2); 
-  color: var(--ink);
+/* ══════════════════════════════════════════════════════════════════
+   Theme 2 — "Midnight" (dark): a vintage writing desk at midnight. True-black
+   paper, ancient-beige ink and accents (no orange/caramel), a muted
+   plum undertone for character. Bold geometric display, minimal,
+   high contrast. Every accent is a solid shade — no two-tone blends.
+   ══════════════════════════════════════════════════════════════════ */
+[data-theme="dark"] {
+  --paper:     #0c0c0c;
+  --paper-2:   #131313;
+  --paper-3:   #1b1b1b;
+  --surface:   #101010;
+  --surface-2: #171717;
+  --surface-3: #1f1f1f;
+
+  --ink:   #ece4d4;
+  --ink-2: #d3c6ab;
+  --ink-3: #ab9c81;
+  --ink-4: #7d6f59;
+
+  --rule:      rgba(236, 228, 212, 0.10);
+  --rule-soft: rgba(236, 228, 212, 0.05);
+
+  --accent:      #c3aa7c;
+  --accent-2:    #9d8760;
+  --accent-soft: rgba(195, 170, 124, 0.22);
+  --accent-wash: rgba(195, 170, 124, 0.09);
+
+  --teal:      #7f9788;
+  --teal-soft: rgba(127, 151, 136, 0.18);
+  --sage:      #9c8f6a;
+  --sage-soft: rgba(156, 143, 106, 0.18);
+
+  --clay: #8a4b3a;
+  --gold: #bfa15f;
+  --plum: #4a2b3a;
+
+  --loop-strong: #c3aa7c;
+  --loop-medium: #9d8760;
+  --loop-light:  rgba(195, 170, 124, 0.16);
+
+  --indigo:      #55516e;
+  --indigo-soft: rgba(85, 81, 110, 0.14);
+
+  /* chat bubbles: a rich coffee-brown bar for Nextmate (no bright red on
+     this near-black desk), the theme's own ancient-beige accent for the
+     user, solid */
+  --chat-bot-bg: var(--clay);
+  --chat-bot-fg: var(--ink);
+  --chat-user-bg: var(--accent);
+  --chat-user-fg: var(--paper);
+
+  --font-display: "Space Grotesk", "Inter", sans-serif;
+  --font-sans:    "Space Grotesk", "Inter", -apple-system, sans-serif;
+  --font-serif:   "Source Serif 4", Georgia, serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+
+  --heading-tracking: -0.03em;
+  --heading-style: normal;
+  --display-scale: 0.94;
+
+  --radius:    2px;
+  --radius-lg: 10px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.6);
+  --shadow:    0 8px 30px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(236, 228, 212, 0.05);
+
+  /* atmosphere: single-hue beige glow, no blended hues */
+  --atmo-1: rgba(195, 170, 124, 0.10);
+  --atmo-2: rgba(0, 0, 0, 0.4);
+
+  --tex-line:   rgba(236, 228, 212, 0.06);
+  --tex-strong: rgba(195, 170, 124, 0.4);
+  --tex-cloud-1: rgba(195, 170, 124, 0.12);
+  --tex-cloud-2: rgba(0, 0, 0, 0.45);
+  --tex-ring: rgba(195, 170, 124, 0.5);
+  --tex-motif: #a89572;
+  /* pale grain reads on an espresso-dark surface where the light-noise version would vanish */
+  --tex-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Theme 3 — "Meadow" (playful): a picnic blanket. A true woven gingham check
+   in red, rick-rack ribbon trim, a strawberry-and-daisy sticker —
+   sun-yellow and cherry red, sky blue. Bouncy rounded display, warm
+   and loud but legible. Every accent is a solid shade — no two-tone
+   blends.
+   ══════════════════════════════════════════════════════════════════ */
+[data-theme="playful"] {
+  --paper:     #fffaf0;
+  --paper-2:   #fff3d9;
+  --paper-3:   #ffe8ba;
+  --surface:   #ffffff;
+  --surface-2: #fff8ec;
+  --surface-3: #ffefd2;
+
+  --ink:   #2b2013;
+  --ink-2: #5c4a2f;
+  --ink-3: #8a7658;
+  --ink-4: #bba989;
+
+  --rule:      #ffe0a3;
+  --rule-soft: #fff1d6;
+
+  --accent:      #b3032a;
+  --accent-2:    #2f86eb;
+  --accent-soft: #f6cdd5;
+  --accent-wash: #fbebee;
+
+  --teal:      #29c7c0;
+  --teal-soft: #d7f7f5;
+  --sage:      #5b9bd5;
+  --sage-soft: #dceaf7;
+
+  --clay: #ff6f59;
+  --gold: #ffcd3c;
+  --plum: #e2483f;
+
+  --loop-strong: #b3032a;
+  --loop-medium: #850222;
+  --loop-light:  #f6cdd5;
+
+  --indigo:      #2f86eb;
+  --indigo-soft: #e0edfc;
+
+  /* chat bubbles: this theme's native cherry, pulled a shade deeper so it
+     doesn't read as candy-bright; user gets a solid sun-gold blob, the
+     gingham's warm second color, instead of a muddy brown-ink tint */
+  --chat-bot-bg: var(--land-cherry-deep);
+  --chat-bot-fg: #ffffff;
+  --chat-user-bg: color-mix(in srgb, var(--gold) 45%, var(--paper));
+  --chat-user-fg: var(--ink);
+
+  --font-display: "Baloo 2", "Quicksand", sans-serif;
+  --font-sans:    "Quicksand", "Nunito", -apple-system, sans-serif;
+  --font-serif:   "Source Serif 4", Georgia, serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+
+  --heading-tracking: -0.005em;
+  --heading-style: normal;
+  --display-scale: 1.1;
+
+  --radius:    12px;
+  --radius-lg: 24px;
+
+  --shadow-sm: 0 1px 2px rgba(210, 4, 45, 0.08);
+  --shadow:    0 2px 4px rgba(210, 4, 45, 0.08), 0 18px 34px -16px rgba(210, 4, 45, 0.32);
+
+  /* atmosphere: single-hue sun glow + single-hue sky glow, not blended */
+  --atmo-1: rgba(255, 205, 60, 0.16);
+  --atmo-2: rgba(47, 134, 235, 0.10);
+
+  /* gingham blanket red — the picnic-check motif */
+  --tex-line:   rgba(226, 72, 63, 0.14);
+  --tex-strong: rgba(210, 4, 45, 0.35);
+  --tex-cloud-1: rgba(255, 205, 60, 0.32);
+  --tex-cloud-2: rgba(47, 134, 235, 0.2);
+  --tex-ring: rgba(226, 72, 63, 0.4);
+  --tex-gingham: rgba(214, 62, 53, 0.12);
+  --tex-motif: #e2483f;
+  --tex-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.055 0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 *, *::before, *::after {
   box-sizing: border-box;
-  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
 }
 
 html, body, #root {
@@ -102,31 +255,93 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: var(--paper);
+}
+
+.nm-trigger-bubble {
+  transform: translate(calc(-50% + var(--offset-x)), calc(-50% + var(--offset-y)));
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s;
+}
+
+.nm-trigger-bubble:hover {
+  transform: translate(calc(-50% + var(--offset-x)), calc(-50% + var(--offset-y) - 5px)) scale(1.15);
+  z-index: 99 !important;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.3) !important;
+}
+
+@keyframes nm-graph-in {
+  from { opacity: 0; transform: scale(0.4); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes nm-graph-dash {
+  to { stroke-dashoffset: -24; }
+}
+@keyframes nm-graph-drift {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(var(--fx, 3px), var(--fy, 3px)); }
+}
+@keyframes nm-graph-ripple {
+  0% { transform: scale(1); opacity: 0.5; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+.nm-graph-orbit {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: nm-graph-drift var(--fdur, 7s) ease-in-out infinite;
+}
+.nm-graph-node {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: nm-graph-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.nm-graph-dot {
+  transition: r 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), stroke-width 0.2s ease, filter 0.2s ease;
+}
+.nm-graph-node:hover .nm-graph-dot,
+.nm-graph-node.selected .nm-graph-dot {
+  filter: drop-shadow(0 0 8px currentColor);
+}
+.nm-graph-halo {
+  pointer-events: none;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 0.2s ease, r 0.2s ease;
+}
+.nm-graph-node:hover .nm-graph-halo,
+.nm-graph-node.selected .nm-graph-halo {
+  opacity: 0.5;
+  animation: nm-graph-ripple 1s ease-out infinite;
+}
+.nm-graph-edge-loop {
+  stroke-dasharray: 6 6;
+  animation: nm-graph-dash 1.1s linear infinite;
+}
+.nm-graph-canvas {
+  cursor: grab;
+}
+.nm-graph-canvas:active {
+  cursor: grabbing;
+}
+.nm-graph-zoom-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid var(--rule);
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.nm-graph-zoom-btn:hover {
+  background: var(--surface-0);
   color: var(--ink);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-button, input, textarea, select {
-  font-family: inherit;
-  font-size: inherit;
-  color: inherit;
-}
+button, input, textarea { font: inherit; color: inherit; }
 
-/* Scrollbar customization */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--rule);
-  border-radius: 99px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--ink-4);
-}
+.w-auto { width: auto !important; }

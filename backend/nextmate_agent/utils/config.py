@@ -25,21 +25,20 @@ class Settings:
     digest_token_target: int
     detect_loops_cross_thread_prompt_limit: int
     detect_loops_max_prompt_tokens: int
+    detect_loops_confidence_threshold: float
+    detect_loops_min_cross_thread_count: int
     idle_thread_summary_minutes: int
     max_stale_threads_per_turn: int
 
 
 def get_settings() -> Settings:
-    api_key = os.getenv("MISTRAL_API_KEY")
+    api_key = os.getenv("GOOGLE_API_KEY")
 
     return Settings(
         llm_api_key=api_key,
         generation_model=os.getenv("GENERATION_MODEL"),
-        # Cheap/fast model for classification, routing, extraction, and summarization
-        # nodes. Kept separate from generation_model so these calls draw from Groq's
-        # independent per-model rate-limit bucket instead of competing with
-        # generate_reply for the same TPM budget.
-        fast_model=os.getenv("FAST_MODEL", "llama-3.1-8b-instant"),
+
+        fast_model=os.getenv("FAST_MODEL"),
         app_referer=os.getenv("APP_REFERER", "http://localhost:8000"),
         app_title=os.getenv("APP_TITLE", "nexmate"),
         summary_store_path=os.getenv("SUMMARY_STORE_PATH", "data/memory/summaries.jsonl"),
@@ -72,7 +71,9 @@ def get_settings() -> Settings:
         # current-thread + user_input). Sized so, combined with
         # detect_explicit_advice + choose_response_mode + summarize_turn in the
         # same turn, total stays under Instant's 6,000 TPM free-tier cap.
-        detect_loops_max_prompt_tokens=int(os.getenv("DETECT_LOOPS_MAX_PROMPT_TOKENS", "2200")),
+        detect_loops_max_prompt_tokens=int(os.getenv("DETECT_LOOPS_MAX_PROMPT_TOKENS")),
+        detect_loops_confidence_threshold=float(os.getenv("DETECT_LOOPS_CONFIDENCE_THRESHOLD")),
+        detect_loops_min_cross_thread_count=int(os.getenv("DETECT_LOOPS_MIN_CROSS_THREAD_COUNT")),
         # IDLE-SWEEP settings: how long a thread must be quiet before it's
         # eligible for opportunistic summarization (runs on every turn for
         # OTHER threads, never the active one -- see manage_cross_thread_memory_node).

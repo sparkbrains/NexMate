@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { chatSocketUrl } from '../lib/api';
+import { chatSocketUrl, clearSession, createWsTicket } from '../lib/api';
 
-export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
+const RECONNECT_BASE_DELAY_MS = 1000;
+const RECONNECT_MAX_DELAY_MS = 30000;
+
+export function useChatSocket(threadId, { onDone, onChunk, context, onAuthExpired } = {}) {
   const [messages, setMessages] = useState([]);
   const [streaming, setStreaming] = useState(false);
   const [status, setStatus] = useState('idle');
@@ -11,6 +14,7 @@ export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
   const streamingIdxRef = useRef(null);
   const onDoneRef = useRef(onDone);
   const onChunkRef = useRef(onChunk);
+  const onAuthExpiredRef = useRef(onAuthExpired);
 
   useEffect(() => {
     onDoneRef.current = onDone;
@@ -19,6 +23,10 @@ export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
   useEffect(() => {
     onChunkRef.current = onChunk;
   }, [onChunk]);
+
+  useEffect(() => {
+    onAuthExpiredRef.current = onAuthExpired;
+  }, [onAuthExpired]);
 
   useEffect(() => {
     if (!threadId) return;
@@ -39,72 +47,141 @@ export function useChatSocket(threadId, { onDone, onChunk, context } = {}) {
       return () => { };
     }
 
-    const ws = new WebSocket(chatSocketUrl(threadId));
-    wsRef.current = ws;
+    let cancelled = false;
+    let reconnectAttempt = 0;
+    let reconnectTimer = null;
 
-    ws.onopen = () => {
-      setStatus('open');
+    const scheduleReconnect = () => {
+      if (cancelled) return;
+      setStatus('reconnecting');
+      const backoff = Math.min(RECONNECT_BASE_DELAY_MS * 2 ** reconnectAttempt, RECONNECT_MAX_DELAY_MS);
+      const jitter = backoff * 0.2 * Math.random();
+      reconnectAttempt += 1;
+      reconnectTimer = setTimeout(() => {
+        if (!cancelled) connect();
+      }, backoff + jitter);
     };
 
-    ws.onclose = () => {
-      setStatus('closed');
-      setStreaming(false);
-    };
-
-    ws.onerror = () => {
-      setError('Connection error');
-    };
-
-    ws.onmessage = (ev) => {
-      let data;
+    const connect = async () => {
+      let ticket;
       try {
-        data = JSON.parse(ev.data);
-      } catch {
+        const data = await createWsTicket();
+        ticket = data.ticket;
+      } catch (err) {
+        if (cancelled) return;
+        if (err?.status === 401) {
+          setError('Your session expired. Please log in again.');
+          clearSession();
+          if (onAuthExpiredRef.current) onAuthExpiredRef.current();
+          setStatus('closed');
+          return;
+        }
+        // Couldn't reach the server to mint a ticket -- treat it the same
+        // as a dropped connection and retry with backoff.
+        scheduleReconnect();
         return;
       }
+      if (cancelled) return;
 
-      if (data.event === 'start') {
-        setStreaming(true);
-        setMessages((m) => [...m, { from: 'nex', text: '' }]);
-      } else if (data.event === 'error') {
-        setError(data.message);
-      } else if (data.event === 'chunk') {
-        setMessages((m) => {
-          if (m.length === 0) return m;
-          const next = m.slice();
-          const i = next.length - 1;
-          if (next[i].from === 'nex') {
-            next[i] = { ...next[i], text: (next[i].text || '') + (data.delta || '') };
-          }
-          return next;
-        });
-        if (onChunkRef.current) onChunkRef.current(data.delta);
-      } else if (data.event === 'done') {
+      const ws = new WebSocket(chatSocketUrl(threadId, ticket));
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (cancelled) return;
+        reconnectAttempt = 0;
+        setStatus('open');
+      };
+
+      ws.onclose = (event) => {
+        wsRef.current = null;
+        if (cancelled) return;
+        // 4401 is the backend's dedicated close code for an auth rejection
+        // (see apps/api/routers/ws.py) -- distinct from a normal close, a
+        // network drop, or the server restarting. Without checking this,
+        // an expired/invalidated session and an ordinary disconnect look
+        // identical to the user: chat just silently stops responding.
+        if (event.code === 4401) {
+          setError('Your session expired. Please log in again.');
+          clearSession();
+          if (onAuthExpiredRef.current) onAuthExpiredRef.current();
+          setStatus('closed');
+          setStreaming(false);
+          return;
+        }
+        // 4408 is the backend's dedicated close code for an idle timeout
+        // (see WS_IDLE_TIMEOUT_SECONDS in apps/api/routers/ws.py) -- the
+        // server deliberately dropped a socket that's had no messages in a
+        // while, rather than a crash or network drop. Auto-reconnecting
+        // would just immediately reopen the same still-idle connection, so
+        // this waits for the user to actually come back and refresh
+        // instead of retrying in the background.
+        if (event.code === 4408) {
+          setStatus('timed-out');
+          setStreaming(false);
+          return;
+        }
         setStreaming(false);
-        setMessages((m) => {
-          if (m.length === 0) return m;
-          const next = m.slice();
-          const i = next.length - 1;
-          if (next[i].from === 'nex') {
-            next[i] = {
-              ...next[i],
-              text: data.content ?? next[i].text,
-              meta: data.summary?.note,
-            };
-          }
-          return next;
-        });
-        if (onDoneRef.current) onDoneRef.current(data);
-      } else if (data.event === 'error') {
-        setStreaming(false);
-        setError(data.detail || 'Chat error');
-      }
+        scheduleReconnect();
+      };
+
+      ws.onerror = () => {
+        setError('Connection error');
+      };
+
+      ws.onmessage = (ev) => {
+        let data;
+        try {
+          data = JSON.parse(ev.data);
+        } catch {
+          return;
+        }
+
+        if (data.event === 'start') {
+          setStreaming(true);
+          setMessages((m) => [...m, { from: 'nex', text: '' }]);
+        } else if (data.event === 'error') {
+          setStreaming(false);
+          setError(data.message || data.detail || 'Chat error');
+        } else if (data.event === 'chunk') {
+          setMessages((m) => {
+            if (m.length === 0) return m;
+            const next = m.slice();
+            const i = next.length - 1;
+            if (next[i].from === 'nex') {
+              next[i] = { ...next[i], text: (next[i].text || '') + (data.delta || '') };
+            }
+            return next;
+          });
+          if (onChunkRef.current) onChunkRef.current(data.delta);
+        } else if (data.event === 'done') {
+          setStreaming(false);
+          setMessages((m) => {
+            if (m.length === 0) return m;
+            const next = m.slice();
+            const i = next.length - 1;
+            if (next[i].from === 'nex') {
+              next[i] = {
+                ...next[i],
+                text: data.content ?? next[i].text,
+                meta: data.summary?.note,
+              };
+            }
+            return next;
+          });
+          if (onDoneRef.current) onDoneRef.current(data);
+        }
+      };
     };
 
+    connect();
+
     return () => {
+      cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      const ws = wsRef.current;
       if (
-        ws.readyState === WebSocket.OPEN ||
-        ws.readyState === WebSocket.CONNECTING
+        ws &&
+        (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)
       ) {
         ws.close();
       }

@@ -69,9 +69,36 @@ def init_postgres() -> None:
                 ALTER TABLE users
                 ADD COLUMN IF NOT EXISTS name TEXT NOT NULL DEFAULT '',
                 ADD COLUMN IF NOT EXISTS age INT,
-                ADD COLUMN IF NOT EXISTS subscription_tier TEXT NOT NULL DEFAULT 'paid'
+                ADD COLUMN IF NOT EXISTS dob DATE,
+                ADD COLUMN IF NOT EXISTS subscription_tier TEXT NOT NULL DEFAULT 'paid',
+                ADD COLUMN IF NOT EXISTS reminder_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                ADD COLUMN IF NOT EXISTS reminder_time TEXT NOT NULL DEFAULT '20:00'
                 """
             )
+            # onboarding_completed_at gates whether the first-run onboarding
+            # flow shows for a user. Check for the column before adding it so
+            # the backfill below only ever runs the one time it's introduced
+            # in a given environment — not on every boot — otherwise it would
+            # wipe out onboarding_completed_at=NULL for users who are mid-flow
+            # whenever the server restarts.
+            cur.execute(
+                """
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'onboarding_completed_at'
+                """
+            )
+            onboarding_column_existed = cur.fetchone() is not None
+            cur.execute(
+                """
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS has_journaled_before BOOLEAN,
+                ADD COLUMN IF NOT EXISTS onboarding_completed_at TIMESTAMPTZ
+                """
+            )
+            if not onboarding_column_existed:
+                cur.execute(
+                    "UPDATE users SET onboarding_completed_at = created_at WHERE onboarding_completed_at IS NULL"
+                )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -158,6 +185,25 @@ def init_postgres() -> None:
                 ADD COLUMN IF NOT EXISTS core_theme TEXT NOT NULL DEFAULT '',
                 ADD COLUMN IF NOT EXISTS core_beliefs JSONB NOT NULL DEFAULT '[]'::jsonb,
                 ADD COLUMN IF NOT EXISTS triggers JSONB NOT NULL DEFAULT '[]'::jsonb
+                """
+            )
+            # source_thread_id ties a journal entry back to the chat thread it was
+            # generated from (via /api/journal/from-thread-summary). It stays NULL
+            # for manually-created entries. The partial unique index below is what
+            # lets upsert_journal_entry_for_thread() do a true ON CONFLICT upsert,
+            # so re-saving a summary for the same thread updates that one row
+            # instead of creating a duplicate entry.
+            cur.execute(
+                """
+                ALTER TABLE journal_logs
+                ADD COLUMN IF NOT EXISTS source_thread_id TEXT
+                """
+            )
+            cur.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_logs_thread_dedupe
+                ON journal_logs(user_id, source_thread_id)
+                WHERE source_thread_id IS NOT NULL
                 """
             )
             cur.execute(
@@ -295,7 +341,44 @@ def init_postgres() -> None:
     )
     """
 )
-            
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS prompt_pack_answers (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    prompt_id TEXT NOT NULL,
+                    prompt_text TEXT NOT NULL,
+                    category TEXT NOT NULL DEFAULT '',
+                    answer_text TEXT NOT NULL,
+                    answered_date DATE NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL,
+                    UNIQUE (user_id, answered_date)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_prompt_pack_answers_user ON prompt_pack_answers(user_id, answered_date DESC)"
+            )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_profile_summary (
+                    user_id BIGINT PRIMARY KEY,
+                    summary_text TEXT NOT NULL,
+                    source_answer_count INT NOT NULL DEFAULT 0,
+                    generated_date DATE NOT NULL,
+                    covers_through_date DATE,
+                    created_at TIMESTAMPTZ NOT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                """
+                ALTER TABLE user_profile_summary
+                ADD COLUMN IF NOT EXISTS covers_through_date DATE
+                """
+            )
             # Create index on loop_id after ensuring column exists
             try:
                 cur.execute(
@@ -317,3 +400,58 @@ def init_postgres() -> None:
                 )
             except Exception:
                 pass  # Ignore if column doesn't exist yet
+
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_threads_user_updated ON threads(user_id, updated_at DESC)")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_loops_user_last_detected ON loops(user_id, last_detected_at DESC)")
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS support_chat_logs (
+                    id BIGSERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    user_id BIGINT,
+                    query TEXT NOT NULL,
+                    answer TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_support_chat_logs_session ON support_chat_logs(session_id, created_at)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_support_chat_logs_created ON support_chat_logs(created_at DESC)"
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_support_chat_logs_user ON support_chat_logs(user_id) WHERE user_id IS NOT NULL"
+            )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS ws_tickets (
+                    ticket TEXT PRIMARY KEY,
+                    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    session_token TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL,
+                    expires_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_ws_tickets_expires_at ON ws_tickets(expires_at)"
+            )
+
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_badges (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    badge_key TEXT NOT NULL,
+                    unlocked_at TIMESTAMPTZ NOT NULL,
+                    UNIQUE (user_id, badge_key)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_user_badges_user ON user_badges(user_id)"
+            )

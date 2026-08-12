@@ -11,4 +11,8 @@ line_profiler
 requests
 faster-whisper
 tiktoken
-mistralai
+google-genai==2.13.0
+groq
+python-docx
+openpyxl
+networkx

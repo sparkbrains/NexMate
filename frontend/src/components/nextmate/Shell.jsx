@@ -1,5 +1,8 @@
 import { useContext, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import { AppContext } from '../../context';
+import LogoIco from '../../assets/ic_logo.svg';
 
 export const Icon = ({ name, size = 14, style }) => {
   const P = {
@@ -26,8 +29,12 @@ export const Icon = ({ name, size = 14, style }) => {
     'chevron-right': <><path d="M6 12l4-4-4-4" /></>,
     menu: <><path d="M2 4h12M2 8h12M2 12h12" /></>,
     sun: <><circle cx="8" cy="8" r="3" /><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4" /></>,
-    moon: <><path d="M12 9A5 5 0 115 2a7 7 0 007 7z" /></>,
+    moon: <><path d="M13 9.5A5.5 5.5 0 016.5 3a5.5 5.5 0 100 11A5.5 5.5 0 0013 9.5z" /></>,
+    logout: <><rect x="2" y="4" width="9" height="10" rx="1" /><path d="M10 10l4-2-4-2M7 8h7" /></>,
     user: <><circle cx="8" cy="5.5" r="2.5" /><path d="M2.8 14a5.2 5.2 0 0110.4 0" /></>,
+    lock: <><rect x="3.5" y="7" width="9" height="7" rx="1.2" /><path d="M5.5 7V4.8a2.5 2.5 0 015 0V7" /></>,
+    bell: <><path d="M8 2.2a3 3 0 00-3 3v1.9c0 1-.35 1.96-1 2.7L3 11h10l-1-1.2c-.65-.74-1-1.7-1-2.7V5.2a3 3 0 00-3-3z" /><path d="M6.3 13a1.8 1.8 0 003.4 0" /></>,
+    trophy: <><path d="M4 3h8v3.5a4 4 0 01-8 0V3z" /><path d="M4 4H2.2A1.2 1.2 0 001 5.2v.6A2.7 2.7 0 003.7 8.5M12 4h1.8A1.2 1.2 0 0115 5.2v.6a2.7 2.7 0 01-2.7 2.7" /><path d="M8 10.5V13M5.5 13.5h5" /></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={style}>
@@ -48,7 +55,7 @@ export const BrandMark = () => (
 // deletion, journal entry deletion, etc). Renders nothing when closed.
 export const ConfirmDialog = ({ open, title, body, confirmLabel = 'Delete', cancelLabel = 'Cancel', onConfirm, onCancel }) => {
   if (!open) return null;
-  return (
+  return createPortal(
     <div
       onClick={onCancel}
       style={{
@@ -80,16 +87,29 @@ export const ConfirmDialog = ({ open, title, body, confirmLabel = 'Delete', canc
           <button className="nm-btn accent" onClick={onConfirm}>{confirmLabel}</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
-const NavItem = ({ icon, label, k, active, onNav, count }) => (
-  <button className={"nm-nav-item" + (active === k ? " active" : "")} onClick={() => onNav && onNav(k)}>
-    <span className="nm-nav-ic"><Icon name={icon} /></span>
+const NAV_PATH = {
+  today: '/today',
+  journal: '/journal',
+  'prompt-packs': '/prompt-packs',
+  loops: '/loops',
+  insights: '/insights',
+  profile: '/profile',
+};
+
+const NavItem = ({ icon, label, k, active, onNav, count, pending, dataTour }) => (
+  <Link to={NAV_PATH[k] || '/today'} className={"nm-nav-item" + (active === k ? " active" : "")} onClick={() => onNav && onNav(k)} data-tour={dataTour}>
+    <span className="nm-nav-ic" style={{ position: 'relative' }}>
+      <Icon name={icon} />
+      {pending && <span className="nm-nav-bubble" />}
+    </span>
     <span>{label}</span>
     {count && <span className="nm-nav-count">{count}</span>}
-  </button>
+  </Link>
 );
 
 const fmtWhen = (iso) => {
@@ -102,173 +122,176 @@ const fmtWhen = (iso) => {
   return `${Math.floor(days / 7)}w`;
 };
 
-export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onDeleteThread, onNewThread, user, onLogout }) => {
+export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectThread, onNewThread, onDeleteThread, user, onLogout, tourNudgeTarget, tourHypeReflection }) => {
+  const isPending = (k) => tourNudgeTarget === k;
   const { sidebarOpen, setSidebarOpen } = useContext(AppContext);
-  const [threadTab, setThreadTab] = useState('regular'); // 'regular' | 'reflecting' | 'daily'
+  const [collapsed, setCollapsed] = useState(false);
+  const [openSections, setOpenSections] = useState({ regular: true, reflecting: false, daily: false });
   const [pendingDeleteThread, setPendingDeleteThread] = useState(null);
 
-  // A thread counts as "reflecting" if it has a loop_id, or — as a
-  // fallback for cases where loop_id doesn't come back from the API —
-  // if its title carries the "Reflecting on: ..." prefix used for
-  // loop-reflection threads.
   const isReflecting = (t) => Boolean(t.loop_id) || /^Reflecting on:/i.test(t.title || '');
-  // A thread counts as an answered "Daily Question" thread if it's tagged
-  // with a daily_question_id from the threads table. The title-prefix
-  // fallback only matters for threads created before this column existed
-  // (or before they'd accumulated 4+ messages) — new threads are tagged
-  // reliably via daily_question_id itself.
   const isDailyQuestion = (t) => Boolean(t.daily_question_id) || /^Daily Question:/i.test(t.title || '');
 
   const dailyThreads = threads.filter(isDailyQuestion);
   const reflectingThreads = threads.filter(t => !isDailyQuestion(t) && isReflecting(t));
   const regularThreads = threads.filter(t => !isDailyQuestion(t) && !isReflecting(t));
 
-  const activeThreads =
-    threadTab === 'reflecting' ? reflectingThreads :
-    threadTab === 'daily' ? dailyThreads :
-    regularThreads;
+  const toggleSection = (key) => setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
+
+  const renderThreadList = (items, tab) => (
+    <div className="nm-threads">
+      {items.length === 0 && (
+        <div style={{ padding: '6px 12px 10px', fontSize: 11.5, color: 'var(--ink-4)', fontWeight: 400, fontFamily: 'var(--font-sans)' }}>
+          {tab === 'reflecting' ? 'No reflections yet.' : tab === 'daily' ? 'No answered daily questions yet.' : 'No threads yet.'}
+        </div>
+      )}
+      {items.map(t => {
+        const isActive = t.thread_id === activeThreadId && active === 'chat';
+        return (
+          <div
+            key={t.thread_id}
+            className={"nm-thread" + (isActive ? " active" : "")}
+            style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+          >
+            <div
+              style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+              onClick={() => { onSelectThread && onSelectThread(t.thread_id); setSidebarOpen(false); }}
+            >
+              <div className="nm-thread-title">
+                {tab === 'reflecting' ? (t.title || 'Untitled').replace(/^Reflecting on:\s*/, '') : (t.title || 'Untitled')}
+              </div>
+              <div className="nm-thread-meta">{fmtWhen(t.updated_at)}</div>
+            </div>
+            {onDeleteThread && (
+              <button
+                className="nm-btn ghost"
+                style={{ padding: 3, flexShrink: 0, opacity: 0.5 }}
+                title="Delete thread"
+                onClick={(e) => { e.stopPropagation(); setPendingDeleteThread(t); }}
+              >
+                <Icon name="trash" size={11} />
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const SectionHeader = ({ label, sectionKey, count }) => (
+    <button
+      onClick={() => toggleSection(sectionKey)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6, width: '100%',
+        background: 'none', border: 'none', cursor: 'pointer',
+        padding: '6px 4px', color: 'var(--accent-2)',
+        fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 600,
+        letterSpacing: '0.06em', textTransform: 'uppercase',
+      }}
+    >
+      <span style={{
+        display: 'inline-block',
+        transition: 'transform 0.2s',
+        transform: openSections[sectionKey] ? 'rotate(90deg)' : 'rotate(0deg)',
+        fontSize: 10,
+      }}>▶</span>
+      {label}
+      {count > 0 && <span className="nm-nav-count" style={{ marginLeft: 'auto', color: 'var(--accent-2)' }}>{count}</span>}
+    </button>
+  );
 
   return (
     <>
-      {/* Mobile backdrop shadow when menu drawer is active */}
       {sidebarOpen && (
-        <div 
-          onClick={() => setSidebarOpen(false)} 
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 45 }} 
-        />
+        <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 45 }} />
       )}
-      
-      <aside className={"nm-side" + (sidebarOpen ? " open" : "")}>
-        <div className="nm-brand">
-          <div className="nm-brand-mark"><BrandMark /></div>
-          <div className="nm-brand-name">next<em>mate</em></div>
-          {/* Close button inside sidebar on mobile */}
-          <button 
-            className="nm-btn ghost nm-menu-btn" 
-            style={{ marginLeft: 'auto', padding: 4 }} 
-            onClick={() => setSidebarOpen(false)}
-          >
-            <Icon name="close" size={16} />
+
+      <aside className={"nm-side" + (sidebarOpen ? " open" : "") + (collapsed ? " collapsed" : "")}>
+        <div className="nm-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: collapsed ? 8 : 20 }}>
+          {!collapsed && <img src={LogoIco} alt="Nextmate" height={30} className="nm-logo" />}
+          <button className="nm-btn ghost" style={{ padding: 4, marginLeft: collapsed ? 'auto' : 0, marginRight: collapsed ? 'auto' : 0 }} onClick={() => setCollapsed(c => !c)} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
+            <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={16} />
           </button>
         </div>
 
-        <button className="nm-btn accent" onClick={onNewThread} style={{ justifyContent: 'center', padding: '10px 12px', fontSize: 13, marginBottom: 8 }}>
-          <Icon name="plus" size={12} /> Begin a reflection
+        {!collapsed && (
+          <>
+        <button
+          className={"nm-btn accent" + (tourHypeReflection ? ' nm-tour-hype' : '')}
+          data-tour="nav-begin-reflection"
+          style={{ width: 'calc(100% - 32px)', margin: '0 16px 16px 16px', justifyContent: 'center' }}
+          onClick={() => { onNewThread && onNewThread(); setSidebarOpen(false); }}
+        >
+          <Icon name="plus" size={12} /> Let's Talk
         </button>
 
         <div className="nm-nav-section">Workspace</div>
-        <NavItem icon="home" label="Today" k="today" active={active} onNav={onNav} />
-        <NavItem icon="book" label="Journal" k="journal" active={active} onNav={onNav} />
-        <NavItem icon="loops" label="Loops" k="loops" active={active} onNav={onNav} />
-        <NavItem icon="insights" label="Insights" k="insights" active={active} onNav={onNav} />
+        <NavItem icon="home" label="Home" k="today" active={active} onNav={onNav} pending={isPending('today')} />
+        <NavItem icon="book" label="Journal" k="journal" active={active} onNav={onNav} pending={isPending('journal')} dataTour="nav-journal" />
+        <NavItem icon="sparkle" label="Discover Yourself" k="prompt-packs" active={active} onNav={onNav} pending={isPending('prompt-packs')} />
+        <NavItem icon="loops" label="Loops" k="loops" active={active} onNav={onNav} pending={isPending('loops')} dataTour="nav-loops" />
+        <NavItem icon="insights" label="Insights" k="insights" active={active} onNav={onNav} pending={isPending('insights')} dataTour="nav-insights" />
 
+        <div className="nm-nav-section" style={{ marginTop: 12 }}>Conversations</div>
 
-        <div className="nm-nav-section">Threads · {threads.length}</div>
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+          <SectionHeader label="Daily Conversation" sectionKey="regular" count={regularThreads.length} />
+          {openSections.regular && renderThreadList(regularThreads, 'regular')}
 
-        <div className="nm-thread-tabs">
-          <button
-            className={"nm-thread-tab" + (threadTab === 'regular' ? " active" : "")}
-            onClick={() => setThreadTab('regular')}
-          >
-            Threads
-            {regularThreads.length > 0 && <span className="nm-nav-count">{regularThreads.length}</span>}
-          </button>
-          <button
-            className={"nm-thread-tab" + (threadTab === 'reflecting' ? " active" : "")}
-            onClick={() => setThreadTab('reflecting')}
-          >
-            Reflecting on
-            {reflectingThreads.length > 0 && <span className="nm-nav-count">{reflectingThreads.length}</span>}
-          </button>
-          <button
-            className={"nm-thread-tab" + (threadTab === 'daily' ? " active" : "")}
-            onClick={() => setThreadTab('daily')}
-          >
-            Daily Questions
-            {dailyThreads.length > 0 && <span className="nm-nav-count">{dailyThreads.length}</span>}
-          </button>
+          <SectionHeader label="Reflection" sectionKey="reflecting" count={reflectingThreads.length} />
+          {openSections.reflecting && renderThreadList(reflectingThreads, 'reflecting')}
+
+          <SectionHeader label="Daily Questions" sectionKey="daily" count={dailyThreads.length} />
+          {openSections.daily && renderThreadList(dailyThreads, 'daily')}
         </div>
+          </>
+        )}
 
-        <div className="nm-threads">
-          {activeThreads.length === 0 && (
-            <div className="nm-meta" style={{ padding: '8px 12px' }}>
-              {threadTab === 'reflecting'
-                ? 'No reflections yet.'
-                : threadTab === 'daily'
-                ? 'No answered daily questions yet.'
-                : 'No threads yet.'}
-            </div>
-          )}
-          {activeThreads.map(t => {
-            const isActive = t.thread_id === activeThreadId && active === 'chat';
-            return (
-              <div
-                key={t.thread_id}
-                className={"nm-thread" + (isActive ? " active" : "")}
-                onClick={() => {
-                  onSelectThread && onSelectThread(t.thread_id);
-                  setSidebarOpen(false);
-                }}
-                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="nm-thread-title">
-                    {threadTab === 'reflecting'
-                      ? (t.title || 'Untitled').replace(/^Reflecting on:\s*/, '')
-                      : (t.title || 'Untitled')}
-                  </div>
-                  <div className="nm-thread-meta">{fmtWhen(t.updated_at)}</div>
-                </div>
-                {onDeleteThread && (
-                  <button
-                    className="nm-btn ghost"
-                    title="Delete thread"
-                    style={{ padding: 4, flexShrink: 0 }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPendingDeleteThread(t);
-                    }}
-                  >
-                    <Icon name="trash" size={11} />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        {collapsed && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 8 }}>
+            <button
+              className={"nm-btn ghost" + (tourHypeReflection ? ' nm-tour-hype' : '')}
+              data-tour="nav-begin-reflection"
+              style={{ padding: 6 }}
+              title="Let's Talk"
+              onClick={() => { onNewThread?.(); setSidebarOpen(false); }}
+            ><Icon name="plus" size={16} /></button>
+            <Link to="/today" className={"nm-btn ghost" + (active === 'today' ? ' active' : '')} style={{ padding: 6, position: 'relative' }} title="Home" onClick={() => onNav?.('today')}><Icon name="home" size={16} />{isPending('today') && <span className="nm-nav-bubble" />}</Link>
+            <Link to="/journal" className={"nm-btn ghost" + (active === 'journal' ? ' active' : '')} style={{ padding: 6, position: 'relative' }} title="Journal" onClick={() => onNav?.('journal')} data-tour="nav-journal"><Icon name="book" size={16} />{isPending('journal') && <span className="nm-nav-bubble" />}</Link>
+            <Link to="/prompt-packs" className={"nm-btn ghost" + (active === 'prompt-packs' ? ' active' : '')} style={{ padding: 6, position: 'relative' }} title="Discover Yourself" onClick={() => onNav?.('prompt-packs')}><Icon name="sparkle" size={16} />{isPending('prompt-packs') && <span className="nm-nav-bubble" />}</Link>
+            <Link to="/loops" className={"nm-btn ghost" + (active === 'loops' ? ' active' : '')} style={{ padding: 6, position: 'relative' }} title="Loops" onClick={() => onNav?.('loops')} data-tour="nav-loops"><Icon name="loops" size={16} />{isPending('loops') && <span className="nm-nav-bubble" />}</Link>
+            <Link to="/insights" className={"nm-btn ghost" + (active === 'insights' ? ' active' : '')} style={{ padding: 6, position: 'relative' }} title="Insights" onClick={() => onNav?.('insights')} data-tour="nav-insights"><Icon name="insights" size={16} />{isPending('insights') && <span className="nm-nav-bubble" />}</Link>
+          </div>
+        )}
 
-        <div
+        <Link
+          to="/profile"
           className={"nm-side-footer" + (active === 'profile' ? " active" : "")}
-          role="button"
-          tabIndex={0}
           onClick={() => {
             onNav && onNav('profile');
             setSidebarOpen(false);
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              onNav && onNav('profile');
-              setSidebarOpen(false);
-            }
-          }}
-          style={{ cursor: 'pointer' }}
+          style={{ cursor: 'pointer', flexShrink: 0 }}
           title="View profile"
         >
           <div className="nm-avatar">{(user?.name || user?.email || '?')[0].toUpperCase()}</div>
+          {!collapsed && (
+            <>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="nm-side-footer-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || user?.email || 'Signed out'}</div>
             <div className="nm-side-footer-sub" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name ? user?.email : 'signed in'}</div>
           </div>
-          {/* <button
+          <button
             className="nm-btn ghost"
-            onClick={(e) => { e.stopPropagation(); onLogout && onLogout(); }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onLogout && onLogout(); }}
             title="Sign out"
-            style={{ padding: 4 }}
+            style={{ padding: 4, flexShrink: 0 }}
           >
-            <Icon name="close" size={13} />
-          </button> */}
-        </div>
+            <Icon name="logout" size={14} />
+          </button>
+            </>
+          )}
+        </Link>
       </aside>
 
       <ConfirmDialog
@@ -291,15 +314,18 @@ export const Sidebar = ({ active, onNav, threads = [], activeThreadId, onSelectT
   );
 };
 
+const THEME_CYCLE = { light: 'dark', dark: 'playful', playful: 'light' };
+const THEME_ICON = { light: 'sun', dark: 'moon', playful: 'sparkle' };
+const THEME_NEXT_LABEL = { light: 'Switch to Midnight mode', dark: 'Switch to Meadow mode', playful: 'Switch to Canvas mode' };
+
 export const TopBar = ({ crumb, children }) => {
-  const { theme, setTheme, setSidebarOpen } = useContext(AppContext);
+  const { setSidebarOpen, theme, setTheme, setRewardsOpen, hasUnseenReward, rewardPoints } = useContext(AppContext);
 
   return (
     <div className="nm-topbar">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {/* Hamburger Menu Toggle Button (visible on mobile viewports) */}
-        <button 
-          className="nm-btn ghost nm-menu-btn" 
+        <button
+          className="nm-btn ghost nm-menu-btn"
           onClick={() => setSidebarOpen(true)}
           title="Open Menu"
           style={{ padding: 6 }}
@@ -308,17 +334,28 @@ export const TopBar = ({ crumb, children }) => {
         </button>
         <div className="nm-crumb">{crumb}</div>
       </div>
-      
+
       <div className="nm-top-actions">
         {children}
-        {/* Global Dark/Light Theme Toggle Button */}
-        <button 
-          className="nm-btn ghost" 
-          onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
-          style={{ padding: 8, borderRadius: '50%', width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        <button
+          className="nm-btn ghost"
+          onClick={() => setRewardsOpen(true)}
+          title="Milestones"
+          style={{ padding: 6, color: 'var(--ink)', display: 'inline-flex', alignItems: 'center', gap: 6 }}
         >
-          <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={14} />
+          <span className="nm-reward-points">{rewardPoints}</span>
+          <span style={{ position: 'relative', display: 'inline-flex' }}>
+            <Icon name="trophy" size={16} />
+            {hasUnseenReward && <span className="nm-nav-bubble" />}
+          </span>
+        </button>
+        <button
+          className="nm-btn ghost"
+          onClick={() => setTheme(THEME_CYCLE[theme] || 'light')}
+          title={THEME_NEXT_LABEL[theme] || 'Switch to dark mode'}
+          style={{ padding: 6, color: 'var(--ink)' }}
+        >
+          <Icon name={THEME_ICON[theme] || 'sun'} size={16} />
         </button>
       </div>
     </div>
@@ -342,6 +379,29 @@ export const LoopRing = ({ strength = 0.5, size = 72, showLabel = true, resolved
           <div className="nm-meta" style={{ fontSize: 8 }}>loop</div>
         </div>
       )}
+    </div>
+  );
+};
+
+export const EmptyDataOverlay = ({ active, title = "We need more data to draw this chart.", message = "Keep exploring and reflecting to uncover your patterns.", actionLabel = "Begin Reflection", onAction, children }) => {
+  if (!active) return children;
+  
+  return (
+    <div className="nm-empty-overlay-wrapper">
+      <div className="nm-empty-overlay-content">
+        {children}
+      </div>
+      <div className="nm-empty-overlay-msg">
+        <h3 className="nm-h3">{title}</h3>
+        <p>{message}</p>
+        {onAction ? (
+          <button className="nm-btn accent" style={{ marginTop: 8 }} onClick={onAction}>{actionLabel}</button>
+        ) : (
+          <button className="nm-btn accent" style={{ marginTop: 8 }} onClick={() => {
+            window.location.hash = '#/';
+          }}>{actionLabel}</button>
+        )}
+      </div>
     </div>
   );
 };

@@ -1,6 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Icon, TopBar, LoopRing } from './Shell';
-import { getDashboardInsights } from '../../lib/api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Icon, TopBar, LoopRing, EmptyDataOverlay } from './Shell';
+import { getDashboardInsights, getKnowledgeGraph } from '../../lib/api';
+import {
+  SAMPLE_TREND,
+  SAMPLE_MOOD_BREAKDOWN,
+  SAMPLE_INTENSITY_DISTRIBUTION,
+  SAMPLE_TRIGGER_HEATMAP,
+  SAMPLE_KNOWLEDGE_GRAPH,
+} from '../../lib/tourSampleData';
+
+const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
+import {
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  ComposedChart, Bar, BarChart, Line, LineChart, Legend
+} from 'recharts';
 
 const MOOD_COLORS = {
   overwhelm: 'var(--accent)', stressed: 'var(--accent)', negative: 'var(--accent)', very_negative: 'var(--accent)',
@@ -117,7 +132,6 @@ const TriggerHeat = ({ heatmap, granularity }) => {
   const shade = (v) => v <= 0 ? 'var(--rule-soft)' : v < 0.34 ? 'var(--loop-light)' : v < 0.67 ? 'var(--loop-medium)' : 'var(--loop-strong)';
   const today = new Date();
 
-  // Show a label every N columns depending on how many cols we have
   const labelEvery = granularity === 'day' ? 4 : granularity === 'week' ? 1 : 7;
 
   const getColDate = (i) => {
@@ -133,34 +147,43 @@ const TriggerHeat = ({ heatmap, granularity }) => {
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', gap: 2, marginLeft: 88, marginBottom: 6 }}>
-        {Array.from({ length: cols }).map((_, i) => {
-          const show = i % labelEvery === 0;
-          return (
-            <div key={i} className="nm-meta" style={{ flex: 1, fontSize: 9, textAlign: 'center', color: show ? 'var(--ink-2)' : 'transparent' }}>
-              {show ? getColDate(i) : '·'}
-            </div>
-          );
-        })}
-      </div>
-      {heatmap.map((row) => (
-        <div key={row.trigger} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-          <div style={{ width: 80, fontSize: 12, textAlign: 'right', fontFamily: 'var(--font-display)' }}>{row.trigger}</div>
-          <div style={{ display: 'flex', gap: 2, flex: 1 }}>
-            {row.intensity.map((v, i) => (
-              <div key={i} style={{ flex: 1, height: 16, background: shade(v) }} />
-            ))}
-          </div>
+    <div style={{ overflowX: 'auto' }}>
+      <div style={{ minWidth: cols * 22 + 96 }}>
+        <div style={{ display: 'flex', gap: 2, marginLeft: 88, marginBottom: 6 }}>
+          {Array.from({ length: cols }).map((_, i) => {
+            const show = i % labelEvery === 0;
+            return (
+              <div key={i} className="nm-meta" style={{ flex: 1, fontSize: 9, textAlign: 'center', color: show ? 'var(--ink-2)' : 'transparent' }}>
+                {show ? getColDate(i) : '·'}
+              </div>
+            );
+          })}
         </div>
-      ))}
+        {heatmap.map((row) => (
+          <div key={row.trigger} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+            <div style={{ width: 80, fontSize: 12, textAlign: 'right', fontFamily: 'var(--font-display)', flexShrink: 0 }}>{row.trigger}</div>
+            <div style={{ display: 'flex', gap: 2, flex: 1 }}>
+              {row.intensity.map((v, i) => (
+                <div key={i} style={{ flex: 1, height: 16, background: shade(v), minWidth: 18 }} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };
 
-const LoopSummary = ({ loops }) => {
-  if (!loops || loops.length === 0) {
-    return <div className="nm-meta" style={{ padding: 16 }}>No loops detected yet. They surface after recurring patterns appear in your reflections.</div>;
+const LoopSummary = ({ loops }) => {  if (!loops || loops.length === 0) {
+    return (
+      <div style={{ padding: 20, textAlign: 'center', background: 'rgba(78, 205, 196, 0.05)', borderRadius: 8, border: '1px dashed var(--teal)' }}>
+        <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
+        <div style={{ color: 'var(--teal)', fontWeight: 600, fontSize: 13, marginBottom: 4 }}>No Patterns Yet</div>
+        <div className="nm-meta" style={{ fontSize: 12, lineHeight: 1.5 }}>
+          Keep journaling! We need more data to detect your recurring emotional loops and behavioral patterns.
+        </div>
+      </div>
+    );
   }
   return (
     <div>
@@ -182,18 +205,390 @@ const LoopSummary = ({ loops }) => {
   );
 };
 
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+
+const GRAPH_ASPECT = 720 / 440;
+
+const fitGraphView = (cw, ch) => {
+  const w = Math.max(cw, ch * GRAPH_ASPECT);
+  const h = w / GRAPH_ASPECT;
+  return { x: (cw - w) / 2, y: (ch - h) / 2, w, h };
+};
+
+const KnowledgeGraph = ({ graph }) => {
+  const [hoveredId, setHoveredId] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [isInteractive, setIsInteractive] = useState(false);
+  const nodes = graph?.nodes || [];
+  const edges = graph?.edges || [];
+  const activeId = hoveredId || selectedId;
+
+  const neighborIds = useMemo(() => {
+    if (!activeId) return null;
+    const set = new Set([activeId]);
+    edges.forEach((e) => {
+      if (e.source === activeId) set.add(e.target);
+      if (e.target === activeId) set.add(e.source);
+    });
+    return set;
+  }, [activeId, edges]);
+
+  // Stable per-node index (for idle-float seeding) independent of paint order below,
+  // so re-sorting for z-index on hover doesn't reshuffle each node's drift phase.
+  const nodeIndex = useMemo(() => new Map(nodes.map((n, i) => [n.id, i])), [nodes]);
+
+  // Dimmed nodes/edges must not visually cover the highlighted ones, so paint the
+  // active node and its neighbors last (on top) instead of relying on data order.
+  const orderedNodes = useMemo(() => {
+    if (!activeId || !neighborIds) return nodes;
+    const rank = (n) => (n.id === activeId ? 2 : neighborIds.has(n.id) ? 1 : 0);
+    return [...nodes].sort((a, b) => rank(a) - rank(b));
+  }, [nodes, activeId, neighborIds]);
+
+  const orderedEdges = useMemo(() => {
+    if (!activeId || !neighborIds) return edges;
+    const rank = (e) => (neighborIds.has(e.source) && neighborIds.has(e.target) ? 1 : 0);
+    return [...edges].sort((a, b) => rank(a) - rank(b));
+  }, [edges, activeId, neighborIds]);
+
+  const hashEdge = (e) => {
+    const key = `${e.source}|${e.target}`;
+    let h = 0;
+    for (let k = 0; k < key.length; k++) h = (h * 31 + key.charCodeAt(k)) | 0;
+    return h;
+  };
+
+  // Give nodes real breathing room instead of packing everything into one small box;
+  // the fixed viewBox below becomes a pannable/zoomable window into this larger canvas.
+  // Kept modest (unlike the old 3200x2000 ceiling) so the normalized layout isn't
+  // stretched thin across empty space, which read as tiny/distant nodes with long edges.
+  const CW = clamp(640 + nodes.length * 18, 640, 1400);
+  const CH = clamp(440 + nodes.length * 12, 440, 900);
+  const PAD = 70;
+
+  const svgWrapRef = useRef(null);
+  const dragRef = useRef(null);
+  const suppressClickRef = useRef(false);
+  const [view, setView] = useState(() => fitGraphView(CW, CH));
+  const fitView = useMemo(() => fitGraphView(CW, CH), [CW, CH]);
+  const minViewW = 220;
+  const maxViewW = fitView.w * 1.5;
+
+  useEffect(() => {
+    setView(fitView);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [CW, CH]);
+
+  const clampView = (v) => {
+    const marginX = v.w * 0.5;
+    const marginY = v.h * 0.5;
+    return {
+      ...v,
+      x: clamp(v.x, -marginX, CW - v.w + marginX),
+      y: clamp(v.y, -marginY, CH - v.h + marginY),
+    };
+  };
+
+  useEffect(() => {
+    const el = svgWrapRef.current;
+    if (!el) return undefined;
+    const onWheel = (e) => {
+      if (!el.dataset.interactive) return; // Managed via data attribute to avoid effect re-binding
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const mx = (e.clientX - rect.left) / rect.width;
+      const my = (e.clientY - rect.top) / rect.height;
+      setView((v) => {
+        const factor = e.deltaY < 0 ? 0.88 : 1.12;
+        const newW = clamp(v.w * factor, minViewW, maxViewW);
+        const newH = newW / GRAPH_ASPECT;
+        const cx = v.x + mx * v.w;
+        const cy = v.y + my * v.h;
+        return clampView({ x: cx - mx * newW, y: cy - my * newH, w: newW, h: newH });
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [CW, CH, minViewW, maxViewW]);
+
+  const zoomBy = (factor) => {
+    setView((v) => {
+      const newW = clamp(v.w * factor, minViewW, maxViewW);
+      const newH = newW / GRAPH_ASPECT;
+      const cx = v.x + v.w / 2;
+      const cy = v.y + v.h / 2;
+      return clampView({ x: cx - newW / 2, y: cy - newH / 2, w: newW, h: newH });
+    });
+  };
+  const resetView = () => setView(fitView);
+
+  const handlePointerDown = (e) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, viewX: view.x, viewY: view.y, moved: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+  const handlePointerMove = (e) => {
+    const drag = dragRef.current;
+    if (!drag || !svgWrapRef.current) return;
+    const rect = svgWrapRef.current.getBoundingClientRect();
+    const dxScreen = e.clientX - drag.startX;
+    const dyScreen = e.clientY - drag.startY;
+    if (Math.abs(dxScreen) > 3 || Math.abs(dyScreen) > 3) drag.moved = true;
+    const dx = -dxScreen * (view.w / rect.width);
+    const dy = -dyScreen * (view.h / rect.height);
+    setView(clampView({ ...view, x: drag.viewX + dx, y: drag.viewY + dy }));
+  };
+  const handlePointerUp = () => {
+    if (dragRef.current?.moved) suppressClickRef.current = true;
+    dragRef.current = null;
+  };
+
+  if (!nodes.length) {
+    return (
+      <div className="nm-meta" style={{ padding: 20, fontStyle: 'italic' }}>
+        Not enough data yet to map how your triggers and core beliefs connect.
+      </div>
+    );
+  }
+
+  const nodeById = Object.fromEntries(nodes.map((n) => [n.id, n]));
+  const px = (x) => PAD + x * (CW - PAD * 2);
+  const py = (y) => PAD + y * (CH - PAD * 2);
+  const nodeRadius = (n) => 9 + n.size * 19;
+
+  const badgeNode = selectedId ? nodeById[selectedId] : null;
+  let badge = null;
+  if (badgeNode) {
+    const r = nodeRadius(badgeNode);
+    const rectW = clamp(badgeNode.label.length * 6.4 + 28, 150, 260);
+    const rectH = 44;
+    const cx = clamp(px(badgeNode.x), view.x + rectW / 2 + 4, view.x + view.w - rectW / 2 - 4);
+    const spaceAbove = py(badgeNode.y) - r - rectH - 8;
+    const rectY = spaceAbove > 4 ? spaceAbove : py(badgeNode.y) + r + 8;
+    badge = { cx, rectY, rectW, rectH, node: badgeNode };
+  }
+
+  return (
+    <div style={{ height: 320 }}>
+      <div 
+        ref={svgWrapRef} 
+        data-interactive={isInteractive ? "true" : ""}
+        style={{ position: 'relative', height: '100%' }}
+        onClick={(e) => {
+          if (!isInteractive) {
+            setIsInteractive(true);
+            e.stopPropagation(); // prevent immediate deselect if they just wanted to activate
+          }
+        }}
+        onMouseLeave={() => setIsInteractive(false)}
+      >
+        {!isInteractive && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(2px)',
+            cursor: 'pointer'
+          }}>
+            <div style={{ background: 'var(--surface)', padding: '10px 20px', borderRadius: 30, boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
+              Click to interact
+            </div>
+          </div>
+        )}
+        <div style={{ position: 'absolute', top: 12, left: 16, zIndex: 1, pointerEvents: 'none' }}>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', gap: 16, fontSize: 11, color: 'var(--ink-2)' }}>
+            <li style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--plum)' }} />
+              <span>Core Belief (Purple)</span>
+            </li>
+            <li style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--clay)' }} />
+              <span>Event/Trigger (Blue)</span>
+            </li>
+            <li style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 14, height: 2, background: 'var(--loop-strong)' }} />
+              <span>Confirmed Loop</span>
+            </li>
+            <li style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 14, height: 1, background: 'var(--rule)' }} />
+              <span>Standard Link (Gray)</span>
+            </li>
+          </ul>
+        </div>
+        <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 1, display: 'flex', gap: 4 }}>
+          <button type="button" onClick={() => zoomBy(0.8)} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
+          <button type="button" onClick={() => zoomBy(1.25)} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
+          <button type="button" onClick={resetView} className="nm-graph-zoom-btn" aria-label="Reset view">⤢</button>
+        </div>
+        <svg
+          width="100%"
+          viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
+          className="nm-graph-canvas"
+          style={{ display: 'block', touchAction: 'none' }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          onClick={() => {
+            if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+            setSelectedId(null);
+          }}
+        >
+        <defs>
+          <radialGradient id="nm-grad-trigger" cx="35%" cy="30%" r="75%">
+            <stop offset="0%" stopColor="var(--clay)" stopOpacity="1" />
+            <stop offset="100%" stopColor="var(--clay)" stopOpacity="0.55" />
+          </radialGradient>
+          <radialGradient id="nm-grad-belief" cx="35%" cy="30%" r="75%">
+            <stop offset="0%" stopColor="var(--plum)" stopOpacity="1" />
+            <stop offset="100%" stopColor="var(--plum)" stopOpacity="0.55" />
+          </radialGradient>
+        </defs>
+
+        {orderedEdges.map((e) => {
+          const s = nodeById[e.source];
+          const t = nodeById[e.target];
+          if (!s || !t) return null;
+          const x1 = px(s.x), y1 = py(s.y), x2 = px(t.x), y2 = py(t.y);
+          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+          const dx = x2 - x1, dy = y2 - y1;
+          const len = Math.hypot(dx, dy) || 1;
+          const sign = (hashEdge(e) % 2 === 0) ? 1 : -1;
+          const bow = sign * (10 + e.strength * 12);
+          const cx = mx + (-dy / len) * bow;
+          const cy = my + (dx / len) * bow;
+          const dimmed = neighborIds && !(neighborIds.has(e.source) && neighborIds.has(e.target));
+          return (
+            <path
+              key={`${e.source}->${e.target}`}
+              d={`M ${x1},${y1} Q ${cx},${cy} ${x2},${y2}`}
+              fill="none"
+              className={e.is_loop ? 'nm-graph-edge-loop' : undefined}
+              stroke={e.is_loop ? 'var(--loop-strong)' : 'var(--rule)'}
+              strokeWidth={1 + e.strength * 3.5 + (e.is_loop ? 1 : 0)}
+              strokeLinecap="round"
+              style={{
+                opacity: dimmed ? 0.05 : e.is_loop ? 0.9 : 0.32 + e.strength * 0.35,
+                filter: e.is_loop && !dimmed ? 'drop-shadow(0 0 4px var(--loop-strong))' : undefined,
+                transition: 'opacity 0.2s ease',
+              }}
+            />
+          );
+        })}
+
+        {orderedNodes.map((n) => {
+          const i = nodeIndex.get(n.id);
+          const dimmed = neighborIds && !neighborIds.has(n.id);
+          const isHovered = hoveredId === n.id;
+          const isSelected = selectedId === n.id;
+          const r = nodeRadius(n) + (isHovered || isSelected ? 2.5 : 0);
+          const isTrigger = n.type === 'trigger';
+          const tint = isTrigger ? 'var(--clay)' : 'var(--plum)';
+          // Without a selection, only the most prominent nodes label themselves so the
+          // graph doesn't start out with every node's text stacked on its neighbors.
+          // With a selection, only the active node + its direct links get text.
+          const showLabel = isHovered || isSelected
+            || (neighborIds ? neighborIds.has(n.id) : n.size >= 0.85);
+          // Deterministic per-node drift so each node quietly orbits its own spot at idle,
+          // instead of the whole graph sitting perfectly still.
+          const floatAngle = (i * 47) % 360;
+          const floatAmp = 3 + (i % 4);
+          const fx = Math.cos((floatAngle * Math.PI) / 180) * floatAmp;
+          const fy = Math.sin((floatAngle * Math.PI) / 180) * floatAmp;
+          const floatDur = 5.5 + (i % 5) * 0.7;
+          const floatDelay = -((i * 0.37) % floatDur);
+          const labelText = n.label.length > 24 ? `${n.label.slice(0, 22)}…` : n.label;
+          const labelW = clamp(labelText.length * 5.6 + 10, 24, 200);
+          return (
+            <g
+              key={n.id}
+              className="nm-graph-orbit"
+              style={{
+                '--fx': `${fx}px`,
+                '--fy': `${fy}px`,
+                '--fdur': `${floatDur}s`,
+                animationDelay: `${floatDelay}s`,
+                animationPlayState: isHovered || isSelected ? 'paused' : 'running',
+              }}
+            >
+              <g
+                className={`nm-graph-node${isSelected ? ' selected' : ''}`}
+                style={{ cursor: 'pointer', animationDelay: `${Math.min(i * 25, 400)}ms`, opacity: dimmed ? 0.15 : 1 }}
+                onMouseEnter={() => setHoveredId(n.id)}
+                onMouseLeave={() => setHoveredId(null)}
+                onClick={(e) => { e.stopPropagation(); setSelectedId((cur) => (cur === n.id ? null : n.id)); }}
+              >
+                <circle
+                  className="nm-graph-halo"
+                  cx={px(n.x)} cy={py(n.y)} r={r * 1.6}
+                  fill="none" stroke={tint} strokeWidth={2}
+                />
+                <circle
+                  className="nm-graph-dot"
+                  cx={px(n.x)} cy={py(n.y)} r={r}
+                  fill={`url(#${isTrigger ? 'nm-grad-trigger' : 'nm-grad-belief'})`}
+                  stroke={isHovered || isSelected ? 'var(--accent)' : 'var(--surface)'}
+                  strokeWidth={isHovered || isSelected ? 2.5 : 1.5}
+                  style={{ color: tint }}
+                />
+                {showLabel && (
+                  <g style={{ pointerEvents: 'none' }}>
+                    <rect
+                      x={px(n.x) - labelW / 2} y={py(n.y) - r - 20}
+                      width={labelW} height={14} rx={4}
+                      fill="var(--surface)" opacity={0.88}
+                    />
+                    <text
+                      x={px(n.x)} y={py(n.y) - r - 9.5}
+                      textAnchor="middle"
+                      style={{ fontSize: 10.5, fontFamily: 'var(--font-display)', fill: 'var(--ink)' }}
+                    >
+                      {labelText}
+                    </text>
+                  </g>
+                )}
+              </g>
+            </g>
+          );
+        })}
+
+        {badge && (
+          <g style={{ pointerEvents: 'none' }}>
+            <rect
+              x={badge.cx - badge.rectW / 2} y={badge.rectY}
+              width={badge.rectW} height={badge.rectH} rx={9}
+              fill="var(--surface)" stroke="var(--rule)" strokeWidth={1}
+              style={{ filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.22))' }}
+            />
+            <text x={badge.cx} y={badge.rectY + 18} textAnchor="middle"
+              style={{ fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-display)', fill: 'var(--ink)' }}>
+              {badge.node.label.length > 30 ? `${badge.node.label.slice(0, 28)}…` : badge.node.label}
+            </text>
+            <text x={badge.cx} y={badge.rectY + 33} textAnchor="middle"
+              style={{ fontSize: 10, fontFamily: 'var(--font-sans)', fill: 'var(--ink-3)' }}>
+              {badge.node.frequency}× mentioned · {badge.node.degree} link{badge.node.degree === 1 ? '' : 's'}
+            </text>
+          </g>
+        )}
+        </svg>
+      </div>
+      <div style={{ display: 'flex', marginTop: 10 }}>
+        <span className="nm-meta" style={{ fontStyle: 'italic', marginLeft: 'auto', color: 'var(--ink-3)' }}>Scroll to zoom · drag to pan · click a node</span>
+      </div>
+    </div>
+  );
+};
+
 const fmtDelta = (cur, prev) => {
   if (cur == null || prev == null) return null;
   return +(cur - prev).toFixed(1);
 };
 
-const G = ({ label, before, after, good, last }) => (
+const G = ({ label, after, good, last }) => (
   <div style={{ display: 'flex', alignItems: 'center', padding: '10px 0', borderBottom: last ? 'none' : '1px dashed var(--rule)', gap: 8 }}>
     <div style={{ flex: 1, fontSize: 13 }}>{label}</div>
-    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>{before ?? '—'}</div>
-    <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-4)' }}>→</div>
     <div style={{ fontFamily: 'var(--font-display)', fontSize: 16, color: good ? 'var(--teal)' : 'var(--ink)' }}>{after ?? '—'}</div>
-    {after != null && before != null && (
+    {after != null && (
       <span style={{ fontSize: 13, color: good ? 'var(--teal)' : 'var(--accent)' }}>{good ? '↑' : '↓'}</span>
     )}
   </div>
@@ -217,76 +612,262 @@ const ValenceIntensityLineChart = ({ data }) => {
   );
 };
 
-const EmotionLineChart = ({ trend, granularity }) => {
+const EMOTION_PALETTE = [
+  '#FF6B6B', // vibrant red
+  '#4ECDC4', // vibrant teal
+  '#45B7D1', // bright blue
+  '#FDCB6E', // warm yellow
+  '#6C5CE7', // vibrant purple
+  '#FD79A8', // bright pink
+  '#00B894', // strong green
+  '#E17055', // orange
+  '#0984E3', // deep vibrant blue
+  '#D63031', // crimson
+];
+
+const EmotionMixBars = ({ trend, granularity, emotions }) => {
+  const scrollRef = useRef(null);
+  
+  useEffect(() => {
+    // Automatically scroll to the far right (newest data) when data changes
+    if (scrollRef.current) {
+      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+    }
+  }, [trend]);
+
   const n = trend?.length || 0;
   if (!n) return <div className="nm-meta" style={{ padding: 30 }}>No emotion data yet.</div>;
+  if (!emotions?.length) return <div className="nm-meta" style={{ padding: 30 }}>No mood data yet.</div>;
 
-  const emotions = Array.from(new Set(trend.flatMap(d => Object.keys(d.moods || {}))));
-  if (!emotions.length) return <div className="nm-meta" style={{ padding: 30 }}>No mood data yet.</div>;
-
-  const w = 600, h = 120, tickH = 18;
-  // Always render across full width — fewer points just means wider spacing
-  const dx = n > 1 ? w / (n - 1) : w;
-  const tickEvery = n <= 7 ? 1 : n <= 14 ? 2 : Math.ceil(n / 8);
+  const TICK_COUNT = 5;
+  const minW = Math.max(n * 40 + 40, 400); // 40px per bar + Y axis
 
   return (
-    <svg width="100%" viewBox={`0 0 ${w} ${h + tickH}`} style={{ display: 'block', marginTop: 8 }}>
-      {emotions.map((emotion, ei) => {
-        const pts = trend.map((d, i) => {
-          const total = Object.values(d.moods || {}).reduce((a, b) => a + b, 0) || 1;
-          const val = (d.moods?.[emotion] || 0) / total;
-          return `${i * dx},${h - val * h * 0.88}`;
-        }).join(' ');
-        return (
-          <polyline
-            key={emotion}
-            points={pts}
-            fill="none"
-            stroke={LINE_COLORS[ei % LINE_COLORS.length]}
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
-        );
-      })}
-      <line x1="0" y1={h} x2={w} y2={h} stroke="var(--rule)" />
-      {trend.map((d, i) => {
-        if (i % tickEvery !== 0 && i !== n - 1) return null;
-        const label = formatTick(d.date || d.label, granularity);
-        if (!label) return null;
-        return (
-          <text
-            key={i}
-            x={i * dx}
-            y={h + tickH - 2}
-            textAnchor={i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}
-            style={{ fontSize: 9, fill: 'var(--ink-3)', fontFamily: 'var(--font-display)' }}
-          >
-            {label}
-          </text>
-        );
-      })}
-    </svg>
+    <div ref={scrollRef} style={{ marginTop: 8, height: 220, border: '1px solid var(--rule)', borderRadius: 4, display: 'flex', width: '100%', overflowX: 'auto', overflowY: 'hidden' }}>
+      <div style={{ flexShrink: 0, position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)' }}>
+        <svg width={40} height={220} style={{ display: 'block' }}>
+        {[0, 0.25, 0.5, 0.75, 1].map(v => {
+          const y = 24 + 160 - v * 160;
+          return (
+            <text key={v} x={35} y={y + 3.5} textAnchor="end"
+              style={{ fontSize: 9, fill: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}>
+              {Math.round(v * 100)}%
+            </text>
+          );
+        })}
+        <text transform={`translate(10, ${24 + 160 / 2}) rotate(-90)`} textAnchor="middle"
+          style={{ fontSize: 9, fill: 'var(--ink-3)', fontFamily: 'var(--font-display)', letterSpacing: '0.05em' }}>
+          EMOTION SHARE
+        </text>
+      </svg>
+      </div>
+      <div style={{ flex: 1, position: 'relative', minWidth: minW - 40 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={trend} maxBarSize={32} margin={{ top: 24, right: 12, left: 0, bottom: 16 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--rule)" />
+            <XAxis dataKey="day" tickFormatter={(val) => formatTick(val, granularity)} tick={{ fill: 'var(--ink-4)', fontSize: 9 }} axisLine={false} tickLine={false} />
+            {emotions.map((m, mi) => (
+              <Bar key={m} dataKey={(d) => {
+                const total = Object.values(d.moods || {}).reduce((a, b) => a + b, 0);
+                return total ? (d.moods?.[m] || 0) / total * 100 : 0;
+              }} stackId="a" fill={EMOTION_PALETTE[mi % EMOTION_PALETTE.length]} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+};
+
+const CustomRadarTick = ({ payload, x, y, textAnchor, stroke, radius }) => {
+  const text = payload.value;
+  let lines = [text];
+  if (text.toLowerCase() === 'overwhelmed and pressured') {
+    lines = ['Overwhelmed', 'and pressured'];
+  } else if (text.length > 14 && text.includes(' ')) {
+    const splitParts = text.split(' ');
+    const mid = Math.floor(splitParts.length / 2);
+    lines = [splitParts.slice(0, mid).join(' '), splitParts.slice(mid).join(' ')];
+  }
+
+  return (
+    <text x={x} y={y} textAnchor={textAnchor} fill="var(--ink-2)" fontSize={11} fontFamily="var(--font-display)">
+      {lines.map((line, index) => (
+        <tspan x={x} dy={index === 0 ? "0" : "1.2em"} key={index}>
+          {line}
+        </tspan>
+      ))}
+    </text>
+  );
+};
+
+const EmotionalSpectrum = ({ moods }) => {
+  const [zoom, setZoom] = useState(1);
+  if (!moods || moods.length === 0) return <div className="nm-meta" style={{ padding: 30 }}>Not enough mood data yet.</div>;
+  
+  // Format data for Radar Chart
+  const data = moods.slice(0, 6).map(m => ({
+    subject: m.mood.charAt(0).toUpperCase() + m.mood.slice(1),
+    A: m.pct,
+    fullMark: 100,
+  }));
+
+  return (
+    <div style={{ position: 'relative', height: 340, width: '100%', marginTop: 8, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', gap: 4 }}>
+        <button type="button" onClick={() => setZoom(z => Math.min(z + 0.25, 3))} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
+        <button type="button" onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
+        <button type="button" onClick={() => setZoom(1)} className="nm-graph-zoom-btn" aria-label="Reset view">⤢</button>
+      </div>
+      <div style={{ height: '100%', transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.2s' }}>
+        <div style={{ height: '100%', padding: '0 10px' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <RadarChart cx="50%" cy="50%" outerRadius="60%" data={data}>
+              <PolarGrid stroke="var(--rule-soft)" />
+              <PolarAngleAxis dataKey="subject" tick={<CustomRadarTick />} />
+              <PolarRadiusAxis angle={30} domain={[0, 'dataMax']} tick={false} axisLine={false} />
+          <Radar name="Mood" dataKey="A" stroke="var(--teal)" fill="var(--teal)" fillOpacity={0.4} />
+              <Tooltip 
+                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+                itemStyle={{ color: 'var(--teal)' }}
+              />
+            </RadarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const EmotionalBandwidth = ({ distribution }) => {
+  if (!distribution || distribution.length === 0) return <div className="nm-meta" style={{ padding: 30 }}>No intensity data yet.</div>;
+
+  return (
+    <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 13 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart layout="vertical" data={distribution} margin={{ top: 20, right: 20, left: 30, bottom: 40 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="var(--rule-soft)" />
+              <XAxis type="number" dataKey="count" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Frequency (Days)', position: 'insideBottom', offset: -20, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <YAxis type="category" reversed={true} dataKey="intensity" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Intensity (1-10)', angle: -90, position: 'insideLeft', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <Tooltip 
+                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
+                formatter={(value) => [value, 'Frequency']}
+                labelFormatter={(label) => `Intensity Level: ${label}`}
+              />
+              <Line type="monotone" dataKey="count" stroke="var(--accent)" strokeWidth={3} dot={{ r: 4, fill: 'var(--surface)', stroke: 'var(--accent)', strokeWidth: 2 }} activeDot={{ r: 6 }} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+};
+
+const CognitiveLoad = ({ trend, granularity }) => {
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    // Automatically scroll to the far right (newest data) when data changes
+    if (scrollRef.current) {
+      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+    }
+  }, [trend]);
+
+  const n = trend?.length || 0;
+  if (!n) return <div className="nm-meta" style={{ padding: 30 }}>No data yet.</div>;
+
+  const data = trend.map(d => ({
+    name: formatTick(d.day, granularity),
+    thoughts: d.count,
+    intensity: d.avg_intensity || 0,
+  }));
+
+  const minWidth = Math.max(400, n * 50);
+
+  return (
+    <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 8 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={data} margin={{ top: 27, right: 20, left: 30, bottom: 40 }}>
+          <defs>
+                <linearGradient id="barColor" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--teal)" stopOpacity={0.8}/>
+                  <stop offset="95%" stopColor="var(--surface-2)" stopOpacity={0.8}/>
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="name" tick={{ fill: 'var(--ink-3)', fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'Timeline', position: 'insideBottom', offset: -20, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <YAxis yAxisId="left" tick={{ fill: 'var(--ink-3)', fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'Thought Volume', angle: -90, position: 'insideLeft', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <YAxis yAxisId="right" orientation="right" domain={[0, 10]} tick={{ fill: 'var(--accent)', fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'Avg Intensity (1-10)', angle: -90, position: 'insideRight', offset: -10, fill: 'var(--accent)', fontSize: 12, fontWeight: 500 }} />
+              <Tooltip 
+                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11, color: 'var(--ink-2)', paddingBottom: 10 }} verticalAlign="top" />
+              <Bar yAxisId="left" dataKey="thoughts" name="Thoughts (Count)" fill="url(#barColor)" radius={[4, 4, 0, 0]} />
+              <Line yAxisId="right" type="monotone" dataKey="intensity" name="Intensity (Scale)" stroke="var(--accent)" strokeWidth={3} dot={{ r: 4, fill: 'var(--accent)', stroke: 'var(--surface)' }} />
+            </ComposedChart>
+      </ResponsiveContainer>
+    </div>
   );
 };
 
 const RANGES = [
-  { k: '7d', d: 7 },
-  { k: '30d', d: 30 },
-  { k: '90d', d: 90 },
-  { k: '1y', d: 365 },
+  { k: '7d', d: 7, label: 'Week' },
+  { k: '30d', d: 30, label: 'Month' },
+  { k: '90d', d: 90, label: '90 Days' },
+  { k: '1y', d: 365, label: 'Year' },
 ];
+
+const KG_RANGES = RANGES.filter(r => r.k !== '1y');
 
 const GRANULARITY_LABELS = { day: 'Today', week: 'This week', month: 'This month' };
 
-export const InsightsScreen = () => {
+const DUMMY_INSIGHTS = {
+  total_entries: 0,
+  thread_count: 0,
+  message_count: 0,
+  intensity_stats: { avg: 6.2, peak: 9, peak_day: 'Wed', low: 2, low_day: 'Sun', peak_summary: 'Work stress peak', low_summary: 'Relaxing weekend' },
+  mood_breakdown: [
+    { mood: 'anxious', count: 12, pct: 40 },
+    { mood: 'hopeful', count: 8, pct: 27 },
+    { mood: 'tired', count: 6, pct: 20 },
+    { mood: 'calm', count: 4, pct: 13 }
+  ],
+  emotion_trend: Array.from({ length: 30 }, (_, i) => ({
+    day: new Date(Date.now() - (29 - i) * 86400000).toISOString(),
+    count: Math.floor(Math.random() * 5) + 1,
+    avg_intensity: Math.floor(Math.random() * 6) + 3,
+    dominant_mood: ['anxious', 'hopeful', 'tired', 'calm'][Math.floor(Math.random() * 4)]
+  })),
+  trigger_heatmap: [
+    { trigger: 'Work', intensity: Array(30).fill(0).map(() => Math.floor(Math.random() * 10)) },
+    { trigger: 'Sleep', intensity: Array(30).fill(0).map(() => Math.floor(Math.random() * 8)) },
+    { trigger: 'Relationships', intensity: Array(30).fill(0).map(() => Math.floor(Math.random() * 6)) },
+  ],
+  intensity_distribution: Array.from({ length: 10 }, (_, i) => ({
+    intensity: i + 1, count: Math.floor(Math.random() * 15)
+  })),
+  growth: {
+    current: { avg_intensity: 5.4, threads: 14 },
+    previous: { avg_intensity: 6.1, threads: 10 }
+  },
+  loops: { items: [], active: 3, resolved: 1, new_in_window: 1, mastery_pct: 25 },
+  core_beliefs_profile: [
+    { belief: 'I must be perfect', pct: 45 },
+    { belief: 'I am not doing enough', pct: 35 },
+    { belief: 'People will judge me', pct: 20 }
+  ]
+};
+
+export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
+  const _navigate = useNavigate();
+  const goChat = () => onNav ? onNav('chat') : _navigate('/chat');
   const [rangeKey, setRangeKey] = useState('30d');
   const [granularity, setGranularity] = useState('month');
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [knowledgeGraph, setKnowledgeGraph] = useState(null);
+  const [kgRangeKey, setKgRangeKey] = useState('30d');
 
   const days = useMemo(() => RANGES.find((r) => r.k === rangeKey)?.d ?? 30, [rangeKey]);
+  const kgDays = useMemo(() => RANGES.find((r) => r.k === kgRangeKey)?.d ?? 30, [kgRangeKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -298,39 +879,87 @@ export const InsightsScreen = () => {
     return () => { cancelled = true; };
   }, [days]);
 
+  useEffect(() => {
+    let cancelled = false;
+    getKnowledgeGraph(kgDays)
+      .then((data) => { if (!cancelled) setKnowledgeGraph(data); })
+      .catch(() => { /* graph is a bonus visualization; fail silently */ });
+    return () => { cancelled = true; };
+  }, [kgDays]);
+
+  const usingSample = Boolean(tourSample) && !loading && (insights?.total_lifetime_entries ?? 0) === 0;
+  const isEmpty = !loading && (insights?.total_entries === 0 || !insights) && threads.length === 0 && !usingSample;
+  const displayInsights = (usingSample || isEmpty) ? DUMMY_INSIGHTS : insights;
+
   // Slice emotion_trend to the granularity window
   const visibleTrend = useMemo(() => {
-    const window = GRANULARITY_WINDOW[granularity] ?? 30;
-    return sliceLast(insights?.emotion_trend, window);
-  }, [insights, granularity]);
+    let sliced = displayInsights?.emotion_trend || [];
+    
+    // Filter by calendar month/week
+    const now = new Date();
+    if (granularity === 'month') {
+      const currentMonth = now.toISOString().slice(0, 7); // "YYYY-MM"
+      sliced = sliced.filter(d => d.day.startsWith(currentMonth));
+    } else if (granularity === 'week') {
+      const dayOfWeek = now.getDay(); 
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - dayOfWeek);
+      const startIso = startOfWeek.toISOString().slice(0, 10);
+      sliced = sliced.filter(d => d.day >= startIso);
+    } else if (granularity === 'day') {
+      const todayIso = now.toISOString().slice(0, 10);
+      sliced = sliced.filter(d => d.day === todayIso);
+    }
+
+    if (usingSample) {
+      const window = GRANULARITY_WINDOW[granularity] ?? 30;
+      return sliceLast(SAMPLE_TREND, window);
+    }
+
+    const firstDataIdx = sliced.findIndex(d => d.count > 0);
+    if (firstDataIdx !== -1) {
+      sliced = sliced.slice(firstDataIdx);
+    }
+    
+    return sliced;
+  }, [displayInsights, granularity, usingSample]);
 
   // Slice each trigger row's intensity cells to the granularity window
   const visibleHeatmap = useMemo(() => {
     const window = GRANULARITY_WINDOW[granularity] ?? 30;
-    return sliceHeatmap(insights?.trigger_heatmap, window);
-  }, [insights, granularity]);
+    if (usingSample) return sliceHeatmap(SAMPLE_TRIGGER_HEATMAP, window);
+    return sliceHeatmap(displayInsights?.trigger_heatmap, window);
+  }, [displayInsights, granularity, usingSample]);
 
-  const totalEntries = insights?.total_entries ?? 0;
-  const threadCount = insights?.thread_count ?? 0;
-  const messageCount = insights?.message_count ?? 0;
+  const totalEntries = displayInsights?.total_entries ?? 0;
+  const threadCount = displayInsights?.thread_count ?? 0;
+  const messageCount = displayInsights?.message_count ?? 0;
 
-  const intensityAvg = insights?.intensity_stats?.avg;
-  const peak = insights?.intensity_stats?.peak;
-  const peakDay = insights?.intensity_stats?.peak_day;
-  const low = insights?.intensity_stats?.low;
-  const lowDay = insights?.intensity_stats?.low_day;
+  const intensityAvg = displayInsights?.intensity_stats?.avg;
+  const peak = displayInsights?.intensity_stats?.peak;
+  const peakDay = displayInsights?.intensity_stats?.peak_day;
+  const low = displayInsights?.intensity_stats?.low;
+  const lowDay = displayInsights?.intensity_stats?.low_day;
 
-  const moods = insights?.mood_breakdown || [];
+  const moods = usingSample ? SAMPLE_MOOD_BREAKDOWN : (displayInsights?.mood_breakdown || []);
+  const intensityDistribution = usingSample ? SAMPLE_INTENSITY_DISTRIBUTION : displayInsights?.intensity_distribution;
+  const displayGraph = usingSample ? SAMPLE_KNOWLEDGE_GRAPH : knowledgeGraph;
 
-  const growthCur = insights?.growth?.current;
-  const growthPrev = insights?.growth?.previous;
+  const growthCur = displayInsights?.growth?.current;
+  const growthPrev = displayInsights?.growth?.previous;
   const intensityDelta = fmtDelta(growthCur?.avg_intensity, growthPrev?.avg_intensity);
   const threadsDelta = fmtDelta(growthCur?.threads, growthPrev?.threads);
 
-  const loops = insights?.loops?.items || [];
-  const loopsActive = insights?.loops?.active ?? 0;
-  const loopsResolved = insights?.loops?.resolved ?? 0;
-  const loopsNew = insights?.loops?.new_in_window ?? 0;
+  const loops = displayInsights?.loops?.items || [];
+  const loopsActive = displayInsights?.loops?.active ?? 0;
+  const loopsResolved = displayInsights?.loops?.resolved ?? 0;
+  const loopsNew = displayInsights?.loops?.new_in_window ?? 0;
+  const masteryPct = displayInsights?.loops?.mastery_pct ?? 0;
+  
+  const coreBeliefs = displayInsights?.core_beliefs_profile || [];
+  const topCoreThemes = displayInsights?.top_core_themes || [];
+  const peakSummary = displayInsights?.intensity_stats?.peak_summary;
+  const lowSummary = displayInsights?.intensity_stats?.low_summary;
 
   return (
     <div className="nm-main">
@@ -338,7 +967,11 @@ export const InsightsScreen = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <select
             value={granularity}
-            onChange={(e) => setGranularity(e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              setGranularity(val);
+              setRangeKey(val === 'week' ? '7d' : '30d');
+            }}
             style={{
               background: 'var(--surface-2, var(--ink-6))',
               border: '1px solid var(--rule)',
@@ -351,7 +984,6 @@ export const InsightsScreen = () => {
               outline: 'none',
             }}
           >
-            <option value="day">Day</option>
             <option value="week">Week</option>
             <option value="month">Month</option>
           </select>
@@ -362,18 +994,22 @@ export const InsightsScreen = () => {
         <div style={{ maxWidth: 1080, margin: '0 auto' }} className="nm-fade-up">
           <header className="nm-hero">
             <div>
-              <div className="nm-eyebrow" style={{ marginBottom: 12 }}>
-                Last {days} days · {threadCount} thread{threadCount === 1 ? '' : 's'} · {totalEntries} reflection{totalEntries === 1 ? '' : 's'}
-              </div>
               <h1 className="nm-h1">
-                {totalEntries === 0 ? <>A blank window —<br /><em>begin reflecting</em>.</> : <>The shape of your <em>{days <= 7 ? 'week' : days <= 30 ? 'month' : 'season'}</em>.</>}
+                {usingSample
+                  ? <>A preview of <em>what's ahead</em>.</>
+                  : totalEntries === 0 ? <>A blank window —<br /><em>begin reflecting</em>.</> : <>The shape of your <em>{days <= 7 ? 'week' : days <= 30 ? 'month' : 'season'}</em>.</>}
               </h1>
             </div>
           </header>
 
-          {totalEntries === 0 && !loading && (
+          {totalEntries === 0 && !loading && !usingSample && (
             <div className="nm-empty-poem">
               <p>Patterns surface only after the page is filled. Open a thread, write a sentence, and these charts begin to mean something.</p>
+            </div>
+          )}
+          {usingSample && (
+            <div className="nm-empty-poem">
+              <p>The charts below are sample data so you can see what they'll look like — yours will fill in as you write.</p>
             </div>
           )}
 
@@ -383,47 +1019,390 @@ export const InsightsScreen = () => {
             </div>
           )}
 
-          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, marginBottom: 14 }}>
             {/* Emotion Trend card */}
-            <div className="nm-card">
-              <div style={{ marginBottom: 14 }}>
-                <div className="nm-eyebrow">Emotion Trend · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
-                <div className="nm-h3" style={{ marginTop: 4 }}>
-                  {totalEntries === 0 ? 'Start reflecting to see your trend.' : 'Emotions over time'}
+            <EmptyDataOverlay
+              active={isEmpty}
+              title="Your journey begins here."
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={goChat}
+            >
+              <div className="nm-card" style={{ overflow: 'hidden' }} data-tour="insights-trend">
+                <div style={{ marginBottom: 14 }}>
+                  <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    Emotion Trend · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
+                    {usingSample && <SampleBadge />}
+                  </div>
+                  <div className="nm-h3" style={{ marginTop: 4 }}>
+                    {usingSample ? 'A preview, once entries start coming in' : totalEntries === 0 ? 'Start reflecting to see your trend.' : 'Emotions over time'}
+                  </div>
+                  <EmotionMixBars
+                    trend={visibleTrend}
+                    granularity={granularity}
+                    emotions={moods.slice(0, 6).map(m => m.mood)}
+                  />
+                  <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
+                    {moods.slice(0, 6).map((m, mi) => (
+                      <div key={m.mood} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5 }}>
+                        <span style={{ width: 9, height: 9, background: EMOTION_PALETTE[mi % EMOTION_PALETTE.length], borderRadius: 2, flexShrink: 0 }} />
+                        <span>{m.mood}</span>
+                        <span className="nm-meta">{m.pct}%</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <EmotionLineChart trend={visibleTrend} granularity={granularity} />
-                <div style={{ display: 'flex', gap: 14, marginTop: 14, flexWrap: 'wrap' }}>
-                  {moods.slice(0, 6).map((m, mi) => (
-                    <div key={m.mood} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
-                      <span style={{ width: 10, height: 10, background: LINE_COLORS[mi % LINE_COLORS.length], borderRadius: 1 }} />
-                      <span>{m.mood}</span><span className="nm-meta">{m.pct}%</span>
+              </div>
+            </EmptyDataOverlay>
+          </div>
+
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14, marginBottom: 14 }}>
+            {/* Cognitive Load card */}
+            <EmptyDataOverlay
+              active={isEmpty}
+              title="Your journey begins here."
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={goChat}
+            >
+              <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-load">
+                <div style={{ marginBottom: 14 }}>
+                  <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    Cognitive Load · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
+                    {usingSample && <SampleBadge />}
+                  </div>
+                  <div className="nm-h3" style={{ marginTop: 4 }}>Thought Volume vs. Intensity</div>
+                  <CognitiveLoad trend={visibleTrend} granularity={granularity} />
+                </div>
+              </div>
+            </EmptyDataOverlay>
+
+            {/* Emotional Bandwidth card */}
+            <EmptyDataOverlay
+              active={isEmpty}
+              title="Your journey begins here."
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={goChat}
+            >
+              <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ marginBottom: 14 }}>
+                  <div className="nm-eyebrow">Emotional Bandwidth</div>
+                  <div className="nm-h3" style={{ marginTop: 4 }}>Intensity Distribution</div>
+                  <EmotionalBandwidth distribution={intensityDistribution} />
+                </div>
+              </div>
+            </EmptyDataOverlay>
+          </div>
+
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 14, marginBottom: 14 }}>
+            {/* Emotional Spectrum card */}
+            <EmptyDataOverlay
+              active={isEmpty}
+              title="Your journey begins here."
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={goChat}
+            >
+              <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-spectrum">
+                <div style={{ marginBottom: 14 }}>
+                  <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    The Emotional Spectrum
+                    {usingSample && <SampleBadge />}
+                  </div>
+                  <div className="nm-h3" style={{ marginTop: 4 }}>Your emotional shape</div>
+                  <EmotionalSpectrum moods={moods} />
+                </div>
+              </div>
+            </EmptyDataOverlay>
+
+            {/* Growth & Awareness card */}
+            <EmptyDataOverlay 
+              active={isEmpty} 
+              title="Your journey begins here." 
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={goChat}
+            >
+              <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface)', border: '1px solid var(--rule-soft)', width: '100%' }}>
+                <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Growth & Awareness</div>
+                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+                  
+                  {/* Embedded KPI 1: Emotional State */}
+                  <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div className="nm-meta" style={{ marginBottom: 6 }}>Dominant State</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 600, color: 'var(--ink)' }}>
+                          {moods[0] ? moods[0].mood.charAt(0).toUpperCase() + moods[0].mood.slice(1) : '—'}
+                        </div>
+                        {moods[0] && <div className="nm-meta" style={{ color: 'var(--ink-3)' }}>({moods[0].pct}%)</div>}
+                      </div>
                     </div>
-                  ))}
+                    <div style={{ textAlign: 'right' }}>
+                      <div className="nm-meta" style={{ marginBottom: 6 }}>Avg Intensity of all emotions</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, justifyContent: 'flex-end' }}>
+                        <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 600, color: 'var(--ink)' }}>{growthCur?.avg_intensity ?? '—'}</div>
+                        {intensityDelta != null && (
+                          <div style={{ fontSize: 12, fontWeight: 600, color: intensityDelta <= 0 ? 'var(--teal)' : 'var(--accent)' }}>
+                            {intensityDelta <= 0 ? '↓ Calming' : '↑ Elevating'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Embedded KPI 2: Core Beliefs Profile */}
+                  <div style={{ background: 'var(--surface)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div className="nm-meta">Core Beliefs Profile</div>
+                    {coreBeliefs.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {coreBeliefs.slice(0, 3).map((belief, i) => (
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <div style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: 13, color: 'var(--ink)' }}>
+                              {belief.belief}
+                            </div>
+                            <div style={{ width: 40, height: 4, background: 'var(--rule-soft)', borderRadius: 2, overflow: 'hidden' }}>
+                              <div style={{ width: `${belief.pct}%`, height: '100%', background: 'var(--accent)', borderRadius: 2 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="nm-meta" style={{ fontStyle: 'italic', fontSize: 12 }}>Not enough data to profile core beliefs.</div>
+                    )}
+                  </div>
+
+                  {/* Embedded KPI 3: Pattern Mastery */}
+                  <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div>
+                      <div className="nm-meta" style={{ marginBottom: 6 }}>Pattern Mastery</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                          <div style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700, color: 'var(--ink)' }}>{masteryPct}%</div>
+                          <div className="nm-meta" style={{ color: 'var(--ink-3)' }}>resolved</div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 4 }}>
+                        {loopsResolved} resolved / {loopsActive + loopsResolved} total loops
+                      </div>
+                    </div>
+                    <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--surface)', border: '2px solid var(--teal)', color: 'var(--teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, boxShadow: '0 4px 12px rgba(78, 205, 196, 0.2)' }}>
+                      {masteryPct === 100 ? '✧' : '∞'}
+                    </div>
+                  </div>
                 </div>
+              </div>
+            </EmptyDataOverlay>
+          </div>
+
+          <EmptyDataOverlay 
+            active={isEmpty || (!knowledgeGraph || knowledgeGraph?.nodes?.length === 0)} 
+            title={isEmpty ? "Your journey begins here." : "We need more data to draw this chart."}
+            message={isEmpty ? "Start a chat or write your first journal entry to unlock your personalized insights." : "Your Knowledge Graph is building. Keep journaling! 🧠"}
+            actionLabel={isEmpty ? "Begin a Chat" : "Begin Reflection"}
+            onAction={isEmpty ? goChat : undefined}
+          >
+            <div className="nm-card" style={{ marginBottom: 14 }}>
+              <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div className="nm-eyebrow">Knowledge Graph</div>
+                  <div className="nm-h3" style={{ marginTop: 4 }}>How your triggers and core beliefs connect</div>
+                </div>
+                <select 
+                  value={kgRangeKey} 
+                  onChange={(e) => setKgRangeKey(e.target.value)}
+                  style={{ padding: '6px 28px 6px 12px', borderRadius: 20, border: '1px solid var(--rule)', background: 'var(--surface)', fontSize: 12, fontWeight: 500, color: 'var(--ink)', cursor: 'pointer' }}
+                >
+                  {KG_RANGES.map(r => (
+                    <option key={r.k} value={r.k}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ position: 'relative', width: '100%', height: 320, border: '1px solid var(--rule-soft)', borderRadius: 8, overflow: 'hidden', marginTop: 12 }}>
+                <KnowledgeGraph graph={knowledgeGraph} />
+              </div>
+            </div>
+          </EmptyDataOverlay>
+
+          <EmptyDataOverlay
+            active={isEmpty}
+            title="Your journey begins here."
+            message="Start a chat or write your first journal entry to unlock your personalized insights."
+            actionLabel="Begin a Chat"
+            onAction={goChat}
+          >
+            <div className="nm-card" style={{ marginBottom: 14 }} data-tour="insights-heatmap">
+              <div style={{ marginBottom: 14 }}>
+                <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
+                  {usingSample && <SampleBadge />}
+                </div>
+              </div>
+              <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />
+            </div>
+          </EmptyDataOverlay>
+
+          {false && /* Discovered Patterns, Subconscious Themes, Month in Extremes — hidden for now */ (
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            {/* Discovered Patterns */}
+            <div className="nm-card" style={{ display: 'flex', flexDirection: 'column' }}>
+              <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Discovered Patterns</div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <LoopSummary loops={loops} />
               </div>
             </div>
 
-            {/* Growth card */}
-            <div className="nm-card soft">
-              <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Growth · this window vs prior</div>
-              <G label="Threads" before={growthPrev?.threads} after={growthCur?.threads} good={(growthCur?.threads ?? 0) >= (growthPrev?.threads ?? 0)} />
-              <G label="Reflections" before={growthPrev?.entries} after={growthCur?.entries} good={(growthCur?.entries ?? 0) >= (growthPrev?.entries ?? 0)} />
-              <G label="Avg intensity" before={growthPrev?.avg_intensity} after={growthCur?.avg_intensity} good={intensityDelta != null && intensityDelta < 0} />
-              <G label="Resolved loops" before={0} after={loopsResolved} good={loopsResolved > 0} last />
-            </div>
-          </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="nm-card" style={{ background: 'var(--surface)', border: '1px solid var(--rule-soft)' }}>
+                <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Subconscious Themes</div>
+                {topCoreThemes.length > 0 ? (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {topCoreThemes.map((t, i) => (
+                      <div key={i} style={{ padding: '6px 12px', background: 'var(--surface-1)', borderRadius: 20, border: '1px solid var(--rule)', fontSize: 13, color: 'var(--ink)' }}>
+                        {t.theme}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="nm-meta" style={{ fontStyle: 'italic' }}>Not enough data to extract themes.</div>
+                )}
+              </div>
 
-          <div className="nm-card" style={{ marginBottom: 14 }}>
-            <div style={{ marginBottom: 14 }}>
-              <div className="nm-eyebrow">Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span></div>
-              <div className="nm-h3" style={{ marginTop: 4 }}>When each trigger showed up</div>
+              <div className="nm-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'linear-gradient(135deg, rgba(78, 205, 196, 0.05), rgba(108, 92, 231, 0.05))', border: '1px solid var(--rule-soft)' }}>
+                <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Month in Extremes</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, flex: 1 }}>
+                  <div style={{ background: 'var(--surface)', padding: 12, borderRadius: 8, border: '1px solid var(--accent)', borderOpacity: 0.3, display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div className="nm-meta" style={{ color: 'var(--accent)' }}>Peak Intensity</div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{peakDay ? formatShort(peakDay) : '—'}</div>
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--ink-2)', fontStyle: 'italic', lineHeight: 1.5, flex: 1 }}>
+                      {peakSummary ? `"${peakSummary}"` : 'No summary available.'}
+                    </div>
+                  </div>
+                  <div style={{ background: 'var(--surface)', padding: 12, borderRadius: 8, border: '1px solid var(--teal)', borderOpacity: 0.3, display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div className="nm-meta" style={{ color: 'var(--teal)' }}>Lowest Intensity</div>
+                      <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{lowDay ? formatShort(lowDay) : '—'}</div>
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--ink-2)', fontStyle: 'italic', lineHeight: 1.5, flex: 1 }}>
+                      {lowSummary ? `"${lowSummary}"` : 'No summary available.'}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />
           </div>
+          )}
 
           {loading && totalEntries === 0 && (
             <div className="nm-meta" style={{ textAlign: 'center', marginTop: 24 }}>Loading insights…</div>
           )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const WStat = ({ label, value, delta, good }) => (
+  <div style={{ borderLeft: '2px solid var(--rule)', paddingLeft: 16 }}>
+    <div className="nm-eyebrow" style={{ marginBottom: 8 }}>{label}</div>
+    <div className="nm-numeral sm">{value}</div>
+    {delta && <div className="nm-meta" style={{ marginTop: 6, color: good ? 'var(--teal)' : 'var(--ink-4)' }}>{delta} vs last</div>}
+  </div>
+);
+
+export const WeeklyScreen = () => {
+  const [insights, setInsights] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    getDashboardInsights(7)
+      .then((d) => { if (!cancelled) setInsights(d.insights); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const week = insights?.week;
+  const days = week?.days || [];
+  const stats = week?.stats || {};
+  const prev = week?.previous_stats || {};
+  const intensityDelta = fmtDelta(stats.avg_intensity, prev.avg_intensity);
+  const topTriggers = insights?.top_triggers || [];
+
+  return (
+    <div className="nm-main">
+      <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Weekly report</b></>}>
+        <button className="nm-btn accent" onClick={() => window.print()}><Icon name="download" size={12} /> PDF</button>
+      </TopBar>
+      <div className="nm-content">
+        <div style={{ maxWidth: 760, margin: '0 auto' }} className="nm-fade-up">
+          <header className="nm-hero">
+            <div>
+              <div className="nm-eyebrow" style={{ marginBottom: 12 }}>
+                {(() => {
+                  const today = new Date();
+                  const start = new Date(today); start.setDate(today.getDate() - 6);
+                  const fmt = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                  return `Week of ${fmt(start)} – ${fmt(today)}`;
+                })()}
+              </div>
+              <h1 className="nm-h1">
+                {loading ? 'Drawing the week…' : (stats.entries ? <>Your week, <em>so far</em>.</> : <>A blank week —<br /><em>still time</em>.</>)}
+              </h1>
+            </div>
+          </header>
+
+          <div className="nm-grid-4 nm-stagger" style={{ marginBottom: 36 }}>
+            <WStat label="Threads" value={stats.threads ?? 0} delta={prev.threads != null ? `${(stats.threads ?? 0) - (prev.threads ?? 0) >= 0 ? '+' : ''}${(stats.threads ?? 0) - (prev.threads ?? 0)}` : null} good={(stats.threads ?? 0) >= (prev.threads ?? 0)} />
+            <WStat label="Avg intensity" value={stats.avg_intensity ?? '—'} delta={intensityDelta != null ? (intensityDelta > 0 ? `+${intensityDelta}` : `${intensityDelta}`) : null} good={intensityDelta != null && intensityDelta < 0} />
+            <WStat label="Active loops" value={insights?.loops?.active ?? 0} />
+            <WStat label="New patterns" value={insights?.loops?.new_in_window ?? 0} />
+          </div>
+
+          <section style={{ marginBottom: 36 }} className="nm-fade-up">
+            <div className="nm-eyebrow" style={{ marginBottom: 6 }}>01 · Emotional trend</div>
+            <h2 className="nm-h2" style={{ marginBottom: 14 }}>Day-by-day intensity</h2>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {days.map((d) => (
+                <div key={d.day} style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{
+                    height: 80,
+                    background: d.dominant_mood ? moodColor(d.dominant_mood) : 'transparent',
+                    border: d.dominant_mood ? 'none' : '1px dashed var(--rule)',
+                    opacity: d.avg_intensity ? 0.35 + (d.avg_intensity / 10) * 0.6 : 0.5,
+                    borderRadius: 2,
+                    position: 'relative',
+                  }}>
+                    {d.avg_intensity != null && (
+                      <div style={{ position: 'absolute', bottom: 6, left: 0, right: 0, fontFamily: 'var(--font-display)', fontSize: 18, color: 'var(--ink)' }}>{d.avg_intensity}</div>
+                    )}
+                  </div>
+                  <div className="nm-meta" style={{ marginTop: 6 }}>{d.weekday}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-2)' }}>{d.dominant_mood || '—'}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section style={{ marginBottom: 36 }} className="nm-fade-up">
+            <div className="nm-eyebrow" style={{ marginBottom: 6 }}>02 · Triggers</div>
+            <h2 className="nm-h2" style={{ marginBottom: 14 }}>{topTriggers[0] ? `${topTriggers[0].trigger} leads the week.` : 'No triggers yet.'}</h2>
+            {topTriggers.length === 0 && <div className="nm-meta">No triggers detected this window.</div>}
+            {topTriggers.map((t, i) => (
+              <div key={t.trigger} style={{ display: 'grid', gridTemplateColumns: '20px 100px 1fr 50px', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: i === topTriggers.length - 1 ? 'none' : '1px dashed var(--rule)' }}>
+                <span className="nm-meta">{String(i + 1).padStart(2, '0')}</span>
+                <span style={{ fontFamily: 'var(--font-display)', fontSize: 16 }}>{t.trigger}</span>
+                <div style={{ height: 4, background: 'var(--rule-soft)', overflow: 'hidden' }}>
+                  <div style={{ width: `${t.pct}%`, height: '100%', background: 'var(--accent)' }} />
+                </div>
+                <span className="nm-meta" style={{ textAlign: 'right' }}>{t.count}</span>
+              </div>
+            ))}
+          </section>
         </div>
       </div>
     </div>

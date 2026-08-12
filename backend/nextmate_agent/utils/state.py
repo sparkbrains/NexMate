@@ -49,8 +49,9 @@ class NextMateState(TypedDict, total=False):
     prompt_injection_detected: bool
     pii_detected: bool
     crisis_detected: bool
-    # Per-thread compaction (thread_summary_service.py)
+    off_topic_detected: bool
     thread_summary: str
-    # Cross-thread digest (cross_thread_memory_service.py)
     active_thread_summaries: list[dict[str, Any]]
     memory_digest: dict[str, Any] | None
+    user_profile: str
+    reopened_loop_ids: list[str]

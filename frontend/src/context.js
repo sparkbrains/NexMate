@@ -5,4 +5,10 @@ export const AppContext = createContext({
   setTheme: () => {},
   sidebarOpen: false,
   setSidebarOpen: () => {},
+  rewardsOpen: false,
+  setRewardsOpen: () => {},
+  hasUnseenReward: false,
+  rewardPoints: 0,
+  checkRewards: () => {},
+  markRewardsSeen: () => {},
 });

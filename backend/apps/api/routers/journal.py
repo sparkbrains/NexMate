@@ -18,7 +18,9 @@ from apps.api.services.journal_log_service import (
     list_books,
     list_journal_entries,
     translate_entry,
+    update_book,
     update_journal_entry,
+    upsert_journal_entry_for_thread,
 )
 from apps.api.services.journal_loop_service import extract_features_and_detect_loops
 
@@ -29,6 +31,11 @@ router = APIRouter(prefix="/api/journal", tags=["journal"])
 # ---------- books ----------
 
 class CreateBookRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    color: str = Field("", max_length=40)
+
+
+class UpdateBookRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
     color: str = Field("", max_length=40)
 
@@ -50,6 +57,14 @@ def get_books(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
 @router.post("/books")
 def add_book(req: CreateBookRequest, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     book = create_book(current_user.id, req.name, req.color)
+    return {"book": book}
+
+
+@router.patch("/books/{book_id}")
+def edit_book(book_id: int, req: UpdateBookRequest, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    book = update_book(current_user.id, book_id, req.name, req.color)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
     return {"book": book}
 
 
@@ -78,6 +93,7 @@ class CreateEntryRequest(BaseModel):
     auto_translate: bool = False
     book_id: int | None = None
     allow_loop_detection: bool = True
+    bg_image: str = Field("", max_length=500)
 
 
 class UpdateEntryRequest(BaseModel):
@@ -87,6 +103,13 @@ class UpdateEntryRequest(BaseModel):
     translated: str | None = Field(None, max_length=5000)
     book_id: int | None = None
     allow_loop_detection: bool | None = None
+    bg_image: str | None = Field(None, max_length=500)
+
+
+class SaveThreadSummaryRequest(BaseModel):
+    body: str = Field(..., min_length=1, max_length=5000)
+    thread_id: str = Field(..., min_length=1)
+    book_id: int | None = None
 
 
 def _parse_entry_date(value: str | None) -> date_type:
@@ -112,6 +135,40 @@ def translate(req: TranslateRequest, current_user: User = Depends(get_current_us
     return {"translated": text}
 
 
+@router.post("/from-thread-summary")
+def save_thread_summary_as_journal_entry(
+    req: SaveThreadSummaryRequest,
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    body = req.body.strip()
+    thread_id = req.thread_id.strip()
+    if not body:
+        raise HTTPException(status_code=400, detail="body is required")
+    if not thread_id:
+        raise HTTPException(status_code=400, detail="thread_id is required")
+
+    book_id = req.book_id
+    if book_id is None:
+        default_book = ensure_default_book(current_user.id)
+        book_id = default_book["id"]
+
+    entry = upsert_journal_entry_for_thread(
+        current_user.id,
+        thread_id,
+        entry_date=datetime.utcnow().date(),
+        mood_emoji="",
+        mood_label="",
+        body=body,
+        book_id=book_id,
+    )
+    # Deliberately no background_tasks.add_task(extract_features_and_detect_loops, ...)
+    # here -- a generated summary shouldn't feed loop detection like a real entry
+    # would. This is belt-and-suspenders with the source_thread_id guard in
+    # update_entry() below: even if this entry is later edited through the
+    # generic PATCH endpoint, loop detection still won't fire for it.
+    return {"entry": entry}
+
+
 @router.post("")
 def create_entry(req: CreateEntryRequest, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     body = req.body.strip()
@@ -133,6 +190,7 @@ def create_entry(req: CreateEntryRequest, background_tasks: BackgroundTasks, cur
         mood_emoji=req.mood_emoji,
         mood_label=req.mood_label,
         body=body,
+        bg_image=req.bg_image,
         translated=translated,
         book_id=book_id,
     )
@@ -150,6 +208,8 @@ def update_entry(entry_id: int, req: UpdateEntryRequest, background_tasks: Backg
         kwargs["mood_label"] = req.mood_label
     if req.body is not None:
         kwargs["body"] = req.body
+    if req.bg_image is not None:
+        kwargs["bg_image"] = req.bg_image
     if req.translated is not None:
         kwargs["translated"] = req.translated
     if req.book_id is not None:
@@ -158,7 +218,12 @@ def update_entry(entry_id: int, req: UpdateEntryRequest, background_tasks: Backg
     updated = update_journal_entry(current_user.id, entry_id, **kwargs)
     if not updated:
         raise HTTPException(status_code=404, detail="Entry not found")
-    if req.allow_loop_detection is not False:  # default or explicit True
+
+    # Entries sourced from a chat-summary save (from-thread-summary) must never
+    # feed loop detection, even when edited later through this generic PATCH
+    # route -- so this check overrides whatever allow_loop_detection was passed.
+    is_thread_sourced = bool(updated.get("source_thread_id"))
+    if not is_thread_sourced and req.allow_loop_detection is not False:  # default or explicit True
         background_tasks.add_task(extract_features_and_detect_loops, current_user.id, entry_id)
     return {"entry": updated}
 

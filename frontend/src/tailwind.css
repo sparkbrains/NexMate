@@ -1,9 +1,6 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--sans);
-  --font-serif: var(--serif);
-
   --color-paper: var(--paper);
   --color-paper-deep: var(--paper-deep);
   --color-ink-warm: var(--ink-warm);
@@ -42,7 +39,7 @@
   }
 
   body {
-    font-family: var(--sans);
+    font-family: var(--font-sans);
     color: var(--ink);
   }
 }

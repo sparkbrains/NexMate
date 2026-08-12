@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   login,
   signupRequestOtp,
@@ -9,7 +10,7 @@ import {
   resendPasswordResetOtp,
   resetPassword,
 } from '../../lib/api';
-import { BrandMark } from './Shell';
+import LogoIco from '../../assets/ic_logo.svg';
 
 const QUOTES = [
   "The thought you keep circling is trying to tell you something.",
@@ -25,8 +26,8 @@ const HeroMark = () => (
   <svg className="nm-breathe" width="72" height="72" viewBox="0 0 72 72" aria-hidden>
     <defs>
       <linearGradient id="nm-arc" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="var(--accent)" />
-        <stop offset="100%" stopColor="var(--accent-2)" />
+        <stop offset="0%" stopColor="var(--land-blue)" />
+        <stop offset="100%" stopColor="var(--land-cherry)" />
       </linearGradient>
     </defs>
     <circle cx="36" cy="36" r="30" fill="none" stroke="var(--rule)" strokeWidth="1" />
@@ -40,7 +41,7 @@ const HeroMark = () => (
       transform="rotate(-90 36 36)"
       style={{ animation: 'nm-draw 2.2s cubic-bezier(.2,.7,.3,1) 0.3s both' }}
     />
-    <circle cx="36" cy="36" r="3" fill="var(--accent)" />
+    <circle cx="36" cy="36" r="3" fill="var(--land-navy)" />
   </svg>
 );
 
@@ -59,13 +60,12 @@ const ENTRY_NO = {
   reset: '006',
 };
 
-export function AuthGate({ onAuth }) {
+export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onBack }) {
+  const navigate = useNavigate();
   // mode: 'login' | 'signup' | 'otp' | 'forgot' | 'forgot-otp' | 'reset'
-  const [mode, setMode] = useState('login');
+  const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [age, setAge] = useState('');
   const [otp, setOtp] = useState(Array(OTP_LENGTH).fill(''));
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -74,6 +74,15 @@ export function AuthGate({ onAuth }) {
   const [notice, setNotice] = useState(null);
   const [cooldown, setCooldown] = useState(0);
   const otpRefs = useRef([]);
+
+  const pwChecks = (pw) => ({
+    len:   pw.length >= 8,
+    upper: /[A-Z]/.test(pw),
+    lower: /[a-z]/.test(pw),
+    digit: /[0-9]/.test(pw),
+    special: /[^A-Za-z0-9]/.test(pw),
+  });
+  const pwValid = (pw) => Object.values(pwChecks(pw)).every(Boolean);
 
   const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], []);
   const isLogin = mode === 'login';
@@ -97,28 +106,23 @@ export function AuthGate({ onAuth }) {
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
-    if (isSignup) {
-      if (!name.trim()) {
-        setErr('Tell us what to call you.');
-        return;
-      }
-      const ageNum = Number(age);
-      if (!age || !Number.isInteger(ageNum) || ageNum < 13 || ageNum > 120) {
-        setErr('Enter an age between 13 and 120.');
-        return;
-      }
-    }
     setBusy(true); setErr(null);
     try {
       if (isLogin) {
         const data = await login(email.trim(), password);
         onAuth(data.user);
       } else {
-        // Step 1 of signup: request an OTP be sent to the email.
-        // Backend stores the pending signup (email + hashed password +
-        // name/age) keyed to the OTP, and only creates the user once
-        // it's verified.
-        await signupRequestOtp(email.trim(), password, name.trim(), Number(age));
+        if (!pwValid(password)) {
+          setBusy(false);
+          setErr('Password must be 8+ chars with uppercase, lowercase, number and special character.');
+          return;
+        }
+        // Step 1 of signup: request an OTP be sent to the email. Backend
+        // stores the pending signup (email + hashed password) keyed to the
+        // OTP, and only creates the user once it's verified. Name and date
+        // of birth aren't collected here — we ask for those once inside
+        // the app, after signup.
+        await signupRequestOtp(email.trim(), password);
         setCooldown(RESEND_COOLDOWN);
         setMode('otp');
       }
@@ -198,11 +202,9 @@ export function AuthGate({ onAuth }) {
   const toggle = () => {
     setErr(null);
     setNotice(null);
-    if (!isLogin) {
-      setName('');
-      setAge('');
-    }
-    setMode(isLogin ? 'signup' : 'login');
+    const nextMode = isLogin ? 'signup' : 'login';
+    setMode(nextMode);
+    navigate(`/${nextMode}`);
   };
 
   const backToSignup = () => {
@@ -272,8 +274,12 @@ export function AuthGate({ onAuth }) {
   const submitReset = async (e) => {
     e.preventDefault();
     if (busy) return;
-    if (newPassword.length < 6) {
-      setErr('Use at least six characters.');
+    if (newPassword.length < 8) {
+      setErr('Use at least eight characters.');
+      return;
+    }
+    if (!pwValid(newPassword)) {
+      setErr('Password must have uppercase, lowercase, number and special character.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -301,9 +307,34 @@ export function AuthGate({ onAuth }) {
     <div className="nm-auth">
       {/* LEFT — editorial hero */}
       <section className="nm-auth-hero">
-        <header className="nm-auth-mast nm-reveal" data-d="1">
-          <BrandMark />
-          <div className="nm-brand-name">next<em>mate</em></div>
+        <img className="nm-auth-sticker nm-auth-sticker-1" src="/stickers/picnic/strawberry.png" alt="" aria-hidden="true" />
+        <img className="nm-auth-sticker nm-auth-sticker-2" src="/stickers/scrapbook/butterfly.png" alt="" aria-hidden="true" />
+        <header className="nm-auth-mast nm-reveal" data-d="1" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', paddingRight: onScrollToPricing ? 20 : 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                style={{ background: 'none', border: 'none', color: 'var(--ink)', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', transition: 'color 0.2s', padding: 0 }}
+                onMouseOver={(e) => { e.currentTarget.style.color = 'var(--land-cherry)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.color = 'var(--ink)'; }}
+              >
+                ←
+              </button>
+            )}
+            <img src={LogoIco} alt="Nextmate" height="30" className="nm-logo" />
+          </div>
+          {onScrollToPricing && (
+            <button 
+              type="button"
+              onClick={onScrollToPricing} 
+              style={{ background: 'var(--surface)', color: 'var(--ink)', border: '1px solid var(--rule)', padding: '6px 14px', borderRadius: 20, cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600, transition: 'all 0.2s' }}
+              onMouseOver={(e) => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--ink-4)'; }}
+              onMouseOut={(e) => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--rule)'; }}
+            >
+              Pricing
+            </button>
+          )}
         </header>
 
         <div>
@@ -322,8 +353,7 @@ export function AuthGate({ onAuth }) {
               gap: 12,
             }}
           >
-            <span>Chapter ∞ ·</span>
-            <span style={{ color: 'var(--accent)', fontStyle: 'italic', textTransform: 'none', fontFamily: 'var(--font-display)', fontSize: 14, letterSpacing: '-0.01em' }}>
+            <span style={{ color: 'var(--land-navy)', fontStyle: 'italic', textTransform: 'none', fontFamily: 'var(--font-display)', fontSize: 14, letterSpacing: '-0.01em' }}>
               a quiet place to think out loud
             </span>
           </div>
@@ -371,8 +401,7 @@ export function AuthGate({ onAuth }) {
 
         <footer className="nm-auth-foot nm-reveal" data-d="6">
           <div>
-            <div style={{ marginBottom: 4 }}>{today()}</div>
-            <div><b>entry 001</b> · you</div>
+            <div>{today()}</div>
           </div>
           <div className="nm-auth-quote">{quote}</div>
         </footer>
@@ -380,24 +409,24 @@ export function AuthGate({ onAuth }) {
 
       {/* RIGHT — entry form */}
       <section className="nm-auth-pane">
+        <img className="nm-auth-pane-sticker" src="/stickers/picnic/jam-jar.png" alt="" aria-hidden="true" />
         <div className="nm-auth-pane-head nm-reveal" data-d="2">
           <span>
-            {isLogin && 'To return —'}
-            {isSignup && 'To begin —'}
             {isOtp && 'One more step —'}
             {isForgotEmail && 'To reset —'}
             {isForgotOtp && 'One more step —'}
             {isReset && 'Almost there —'}
           </span>
-          <span className="entry-no">no. {ENTRY_NO[mode]}</span>
+          {(isOtp || isForgotEmail || isForgotOtp || isReset) && <span className="entry-no">no. {ENTRY_NO[mode]}</span>}
         </div>
 
-        {notice && !isLogin && <div className="nm-auth-notice">{notice}</div>}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          {notice && !isLogin && <div className="nm-auth-notice">{notice}</div>}
 
         {(isLogin || isSignup) && (
           <form onSubmit={submit} className="nm-auth-form nm-reveal" data-d="3" noValidate>
             <h2 className="nm-auth-title">
-              {isLogin ? <>Sign <em>in.</em></> : <>Make <em>room.</em></>}
+              {isLogin ? <>Sign <em>in.</em></> : <>Make <em>a space.</em></>}
             </h2>
 
             {isLogin && notice && <div className="nm-auth-notice">{notice}</div>}
@@ -418,42 +447,6 @@ export function AuthGate({ onAuth }) {
               <span className="nm-field-mark" />
             </div>
 
-            {isSignup && (
-              <div style={{ display: 'flex', gap: 16 }}>
-                <div className="nm-field" style={{ flex: 2 }}>
-                  <label htmlFor="nm-name" className="nm-field-label">Name</label>
-                  <input
-                    id="nm-name"
-                    className="nm-field-input"
-                    type="text"
-                    autoComplete="name"
-                    placeholder="what should we call you"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                  />
-                  <span className="nm-field-mark" />
-                </div>
-
-                <div className="nm-field" style={{ flex: 1 }}>
-                  <label htmlFor="nm-age" className="nm-field-label">Age</label>
-                  <input
-                    id="nm-age"
-                    className="nm-field-input"
-                    type="number"
-                    inputMode="numeric"
-                    min={13}
-                    max={120}
-                    placeholder="24"
-                    value={age}
-                    onChange={(e) => setAge(e.target.value)}
-                    required
-                  />
-                  <span className="nm-field-mark" />
-                </div>
-              </div>
-            )}
-
             <div className="nm-field">
               <label htmlFor="nm-pass" className="nm-field-label">
                 Password · {isLogin ? 'the one you chose' : 'pick something memorable'}
@@ -463,13 +456,23 @@ export function AuthGate({ onAuth }) {
                 className="nm-field-input"
                 type="password"
                 autoComplete={isLogin ? 'current-password' : 'new-password'}
-                placeholder={isLogin ? '••••••••' : 'at least eight soft characters'}
+                placeholder={isLogin ? '••••••••' : 'min 8 chars · A-Z · a-z · 0-9 · symbol'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 minLength={isLogin ? undefined : 8}
               />
               <span className="nm-field-mark" />
+              {isSignup && password.length > 0 && (() => {
+                const c = pwChecks(password);
+                return (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    {[['8+ chars', c.len], ['A–Z', c.upper], ['a–z', c.lower], ['0–9', c.digit], ['symbol', c.special]].map(([label, ok]) => (
+                      <span key={label} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '2px 7px', borderRadius: 99, background: ok ? 'var(--teal)' : 'var(--rule)', color: ok ? '#fff' : 'var(--ink-3)', transition: 'all 0.2s' }}>{ok ? '✓ ' : ''}{label}</span>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
 
             {isLogin && (
@@ -487,8 +490,8 @@ export function AuthGate({ onAuth }) {
             <button className="nm-auth-submit" type="submit" disabled={busy}>
               <span>
                 {busy
-                  ? (isLogin ? 'Returning' : 'Sending a code')
-                  : isLogin ? <>Return<em>.</em></> : <>Continue<em>.</em></>}
+                  ? (isLogin ? 'Signing in' : 'Sending a code')
+                  : isLogin ? <>Sign in<em>.</em></> : <>Continue<em>.</em></>}
               </span>
               <span className="arrow" aria-hidden>→</span>
             </button>
@@ -621,14 +624,24 @@ export function AuthGate({ onAuth }) {
                 className="nm-field-input"
                 type="password"
                 autoComplete="new-password"
-                placeholder="at least six characters"
+                placeholder="min 8 chars · A-Z · a-z · 0-9 · symbol"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
                 autoFocus
               />
               <span className="nm-field-mark" />
+              {newPassword.length > 0 && (() => {
+                const c = pwChecks(newPassword);
+                return (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                    {[['8+ chars', c.len], ['A–Z', c.upper], ['a–z', c.lower], ['0–9', c.digit], ['symbol', c.special]].map(([label, ok]) => (
+                      <span key={label} style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '2px 7px', borderRadius: 99, background: ok ? 'var(--teal)' : 'var(--rule)', color: ok ? '#fff' : 'var(--ink-3)', transition: 'all 0.2s' }}>{ok ? '✓ ' : ''}{label}</span>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
 
             <div className="nm-field">
@@ -642,7 +655,7 @@ export function AuthGate({ onAuth }) {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                minLength={6}
+                minLength={8}
               />
               <span className="nm-field-mark" />
             </div>
@@ -660,11 +673,23 @@ export function AuthGate({ onAuth }) {
           </form>
         )}
 
-        <div className="nm-reveal" data-d="5" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="nm-reveal" data-d="5" style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 20 }}>
           {(isLogin || isSignup) && (
-            <button className="nm-auth-toggle" onClick={toggle} type="button">
-              {isLogin ? <>New here? <u>Make a space</u></> : <>Been here before? <u>Sign in</u></>}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ color: 'var(--ink-2)', fontSize: 14 }}>
+                {isLogin ? 'New here?' : 'Been here before?'}
+              </span>
+              <button
+                className="nm-btn primary"
+                style={{ background: 'var(--land-cherry)', color: 'white', padding: '10px 20px', borderRadius: 24, fontSize: 14, fontWeight: 500, transition: 'background 0.2s ease' }}
+                onClick={toggle}
+                type="button"
+                onMouseOver={(e) => { e.currentTarget.style.background = 'var(--land-cherry-deep)'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'var(--land-cherry)'; }}
+              >
+                {isLogin ? 'Make a space' : 'Sign in'}
+              </button>
+            </div>
           )}
           {isOtp && (
             <>
@@ -706,10 +731,11 @@ export function AuthGate({ onAuth }) {
               <u>Back to sign in</u>
             </button>
           )}
-          <div className="nm-auth-fineprint">
-            Nextmate keeps 90 days of memory.<br />
-            It doesn’t provide clinical advice — it reflects.
-          </div>
+        </div>
+        </div>
+        <div className="nm-auth-fineprint nm-reveal" data-d="5" style={{ marginTop: 'auto' }}>
+          Nextmate keeps 90 days of memory.<br />
+          It doesn’t provide clinical advice — it reflects.
         </div>
       </section>
     </div>
@@ -719,7 +745,7 @@ export function AuthGate({ onAuth }) {
 function prettyError(msg) {
   if (!msg) return null;
   if (msg.includes('Invalid credentials')) return 'That combination doesn’t match anything here.';
-  if (msg.toLowerCase().includes('fetch')) return 'Couldn’t reach the server. Is it running?';
+  if (/fetch|network|failed to fetch|networkerror|cors/i.test(msg)) return "Couldn't reach the server. Is it running?";
   try {
     const parsed = JSON.parse(msg);
     if (parsed?.detail) return parsed.detail;

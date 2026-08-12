@@ -6,9 +6,8 @@ import atexit
 import time
 import pathlib
 from datetime import datetime
+from types import SimpleNamespace
 from line_profiler import LineProfiler
-from mistralai.client import Mistral
-from .config import get_settings
 from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -84,11 +83,31 @@ def log_token_usage(node_name: str, usage_metadata: dict, thread_id: str = "unkn
     logger.info(f"Token usage - {node_name}: {total_tokens} tokens (prompt: {prompt_tokens}, completion: {completion_tokens})")
 
 
-def _resolve_mistral_api_key() -> str:
-    """Shared API key resolution for both the generation and fast chat models.
-    Checks env var first, falls back to reading .env directly (matches prior
-    behavior in get_chat_model so nothing regresses for existing setups)."""
-    api_key = os.getenv("MISTRAL_API_KEY")
+# --- provider selection --------------------------------------------------
+#
+# Gemini-only. get_chat_model()/get_fast_chat_model() always build a fresh
+# Gemini client. The wrapper below still exposes the SAME shape that
+# invoke_with_logging / ainvoke_with_logging expect -- a (client,
+# model_name) tuple where client.chat.complete(model=..., messages=...)
+# returns an object with .choices[0].message.content and
+# .usage.{prompt_tokens,completion_tokens,total_tokens}, and
+# client.chat.complete_async(...) does the same async. This means every
+# call site elsewhere (loop_service.py, journal_loop_service.py,
+# thread_service.py, etc.) needs ZERO changes.
+#
+# IMPORTANT: nothing here is cached. Every call to get_chat_model() /
+# get_fast_chat_model() reads straight from the environment (via
+# load_dotenv()'s already-populated os.environ) and builds a brand new
+# client. This trades a small amount of per-call overhead for always
+# reflecting the current .env / environment -- no stale cached client if
+# the API key or model name changes at runtime.
+
+
+def _resolve_gemini_api_key() -> str:
+    """Env var first (GEMINI_API_KEY, falling back to GOOGLE_API_KEY since
+    that's what the google-genai SDK itself also checks), then a direct
+    .env read as a last resort."""
+    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
     if not api_key or not api_key.strip():
         from pathlib import Path
         try:
@@ -97,48 +116,140 @@ def _resolve_mistral_api_key() -> str:
             if env_path.exists():
                 with open(env_path, "r", encoding="utf-8") as f:
                     for line in f:
-                        if line.strip().startswith("MISTRAL_API_KEY="):
-                            val = line.split("=", 1)[1].strip()
+                        stripped = line.strip()
+                        if stripped.startswith("GEMINI_API_KEY=") or stripped.startswith("GOOGLE_API_KEY="):
+                            val = stripped.split("=", 1)[1].strip()
                             if val.startswith(('"', "'")) and val.endswith(('"', "'")):
                                 val = val[1:-1]
                             if val:
                                 api_key = val
                                 break
         except Exception as e:
-            logger.error(f"Failed to read MISTRAL_API_KEY from .env: {e}")
+            logger.error(f"Failed to read GEMINI_API_KEY from .env: {e}")
 
     if not api_key or not api_key.strip():
-        raise ValueError("MISTRAL_API_KEY is missing or empty in environment configuration")
+        raise ValueError(
+            "GEMINI_API_KEY (or GOOGLE_API_KEY) is missing or empty in environment configuration"
+        )
 
     return api_key
 
 
-_cached_chat_client: Mistral | None = None
-_cached_model_name: str | None = None
+class _GeminiChatNamespace:
+    """Mimics a Mistral-shaped `client.chat` surface: a sync .complete(...)
+    and an async .complete_async(...), both returning a Mistral-shaped
+    response object so invoke_with_logging/ainvoke_with_logging don't need
+    to know or care which provider is actually behind them."""
 
-_cached_fast_client: Mistral | None = None
-_cached_fast_model_name: str | None = None
+    def __init__(self, genai_client):
+        self._client = genai_client
+
+    @staticmethod
+    def _split_system_and_contents(messages: list) -> tuple[str, list]:
+        """Gemini takes system instructions separately from the turn history,
+        and turns must use role 'user'/'model' rather than 'user'/'assistant'.
+        Any number of system-role messages get concatenated in order; every
+        other message is mapped into Gemini's Content/Part shape."""
+        system_parts: list[str] = []
+        contents: list[dict] = []
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "") or ""
+            if role == "system":
+                system_parts.append(content)
+                continue
+            gemini_role = "model" if role == "assistant" else "user"
+            contents.append({"role": gemini_role, "parts": [{"text": content}]})
+        return "\n\n".join(system_parts), contents
+
+    @staticmethod
+    def _wrap_response(response) -> SimpleNamespace:
+        text = ""
+        try:
+            text = response.text or ""
+        except Exception:
+            # .text raises if the response was blocked/empty; fall back to ""
+            # so parse_json_object's fallback branch handles it gracefully.
+            text = ""
+
+        usage_meta = getattr(response, "usage_metadata", None)
+        prompt_tokens = getattr(usage_meta, "prompt_token_count", 0) or 0
+        completion_tokens = getattr(usage_meta, "candidates_token_count", 0) or 0
+        total_tokens = getattr(usage_meta, "total_token_count", 0) or (prompt_tokens + completion_tokens)
+
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=text))],
+            usage=SimpleNamespace(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+            ),
+        )
+
+    def complete(self, model: str, messages: list):
+        from google.genai import types
+
+        system_instruction, contents = self._split_system_and_contents(messages)
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction or None,
+            # We never pass `tools` here, so AFC has nothing to do -- it
+            # was just adding an "AFC is enabled with max remote calls: 10"
+            # line to every single call's logs.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        )
+        response = self._client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+        return self._wrap_response(response)
+
+    async def complete_async(self, model: str, messages: list):
+        from google.genai import types
+
+        system_instruction, contents = self._split_system_and_contents(messages)
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction or None,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        )
+        response = await self._client.aio.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+        return self._wrap_response(response)
 
 
-def get_chat_model() -> tuple[Mistral, str]:
-    """Return a cached Mistral client along with the model name to use,
-    based on settings.generation_model."""
-    global _cached_chat_client, _cached_model_name
-    settings = get_settings()
-    model_name = getattr(settings, "generation_model", None) or "mistral-medium-3-5"
-    if _cached_chat_client is not None and _cached_model_name == model_name:
-        return _cached_chat_client, _cached_model_name
+class _GeminiClient:
+    """Thin wrapper so `client.chat.complete(...)` / `client.chat.complete_async(...)`
+    keeps get_chat_model()'s (client, model_name) tuple contract that
+    invoke_with_logging/ainvoke_with_logging expect."""
 
-    api_key = getattr(settings, "llm_api_key", None) or _resolve_mistral_api_key()
-    _cached_chat_client = Mistral(api_key=api_key)
-    _cached_model_name = model_name
-    return _cached_chat_client, _cached_model_name
+    def __init__(self, api_key: str):
+        from google import genai
+
+        self._genai_client = genai.Client(api_key=api_key)
+        self.chat = _GeminiChatNamespace(self._genai_client)
 
 
-def get_fast_chat_model() -> tuple[Mistral, str]:
-    """Return the same Mistral client/model as get_chat_model for unified usage."""
-    # For unified model, delegate to get_chat_model
-    return get_chat_model()
+def _get_gemini_chat_model(model_env_var: str = "GENERATION_MODEL") -> tuple[_GeminiClient, str]:
+    """Builds a fresh Gemini client every call -- no caching, so changes to
+    GEMINI_API_KEY/GOOGLE_API_KEY/GENERATION_MODEL/FAST_MODEL take effect on the very
+    next call."""
+    model_name = os.getenv(model_env_var) or os.getenv("GENERATION_MODEL") or "gemini-flash-latest"
+    api_key = _resolve_gemini_api_key()
+    client = _GeminiClient(api_key=api_key)
+    return client, model_name
+
+
+def get_chat_model():
+    """Return a (client, model_name) tuple for Gemini using GENERATION_MODEL."""
+    return _get_gemini_chat_model("GENERATION_MODEL")
+
+
+def get_fast_chat_model():
+    """Return a (client, model_name) tuple for Gemini using FAST_MODEL (falling back to GENERATION_MODEL)."""
+    return _get_gemini_chat_model("FAST_MODEL")
 
 
 import re as _re
@@ -187,11 +298,9 @@ def parse_json_object(text: str) -> dict:
 import asyncio
 
 def _format_messages(messages: list) -> list:
-    """Convert a list of {'role': ..., 'content': ...} dicts to Mistral's
-    expected chat format. Mistral's chat API already accepts OpenAI-style
-    {'role': ..., 'content': ...} dicts directly, so this mostly just
-    validates/normalizes shape (kept as a function so call sites don't
-    need to change and so we have one place to adjust formatting later).
+    """Convert a list of {'role': ..., 'content': ...} dicts to the expected
+    chat format. Kept as a function so call sites don't need to change and
+    so there's one place to adjust formatting later.
     """
     formatted = []
     for msg in messages:
@@ -202,8 +311,8 @@ def _format_messages(messages: list) -> list:
 
 @profile
 def invoke_with_logging(llm, messages: list, node_name: str, thread_id: str = "unknown") -> tuple[str, dict]:
-    """Invoke a Mistral model synchronously and log token usage.
-    `llm` is expected to be the (client, model_name) tuple returned by
+    """Invoke Gemini synchronously and log token usage. `llm` is expected
+    to be the (client, model_name) tuple returned by
     get_chat_model()/get_fast_chat_model().
     """
     client, model_name = llm
@@ -225,10 +334,10 @@ def invoke_with_logging(llm, messages: list, node_name: str, thread_id: str = "u
 
 @profile
 async def ainvoke_with_logging(llm, messages: list, node_name: str, thread_id: str = "unknown") -> tuple[str, dict]:
-    """Async wrapper for Mistral invocation.
-    Prefers the SDK's native async client (client.chat.complete_async) when
-    available, and falls back to a thread executor around the sync path
-    otherwise so behavior degrades gracefully.
+    """Async wrapper. Prefers the client's native async path
+    (client.chat.complete_async) -- the Gemini adapter exposes this -- and
+    falls back to a thread executor around the sync path otherwise so
+    behavior degrades gracefully.
     """
     client, model_name = llm
     if hasattr(client.chat, "complete_async"):

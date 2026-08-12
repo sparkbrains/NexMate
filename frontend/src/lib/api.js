@@ -38,7 +38,7 @@ export function clearSession() {
   }
 }
 
-async function request(path, { method = 'GET', body, auth = true } = {}) {
+async function request(path, { method = 'GET', body, auth = true, signal } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (auth) {
     const token = getToken();
@@ -48,6 +48,8 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers,
+    signal,
+    cache: 'no-store',
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
@@ -72,10 +74,10 @@ async function request(path, { method = 'GET', body, auth = true } = {}) {
   return data;
 }
 
-export async function signup(email, password, name, age) {
+export async function signup(email, password) {
   const data = await request('/api/auth/signup', {
     method: 'POST',
-    body: { email, password, name, age },
+    body: { email, password },
     auth: false,
   });
   setSession(data.token, data.user);
@@ -83,12 +85,13 @@ export async function signup(email, password, name, age) {
 }
 
 // Step 1 of OTP signup: request a code be emailed to the address. No
-// account exists yet — the backend holds a pending signup (including
-// name/age) until it's verified.
-export async function signupRequestOtp(email, password, name, age) {
+// account exists yet — the backend holds a pending signup until it's
+// verified. Name and date of birth aren't collected here; they're asked
+// for inside the app after signup.
+export async function signupRequestOtp(email, password, plan) {
   return request('/api/auth/signup/request-otp', {
     method: 'POST',
-    body: { email, password, name, age },
+    body: { email, password, plan },
     auth: false,
   });
 }
@@ -205,6 +208,40 @@ export async function deleteAccount(password) {
   return data;
 }
 
+// Persists an updated user object into local storage without touching the
+// token -- used after profile actions (e.g. reminder settings) so a page
+// refresh doesn't momentarily show stale values before getMe() resolves.
+export function persistUser(user) {
+  try {
+    if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+  } catch {
+    /* ignore quota / disabled storage */
+  }
+}
+
+export function updateReminderSettings(enabled, reminderTime) {
+  return request('/api/auth/reminder', {
+    method: 'PATCH',
+    body: { enabled, reminder_time: reminderTime },
+  });
+}
+
+// Marks first-run onboarding as done. has_journaled_before is nullable —
+// pass null when the user skipped the intake question entirely.
+export function completeOnboarding(hasJournaledBefore) {
+  return request('/api/auth/onboarding', {
+    method: 'PATCH',
+    body: { has_journaled_before: hasJournaledBefore },
+  });
+}
+
+export function updateProfile({ name, email, dob, motivation, theme, subscription_tier }) {
+  return request('/api/auth/profile', {
+    method: 'PATCH',
+    body: { name, email, dob, motivation, theme, subscription_tier },
+  });
+}
+
 export function listThreads() {
   return request('/api/threads');
 }
@@ -223,6 +260,37 @@ export function getDashboardKpis() {
 
 export function getDashboardInsights(days = 30) {
   return request(`/api/dashboard/insights?days=${encodeURIComponent(days)}`);
+}
+
+export function getKnowledgeGraph(days = 30) {
+  return request(`/api/dashboard/knowledge-graph?days=${encodeURIComponent(days)}`);
+}
+
+export function getUserProfileSummary() {
+  return request('/api/profile/summary');
+}
+
+export function getTodaysPrompt({ signal } = {}) {
+  return request('/api/dashboard/prompt-pack/today', { signal });
+}
+
+export function answerPrompt(promptId, answerText) {
+  return request(`/api/dashboard/prompt-pack/${encodeURIComponent(promptId)}/answer`, {
+    method: 'POST',
+    body: { answer_text: answerText },
+  });
+}
+
+export function getPromptHistory() {
+  return request('/api/dashboard/prompt-pack/history');
+}
+
+export function getAllPromptPacks() {
+  return request('/api/dashboard/prompt-pack/all');
+}
+
+export function listRewards() {
+  return request('/api/rewards');
 }
 
 export function listLoops() {
@@ -256,6 +324,13 @@ export function createJournalBook({ name, color = '' }) {
   });
 }
 
+export function updateJournalBook(id, { name, color = '' }) {
+  return request(`/api/journal/books/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: { name, color },
+  });
+}
+
 export function deleteJournalBook(id) {
   return request(`/api/journal/books/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
@@ -265,17 +340,11 @@ export function listJournalEntries(bookId = null) {
   return request(`/api/journal${qs}`);
 }
 
-export function createJournalEntry({ body, mood_emoji = '', mood_label = '', entry_date = null, translated = '', auto_translate = false, book_id = null, allow_loop_detection = true }) {
+// Regular, hand-written journal entry (from the Journal screen).
+export function createJournalEntry({ body, mood_emoji = '', mood_label = '', entry_date = null, translated = '', auto_translate = false, book_id = null, allow_loop_detection = true, bg_image = '' }) {
   return request('/api/journal', {
     method: 'POST',
-    body: { body, mood_emoji, mood_label, entry_date, translated, auto_translate, book_id, allow_loop_detection },
-  });
-}
-
-export function updateJournalEntry(id, { body, mood_emoji = '', mood_label = '' }) {
-  return request(`/api/journal/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    body: { body, mood_emoji, mood_label },
+    body: { body, mood_emoji, mood_label, entry_date, translated, auto_translate, book_id, allow_loop_detection, bg_image },
   });
 }
 
@@ -283,19 +352,74 @@ export function deleteJournalEntry(id) {
   return request(`/api/journal/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
-export function chatSocketUrl(threadId) {
-  const httpBase = API_BASE_URL;
-  const wsBase = httpBase.replace(/^http/i, (m) => (m.toLowerCase() === 'https' ? 'wss' : 'ws'));
-  const token = encodeURIComponent(getToken() || '');
-  return `${wsBase}/ws/chat/${encodeURIComponent(threadId)}?token=${token}`;
+export function updateJournalEntry(id, fields) {
+  return request(`/api/journal/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: fields,
+  });
 }
 
-export function answerDailyQuestion(questionId) {
+export function getJournalEntry(id) {
+  return request(`/api/journal/${encodeURIComponent(id)}`);
+}
+
+export function translateJournalEntry({ body, mood_emoji = '', mood_label = '' }) {
+  return request('/api/journal/translate', {
+    method: 'POST',
+    body: { body, mood_emoji, mood_label },
+  });
+}
+
+// Browsers can't attach an Authorization header to a WebSocket handshake,
+// so whatever goes in the URL ends up in access/proxy logs and browser
+// history. Rather than put the long-lived, reusable session token there,
+// we exchange it (over a normal authenticated REST call, token in the
+// header as usual) for a short-lived single-use ticket, and only that
+// ticket goes in the WS URL.
+export function createWsTicket() {
+  return request('/api/auth/ws-ticket', { method: 'POST' });
+}
+
+export function chatSocketUrl(threadId, ticket) {
+  const httpBase = API_BASE_URL;
+  const wsBase = httpBase.replace(/^http/i, (m) => (m.toLowerCase() === 'https' ? 'wss' : 'ws'));
+  return `${wsBase}/ws/chat/${encodeURIComponent(threadId)}?ticket=${encodeURIComponent(ticket)}`;
+}
+
+export async function answerDailyQuestion(questionId) {
   return request(`/api/dashboard/daily-question/${encodeURIComponent(questionId)}/answer`, {
     method: 'POST',
   });
 }
 
-export function getDailyQuestionContext(questionId) {
+export async function getDailyQuestionContext(questionId) {
   return request(`/api/dashboard/daily-question/${encodeURIComponent(questionId)}/context`);
+}
+
+export async function transcribeAudio(blob) {
+  const token = getToken();
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${API_BASE_URL}/api/transcribe`, { method: 'POST', headers, body: blob });
+  const text = await res.text();
+  let data = null;
+  if (text) { try { data = JSON.parse(text); } catch { data = { raw: text }; } }
+  if (!res.ok) {
+    const detail = (data && (data.detail || data.message)) || res.statusText || 'Transcription failed';
+    const err = new Error(typeof detail === 'string' ? detail : 'Transcription failed');
+    err.status = res.status; err.data = data; throw err;
+  }
+  return data;
+}
+
+export function getThreadSummary(threadId) {
+  return request(`/api/threads/${encodeURIComponent(threadId)}/summary`);
+}
+
+export function finalizeThreadSummary(threadId) {
+  return request(`/api/threads/${encodeURIComponent(threadId)}/finalize-summary`, { method: 'POST' });
+}
+
+export function saveThreadSummaryAsJournalEntry({ body, thread_id, book_id = null }) {
+  return request('/api/journal/from-thread-summary', { method: 'POST', body: { body, thread_id, book_id } });
 }
