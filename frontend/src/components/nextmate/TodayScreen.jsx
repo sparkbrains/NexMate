@@ -205,7 +205,7 @@ const DUMMY_TODAY_INSIGHTS = {
   }
 };
 
-export const TodayScreen = ({ onNav, threads = [], user }) => {
+export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -281,8 +281,9 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
   const QUOTES = [{text: "Be gentle with yourself.", author: "Anonymous"}]; // Placeholder
   const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
-  const isEmpty = !loading && (insights?.total_entries === 0 || !insights) && threads.length === 0;
-  const displayInsights = isEmpty ? DUMMY_TODAY_INSIGHTS : insights;
+  const usingSample = Boolean(tourSample) && !loading && (insights?.total_lifetime_entries ?? 0) === 0;
+  const isEmpty = !loading && (insights?.total_lifetime_entries === 0 || !insights) && threads.length === 0 && !usingSample;
+  const displayInsights = (usingSample || isEmpty) ? DUMMY_TODAY_INSIGHTS : insights;
 
   const totalEntries = displayInsights?.total_entries ?? 0;
   
@@ -295,7 +296,8 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
 
   const topLoop = displayInsights?.loops?.items?.find((l) => l.state === 'active');
   const topTriggers = (displayInsights?.top_triggers || []).slice(0, 4);
-  const dailyQuestions = Array.isArray(displayInsights?.daily_question) ? displayInsights.daily_question : [];
+  const dummyQuestions = [{ id: 'sample_q', question_text: "What's one small win you had today, even if it felt insignificant?", status: 'pending' }];
+  const dailyQuestions = usingSample ? dummyQuestions : (Array.isArray(displayInsights?.daily_question) ? displayInsights.daily_question : []);
   const pendingQuestions = dailyQuestions.filter((q) => q.status === 'pending');
   const currentQuestion = pendingQuestions[currentQuestionIdx] || pendingQuestions[0] || null;
 
@@ -324,9 +326,11 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
                 — {quote.author}
               </div>
             </div>
-            <p className="nm-body" style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>
-              Emotion intensity {avgIntensity ?? '—'} this week. Keep showing up.
-            </p>
+            {(!isEmpty || usingSample) && (
+              <p className="nm-body" style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>
+                Emotion intensity {avgIntensity ?? '—'} this week. Keep showing up. {usingSample && <SampleBadge />}
+              </p>
+            )}
             {error && (
               <p className="nm-meta" style={{ color: 'var(--accent)', marginTop: 12 }}>
                 Couldn't load insights: {error}
@@ -433,30 +437,38 @@ export const TodayScreen = ({ onNav, threads = [], user }) => {
               </EmptyDataOverlay>
             </div>
 
-          <div className="nm-card" style={{ marginBottom: 16 }} data-tour="today-question">
-            <div className="nm-meta" style={{ marginBottom: 10 }}>Today's question</div>
-            {dailyQuestions.length === 0 ? (
-              <div className="nm-meta-data" style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.5 }}>Your question is on its way — something thoughtful is being prepared for you.</div>
-            ) : pendingQuestions.length === 0 ? (
-              <div className="nm-meta-data" style={{ color: 'var(--teal)' }}>You've answered all of today's questions. See you tomorrow.</div>
-            ) : currentQuestion ? (
-              <>
-                <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, lineHeight: 1.4, color: 'var(--ink)', letterSpacing: '-0.005em' }}>
-                  {currentQuestion.question_text}
-                </div>
-                <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
-                  <button className="nm-btn" onClick={() => handleAnswerQuestion(currentQuestion)} disabled={answeringQuestion}>
-                    {answeringQuestion ? 'Loading...' : 'Answer'} <Icon name="arrow" size={11} />
-                  </button>
-                  {pendingQuestions.length > 1 && (
-                    <button className="nm-btn ghost" onClick={handleSkipQuestion}>Skip</button>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="nm-meta-data">Your next question will appear shortly.</div>
-            )}
-          </div>
+          <EmptyDataOverlay 
+            active={isEmpty} 
+            title="Your journey begins here." 
+            message="Start a chat or write your first journal entry to unlock your personalized insights."
+            actionLabel="Begin a Chat"
+            onAction={() => { onNav && onNav('chat'); }}
+          >
+            <div className="nm-card" style={{ marginBottom: 16 }} data-tour="today-question">
+              <div className="nm-meta" style={{ marginBottom: 10 }}>Today's question</div>
+              {dailyQuestions.length === 0 ? (
+                <div className="nm-meta-data" style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 13.5, color: 'var(--ink-2)', lineHeight: 1.5 }}>Your question is on its way — something thoughtful is being prepared for you.</div>
+              ) : pendingQuestions.length === 0 ? (
+                <div className="nm-meta-data" style={{ color: 'var(--teal)' }}>You've answered all of today's questions. See you tomorrow.</div>
+              ) : currentQuestion ? (
+                <>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 17, lineHeight: 1.4, color: 'var(--ink)', letterSpacing: '-0.005em' }}>
+                    {currentQuestion.question_text}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 14 }}>
+                    <button className="nm-btn" onClick={() => handleAnswerQuestion(currentQuestion)} disabled={answeringQuestion}>
+                      {answeringQuestion ? 'Loading...' : 'Answer'} <Icon name="arrow" size={11} />
+                    </button>
+                    {pendingQuestions.length > 1 && (
+                      <button className="nm-btn ghost" onClick={handleSkipQuestion}>Skip</button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="nm-meta-data">Your next question will appear shortly.</div>
+              )}
+            </div>
+          </EmptyDataOverlay>
         </div>
       </div>
     </div>

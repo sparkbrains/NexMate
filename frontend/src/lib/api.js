@@ -324,6 +324,13 @@ export function createJournalBook({ name, color = '' }) {
   });
 }
 
+export function updateJournalBook(id, { name, color = '' }) {
+  return request(`/api/journal/books/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: { name, color },
+  });
+}
+
 export function deleteJournalBook(id) {
   return request(`/api/journal/books/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
@@ -334,10 +341,10 @@ export function listJournalEntries(bookId = null) {
 }
 
 // Regular, hand-written journal entry (from the Journal screen).
-export function createJournalEntry({ body, mood_emoji = '', mood_label = '', entry_date = null, translated = '', auto_translate = false, book_id = null, allow_loop_detection = true }) {
+export function createJournalEntry({ body, mood_emoji = '', mood_label = '', entry_date = null, translated = '', auto_translate = false, book_id = null, allow_loop_detection = true, bg_image = '' }) {
   return request('/api/journal', {
     method: 'POST',
-    body: { body, mood_emoji, mood_label, entry_date, translated, auto_translate, book_id, allow_loop_detection },
+    body: { body, mood_emoji, mood_label, entry_date, translated, auto_translate, book_id, allow_loop_detection, bg_image },
   });
 }
 

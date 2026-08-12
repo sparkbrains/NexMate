@@ -14,6 +14,7 @@ def _entry_to_dict(row: dict[str, Any]) -> dict[str, Any]:
         "mood_emoji": row.get("mood_emoji") or "",
         "mood_label": row.get("mood_label") or "",
         "body": row.get("body") or "",
+        "bg_image": row.get("bg_image") or "",
         "translated": row.get("translated") or "",
         "source_thread_id": row.get("source_thread_id"),
         "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
@@ -85,6 +86,35 @@ def delete_book(user_id: int, book_id: int) -> bool:
             ok = cur.rowcount > 0
         conn.commit()
     return ok
+
+
+def update_book(user_id: int, book_id: int, name: str, color: str = "") -> dict[str, Any] | None:
+    cleaned = (name or "").strip()
+    if not cleaned:
+        raise ValueError("Book name cannot be empty")
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE journal_books
+                SET name = %s, color = CASE WHEN %s <> '' THEN %s ELSE color END
+                WHERE user_id = %s AND id = %s
+                RETURNING id, name, color, created_at
+                """,
+                (cleaned, color, color, user_id, book_id),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    if not row:
+        return None
+    # Count entries
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) as cnt FROM journal_logs WHERE user_id = %s AND book_id = %s", (user_id, book_id))
+            cnt_row = cur.fetchone()
+            row["entry_count"] = cnt_row["cnt"] if cnt_row else 0
+    return _book_to_dict(row)
+
 
 
 def compute_streak(user_id: int) -> dict[str, Any]:
@@ -176,7 +206,7 @@ def ensure_default_book(user_id: int) -> dict[str, Any]:
 
 def list_journal_entries(user_id: int, book_id: int | None = None, limit: int = 200) -> list[dict[str, Any]]:
     query = """
-        SELECT id, book_id, entry_date, mood_emoji, mood_label, body, translated,
+        SELECT id, book_id, entry_date, mood_emoji, mood_label, body, bg_image, translated,
                source_thread_id, created_at, updated_at
         FROM journal_logs
         WHERE user_id = %s
@@ -199,7 +229,7 @@ def get_journal_entry(user_id: int, entry_id: int) -> dict[str, Any] | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, book_id, entry_date, mood_emoji, mood_label, body, translated,
+                SELECT id, book_id, entry_date, mood_emoji, mood_label, body, bg_image, translated,
                        source_thread_id, created_at, updated_at
                 FROM journal_logs
                 WHERE user_id = %s AND id = %s
@@ -215,7 +245,7 @@ def get_journal_entry_by_thread(user_id: int, thread_id: str) -> dict[str, Any] 
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, book_id, entry_date, mood_emoji, mood_label, body, translated,
+                SELECT id, book_id, entry_date, mood_emoji, mood_label, body, bg_image, translated,
                        source_thread_id, created_at, updated_at
                 FROM journal_logs
                 WHERE user_id = %s AND source_thread_id = %s
@@ -233,6 +263,7 @@ def create_journal_entry(
     mood_emoji: str,
     mood_label: str,
     body: str,
+    bg_image: str = "",
     translated: str = "",
     book_id: int | None = None,
 ) -> dict[str, Any]:
@@ -242,12 +273,12 @@ def create_journal_entry(
             cur.execute(
                 """
                 INSERT INTO journal_logs
-                    (user_id, book_id, entry_date, mood_emoji, mood_label, body, translated, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, book_id, entry_date, mood_emoji, mood_label, body, translated,
+                    (user_id, book_id, entry_date, mood_emoji, mood_label, body, bg_image, translated, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, book_id, entry_date, mood_emoji, mood_label, body, bg_image, translated,
                           source_thread_id, created_at, updated_at
                 """,
-                (user_id, book_id, entry_date, mood_emoji, mood_label, body, translated, now, now),
+                (user_id, book_id, entry_date, mood_emoji, mood_label, body, bg_image, translated, now, now),
             )
             row = cur.fetchone()
         conn.commit()
@@ -310,6 +341,7 @@ def update_journal_entry(
     mood_emoji: str | None = None,
     mood_label: str | None = None,
     body: str | None = None,
+    bg_image: str | None = None,
     translated: str | None = None,
     book_id: int | None | str = "__missing__",
 ) -> dict[str, Any] | None:
@@ -321,6 +353,8 @@ def update_journal_entry(
         fields.append("mood_label = %s"); values.append(mood_label)
     if body is not None:
         fields.append("body = %s"); values.append(body)
+    if bg_image is not None:
+        fields.append("bg_image = %s"); values.append(bg_image)
     if translated is not None:
         fields.append("translated = %s"); values.append(translated)
     if book_id != "__missing__":
@@ -335,7 +369,7 @@ def update_journal_entry(
                 f"""
                 UPDATE journal_logs SET {', '.join(fields)}
                 WHERE user_id = %s AND id = %s
-                RETURNING id, book_id, entry_date, mood_emoji, mood_label, body, translated,
+                RETURNING id, book_id, entry_date, mood_emoji, mood_label, body, bg_image, translated,
                           source_thread_id, created_at, updated_at
                 """,
                 tuple(values),

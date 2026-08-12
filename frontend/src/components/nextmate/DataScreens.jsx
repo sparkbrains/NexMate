@@ -14,7 +14,7 @@ const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ComposedChart, Bar, Line, LineChart, Legend
+  ComposedChart, Bar, BarChart, Line, LineChart, Legend
 } from 'recharts';
 
 const MOOD_COLORS = {
@@ -390,7 +390,7 @@ const KnowledgeGraph = ({ graph }) => {
             background: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(2px)',
             cursor: 'pointer'
           }}>
-            <div style={{ background: 'var(--surface-0)', padding: '10px 20px', borderRadius: 30, boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
+            <div style={{ background: 'var(--surface)', padding: '10px 20px', borderRadius: 30, boxShadow: '0 4px 20px rgba(0,0,0,0.1)', fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
               Click to interact
             </div>
           </div>
@@ -626,86 +626,54 @@ const EMOTION_PALETTE = [
 ];
 
 const EmotionMixBars = ({ trend, granularity, emotions }) => {
+  const scrollRef = useRef(null);
+  
+  useEffect(() => {
+    // Automatically scroll to the far right (newest data) when data changes
+    if (scrollRef.current) {
+      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+    }
+  }, [trend]);
+
   const n = trend?.length || 0;
   if (!n) return <div className="nm-meta" style={{ padding: 30 }}>No emotion data yet.</div>;
   if (!emotions?.length) return <div className="nm-meta" style={{ padding: 30 }}>No mood data yet.</div>;
 
-  const BAR_W = 28;
-  const GAP = 6;
-  const PAD_L = 40;  // y-axis labels
-  const PAD_T = 24;  // date labels
-  const PAD_B = 16;
-  const PAD_R = 12;
-  const CHART_H = 160;
-
-  const svgW = n * (BAR_W + GAP) - GAP + PAD_R;
-  const svgH = PAD_T + CHART_H + PAD_B;
-  const tickEvery = n <= 7 ? 1 : n <= 14 ? 2 : n <= 31 ? 4 : 7;
-
-  const YAXIS_W = PAD_L;
+  const TICK_COUNT = 5;
+  const minW = Math.max(n * 40 + 40, 400); // 40px per bar + Y axis
 
   return (
-    <div style={{ marginTop: 8, height: 220, border: '1px solid var(--rule)', borderRadius: 4, display: 'flex' }}>
-      <svg width={YAXIS_W} height={svgH} style={{ flexShrink: 0, display: 'block' }}>
+    <div ref={scrollRef} style={{ marginTop: 8, height: 220, border: '1px solid var(--rule)', borderRadius: 4, display: 'flex', width: '100%', overflowX: 'auto', overflowY: 'hidden' }}>
+      <div style={{ flexShrink: 0, position: 'sticky', left: 0, zIndex: 10, background: 'var(--surface)' }}>
+        <svg width={40} height={220} style={{ display: 'block' }}>
         {[0, 0.25, 0.5, 0.75, 1].map(v => {
-          const y = PAD_T + CHART_H - v * CHART_H;
+          const y = 24 + 160 - v * 160;
           return (
-            <text key={v} x={YAXIS_W - 5} y={y + 3.5} textAnchor="end"
+            <text key={v} x={35} y={y + 3.5} textAnchor="end"
               style={{ fontSize: 9, fill: 'var(--ink-4)', fontFamily: 'var(--font-mono)' }}>
               {Math.round(v * 100)}%
             </text>
           );
         })}
-        <text transform={`translate(10, ${PAD_T + CHART_H / 2}) rotate(-90)`} textAnchor="middle"
+        <text transform={`translate(10, ${24 + 160 / 2}) rotate(-90)`} textAnchor="middle"
           style={{ fontSize: 9, fill: 'var(--ink-3)', fontFamily: 'var(--font-display)', letterSpacing: '0.05em' }}>
           EMOTION SHARE
         </text>
       </svg>
-      <div style={{ overflowX: 'auto', flex: 1 }}>
-        <svg width={svgW - YAXIS_W} height={svgH} style={{ display: 'block', minWidth: '100%' }}>
-          {[0, 0.25, 0.5, 0.75, 1].map(v => {
-            const y = PAD_T + CHART_H - v * CHART_H;
-            return (
-              <line key={v} x1={0} y1={y} x2="100%" y2={y}
-                stroke="var(--rule)" strokeWidth={v === 0 || v === 1 ? 1 : 0.5}
-                strokeDasharray={v === 0 || v === 1 ? 'none' : '3 3'} />
-            );
-          })}
-          {trend.map((d, i) => {
-            const total = Object.values(d.moods || {}).reduce((a, b) => a + b, 0);
-            const x = i * (BAR_W + GAP);
-            if (!total) {
-              return (
-                <rect key={i} x={x} y={PAD_T} width={BAR_W} height={CHART_H}
-                  fill="none" stroke="var(--rule)" strokeWidth={0.5} opacity={0.4} />
-              );
-            }
-            let cumY = PAD_T + CHART_H;
-            return emotions.map((e, ei) => {
-              const count = d.moods?.[e] || 0;
-              if (!count) return null;
-              const segH = (count / total) * CHART_H;
-              cumY -= segH;
-              return (
-                <rect key={e} x={x} y={cumY} width={BAR_W} height={segH}
-                  fill={EMOTION_PALETTE[ei % EMOTION_PALETTE.length]} opacity={0.88}>
-                  <title>{e}: {Math.round((count / total) * 100)}% on {d.day}</title>
-                </rect>
-              );
-            });
-          })}
-          {trend.map((d, i) => {
-            if (i % tickEvery !== 0 && i !== n - 1) return null;
-            const x = i * (BAR_W + GAP);
-            return (
-              <text key={i} x={x + BAR_W / 2} y={PAD_T - 6}
-                textAnchor="middle"
-                style={{ fontSize: 9, fill: 'var(--ink-3)', fontFamily: 'var(--font-display)' }}>
-                {formatTick(d.day, granularity)}
-              </text>
-            );
-          })}
-        </svg>
+      </div>
+      <div style={{ flex: 1, position: 'relative', minWidth: minW - 40 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={trend} maxBarSize={32} margin={{ top: 24, right: 12, left: 0, bottom: 16 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--rule)" />
+            <XAxis dataKey="day" tickFormatter={(val) => formatTick(val, granularity)} tick={{ fill: 'var(--ink-4)', fontSize: 9 }} axisLine={false} tickLine={false} />
+            {emotions.map((m, mi) => (
+              <Bar key={m} dataKey={(d) => {
+                const total = Object.values(d.moods || {}).reduce((a, b) => a + b, 0);
+                return total ? (d.moods?.[m] || 0) / total * 100 : 0;
+              }} stackId="a" fill={EMOTION_PALETTE[mi % EMOTION_PALETTE.length]} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
@@ -745,7 +713,7 @@ const EmotionalSpectrum = ({ moods }) => {
   }));
 
   return (
-    <div style={{ position: 'relative', height: 220, width: '100%', marginTop: 8, overflow: 'hidden' }}>
+    <div style={{ position: 'relative', height: 340, width: '100%', marginTop: 8, overflow: 'hidden' }}>
       <div style={{ position: 'absolute', top: 8, right: 8, zIndex: 10, display: 'flex', gap: 4 }}>
         <button type="button" onClick={() => setZoom(z => Math.min(z + 0.25, 3))} className="nm-graph-zoom-btn" aria-label="Zoom in">+</button>
         <button type="button" onClick={() => setZoom(z => Math.max(z - 0.25, 0.5))} className="nm-graph-zoom-btn" aria-label="Zoom out">−</button>
@@ -754,13 +722,13 @@ const EmotionalSpectrum = ({ moods }) => {
       <div style={{ height: '100%', transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.2s' }}>
         <div style={{ height: '100%', padding: '0 10px' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <RadarChart cx="50%" cy="50%" outerRadius="55%" data={data}>
+            <RadarChart cx="50%" cy="50%" outerRadius="60%" data={data}>
               <PolarGrid stroke="var(--rule-soft)" />
               <PolarAngleAxis dataKey="subject" tick={<CustomRadarTick />} />
               <PolarRadiusAxis angle={30} domain={[0, 'dataMax']} tick={false} axisLine={false} />
           <Radar name="Mood" dataKey="A" stroke="var(--teal)" fill="var(--teal)" fillOpacity={0.4} />
               <Tooltip 
-                contentStyle={{ background: 'var(--surface-0)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
                 itemStyle={{ color: 'var(--teal)' }}
               />
             </RadarChart>
@@ -776,28 +744,33 @@ const EmotionalBandwidth = ({ distribution }) => {
 
   return (
     <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 13 }}>
-      <div style={{ overflowX: 'auto', overflowY: 'hidden', height: '100%', paddingBottom: 8 }}>
-        <div style={{ height: '100%', minWidth: 600 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart layout="vertical" data={distribution} margin={{ top: 20, right: 20, left: 30, bottom: 40 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart layout="vertical" data={distribution} margin={{ top: 20, right: 20, left: 30, bottom: 40 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="var(--rule-soft)" />
               <XAxis type="number" dataKey="count" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Frequency (Days)', position: 'insideBottom', offset: -20, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
-              <YAxis type="category" dataKey="intensity" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Intensity (1-10)', angle: -90, position: 'insideLeft', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
+              <YAxis type="category" reversed={true} dataKey="intensity" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Intensity (1-10)', angle: -90, position: 'insideLeft', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
               <Tooltip 
-                contentStyle={{ background: 'var(--surface-0)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
+                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
                 formatter={(value) => [value, 'Frequency']}
                 labelFormatter={(label) => `Intensity Level: ${label}`}
               />
-              <Line type="monotone" dataKey="count" stroke="var(--accent)" strokeWidth={3} dot={{ r: 4, fill: 'var(--surface-0)', stroke: 'var(--accent)', strokeWidth: 2 }} activeDot={{ r: 6 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+              <Line type="monotone" dataKey="count" stroke="var(--accent)" strokeWidth={3} dot={{ r: 4, fill: 'var(--surface)', stroke: 'var(--accent)', strokeWidth: 2 }} activeDot={{ r: 6 }} />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 };
 
 const CognitiveLoad = ({ trend, granularity }) => {
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    // Automatically scroll to the far right (newest data) when data changes
+    if (scrollRef.current) {
+      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+    }
+  }, [trend]);
+
   const n = trend?.length || 0;
   if (!n) return <div className="nm-meta" style={{ padding: 30 }}>No data yet.</div>;
 
@@ -807,16 +780,13 @@ const CognitiveLoad = ({ trend, granularity }) => {
     intensity: d.avg_intensity || 0,
   }));
 
-  // Dynamically calculate width based on number of days to prevent squishing
-  const minWidth = Math.max(600, n * 50);
+  const minWidth = Math.max(400, n * 50);
 
   return (
     <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 8 }}>
-      <div style={{ overflowX: 'auto', overflowY: 'hidden', height: '100%', paddingBottom: 8 }}>
-        <div style={{ height: '100%', minWidth }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 27, right: 20, left: 30, bottom: 40 }}>
-              <defs>
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={data} margin={{ top: 27, right: 20, left: 30, bottom: 40 }}>
+          <defs>
                 <linearGradient id="barColor" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="var(--teal)" stopOpacity={0.8}/>
                   <stop offset="95%" stopColor="var(--surface-2)" stopOpacity={0.8}/>
@@ -826,15 +796,13 @@ const CognitiveLoad = ({ trend, granularity }) => {
               <YAxis yAxisId="left" tick={{ fill: 'var(--ink-3)', fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'Thought Volume', angle: -90, position: 'insideLeft', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
               <YAxis yAxisId="right" orientation="right" domain={[0, 10]} tick={{ fill: 'var(--accent)', fontSize: 10 }} axisLine={false} tickLine={false} label={{ value: 'Avg Intensity (1-10)', angle: -90, position: 'insideRight', offset: -10, fill: 'var(--accent)', fontSize: 12, fontWeight: 500 }} />
               <Tooltip 
-                contentStyle={{ background: 'var(--surface-0)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
+                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
               />
               <Legend wrapperStyle={{ fontSize: 11, color: 'var(--ink-2)', paddingBottom: 10 }} verticalAlign="top" />
               <Bar yAxisId="left" dataKey="thoughts" name="Thoughts (Count)" fill="url(#barColor)" radius={[4, 4, 0, 0]} />
-              <Line yAxisId="right" type="monotone" dataKey="intensity" name="Intensity (Scale)" stroke="var(--accent)" strokeWidth={3} dot={{ r: 4, fill: 'var(--accent)', stroke: 'var(--surface-0)' }} />
+              <Line yAxisId="right" type="monotone" dataKey="intensity" name="Intensity (Scale)" stroke="var(--accent)" strokeWidth={3} dot={{ r: 4, fill: 'var(--accent)', stroke: 'var(--surface)' }} />
             </ComposedChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+      </ResponsiveContainer>
     </div>
   );
 };
@@ -919,18 +887,41 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
     return () => { cancelled = true; };
   }, [kgDays]);
 
-  const usingSample = Boolean(tourSample) && !loading && (insights?.total_entries ?? 0) === 0;
+  const usingSample = Boolean(tourSample) && !loading && (insights?.total_lifetime_entries ?? 0) === 0;
   const isEmpty = !loading && (insights?.total_entries === 0 || !insights) && threads.length === 0 && !usingSample;
-  const displayInsights = usingSample ? insights : (isEmpty ? DUMMY_INSIGHTS : insights);
+  const displayInsights = (usingSample || isEmpty) ? DUMMY_INSIGHTS : insights;
 
   // Slice emotion_trend to the granularity window
   const visibleTrend = useMemo(() => {
-    const window = GRANULARITY_WINDOW[granularity] ?? 30;
-    if (usingSample) return sliceLast(SAMPLE_TREND, window);
-    const sliced = sliceLast(displayInsights?.emotion_trend, window);
+    let sliced = displayInsights?.emotion_trend || [];
+    
+    // Filter by calendar month/week
+    const now = new Date();
+    if (granularity === 'month') {
+      const currentMonth = now.toISOString().slice(0, 7); // "YYYY-MM"
+      sliced = sliced.filter(d => d.day.startsWith(currentMonth));
+    } else if (granularity === 'week') {
+      const dayOfWeek = now.getDay(); 
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - dayOfWeek);
+      const startIso = startOfWeek.toISOString().slice(0, 10);
+      sliced = sliced.filter(d => d.day >= startIso);
+    } else if (granularity === 'day') {
+      const todayIso = now.toISOString().slice(0, 10);
+      sliced = sliced.filter(d => d.day === todayIso);
+    }
+
+    if (usingSample) {
+      const window = GRANULARITY_WINDOW[granularity] ?? 30;
+      return sliceLast(SAMPLE_TREND, window);
+    }
+
     const firstDataIdx = sliced.findIndex(d => d.count > 0);
-    if (firstDataIdx === -1) return sliced;
-    return sliced.slice(firstDataIdx);
+    if (firstDataIdx !== -1) {
+      sliced = sliced.slice(firstDataIdx);
+    }
+    
+    return sliced;
   }, [displayInsights, granularity, usingSample]);
 
   // Slice each trigger row's intensity cells to the granularity window
@@ -1086,6 +1077,25 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
               </div>
             </EmptyDataOverlay>
 
+            {/* Emotional Bandwidth card */}
+            <EmptyDataOverlay
+              active={isEmpty}
+              title="Your journey begins here."
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={goChat}
+            >
+              <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                <div style={{ marginBottom: 14 }}>
+                  <div className="nm-eyebrow">Emotional Bandwidth</div>
+                  <div className="nm-h3" style={{ marginTop: 4 }}>Intensity Distribution</div>
+                  <EmotionalBandwidth distribution={intensityDistribution} />
+                </div>
+              </div>
+            </EmptyDataOverlay>
+          </div>
+
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 14, marginBottom: 14 }}>
             {/* Emotional Spectrum card */}
             <EmptyDataOverlay
               active={isEmpty}
@@ -1105,25 +1115,6 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
                 </div>
               </div>
             </EmptyDataOverlay>
-          </div>
-
-          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 14, marginBottom: 14 }}>
-            {/* Emotional Bandwidth card */}
-            <EmptyDataOverlay
-              active={isEmpty}
-              title="Your journey begins here."
-              message="Start a chat or write your first journal entry to unlock your personalized insights."
-              actionLabel="Begin a Chat"
-              onAction={goChat}
-            >
-              <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ marginBottom: 14 }}>
-                  <div className="nm-eyebrow">Emotional Bandwidth</div>
-                  <div className="nm-h3" style={{ marginTop: 4 }}>Intensity Distribution</div>
-                  <EmotionalBandwidth distribution={intensityDistribution} />
-                </div>
-              </div>
-            </EmptyDataOverlay>
 
             {/* Growth & Awareness card */}
             <EmptyDataOverlay 
@@ -1133,12 +1124,12 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
               actionLabel="Begin a Chat"
               onAction={goChat}
             >
-              <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', background: 'linear-gradient(145deg, var(--surface-1), var(--surface-2))', border: '1px solid var(--rule-soft)' }}>
+              <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface)', border: '1px solid var(--rule-soft)', width: '100%' }}>
                 <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Growth & Awareness</div>
                 <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
                   
                   {/* Embedded KPI 1: Emotional State */}
-                  <div style={{ background: 'var(--surface-0)', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
                       <div className="nm-meta" style={{ marginBottom: 6 }}>Dominant State</div>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
@@ -1162,7 +1153,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
                   </div>
 
                   {/* Embedded KPI 2: Core Beliefs Profile */}
-                  <div style={{ background: 'var(--surface-0)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ background: 'var(--surface)', padding: '12px 16px', borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', flexDirection: 'column', gap: 10 }}>
                     <div className="nm-meta">Core Beliefs Profile</div>
                     {coreBeliefs.length > 0 ? (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1183,7 +1174,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
                   </div>
 
                   {/* Embedded KPI 3: Pattern Mastery */}
-                  <div style={{ background: 'linear-gradient(135deg, rgba(78, 205, 196, 0.1), rgba(108, 92, 231, 0.15))', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ background: 'var(--surface)', padding: 16, borderRadius: 8, border: '1px solid var(--rule-soft)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
                       <div className="nm-meta" style={{ marginBottom: 6 }}>Pattern Mastery</div>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
@@ -1196,7 +1187,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
                         {loopsResolved} resolved / {loopsActive + loopsResolved} total loops
                       </div>
                     </div>
-                    <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--surface-0)', border: '2px solid var(--teal)', color: 'var(--teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, boxShadow: '0 4px 12px rgba(78, 205, 196, 0.2)' }}>
+                    <div style={{ width: 50, height: 50, borderRadius: '50%', background: 'var(--surface)', border: '2px solid var(--teal)', color: 'var(--teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, boxShadow: '0 4px 12px rgba(78, 205, 196, 0.2)' }}>
                       {masteryPct === 100 ? '✧' : '∞'}
                     </div>
                   </div>
@@ -1221,7 +1212,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
                 <select 
                   value={kgRangeKey} 
                   onChange={(e) => setKgRangeKey(e.target.value)}
-                  style={{ padding: '6px 28px 6px 12px', borderRadius: 20, border: '1px solid var(--rule)', background: 'var(--surface-0)', fontSize: 12, fontWeight: 500, color: 'var(--ink)', cursor: 'pointer' }}
+                  style={{ padding: '6px 28px 6px 12px', borderRadius: 20, border: '1px solid var(--rule)', background: 'var(--surface)', fontSize: 12, fontWeight: 500, color: 'var(--ink)', cursor: 'pointer' }}
                 >
                   {KG_RANGES.map(r => (
                     <option key={r.k} value={r.k}>{r.label}</option>
@@ -1263,7 +1254,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div className="nm-card" style={{ background: 'var(--surface-0)', border: '1px solid var(--rule-soft)' }}>
+              <div className="nm-card" style={{ background: 'var(--surface)', border: '1px solid var(--rule-soft)' }}>
                 <div className="nm-eyebrow" style={{ marginBottom: 12 }}>Subconscious Themes</div>
                 {topCoreThemes.length > 0 ? (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -1281,7 +1272,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
               <div className="nm-card" style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'linear-gradient(135deg, rgba(78, 205, 196, 0.05), rgba(108, 92, 231, 0.05))', border: '1px solid var(--rule-soft)' }}>
                 <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Month in Extremes</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, flex: 1 }}>
-                  <div style={{ background: 'var(--surface-0)', padding: 12, borderRadius: 8, border: '1px solid var(--accent)', borderOpacity: 0.3, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ background: 'var(--surface)', padding: 12, borderRadius: 8, border: '1px solid var(--accent)', borderOpacity: 0.3, display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <div className="nm-meta" style={{ color: 'var(--accent)' }}>Peak Intensity</div>
                       <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{peakDay ? formatShort(peakDay) : '—'}</div>
@@ -1290,7 +1281,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
                       {peakSummary ? `"${peakSummary}"` : 'No summary available.'}
                     </div>
                   </div>
-                  <div style={{ background: 'var(--surface-0)', padding: 12, borderRadius: 8, border: '1px solid var(--teal)', borderOpacity: 0.3, display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ background: 'var(--surface)', padding: 12, borderRadius: 8, border: '1px solid var(--teal)', borderOpacity: 0.3, display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <div className="nm-meta" style={{ color: 'var(--teal)' }}>Lowest Intensity</div>
                       <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>{lowDay ? formatShort(lowDay) : '—'}</div>

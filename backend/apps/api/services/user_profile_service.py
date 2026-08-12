@@ -207,7 +207,7 @@ async def get_or_refresh_user_profile(user_id: int) -> dict[str, Any] | None:
             logger.exception("Failed to bootstrap user profile for user_id=%s", user_id)
             return None
 
-        covers_through_str = max(a["answered_date"] for a in chronological)  # ISO string
+        covers_through_str = max(a["answered_date"] for a in chronological) if chronological else today.isoformat()
         covers_through = date.fromisoformat(covers_through_str)
         await asyncio.to_thread(
             _save_profile_sync, user_id, summary_text, len(all_answers), today, covers_through

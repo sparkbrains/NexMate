@@ -706,7 +706,7 @@ def build_journal_summary_user_prompt(journal_body: str, mood_label: str) -> str
 
 Return JSON in this exact shape:
 {{
-  "mood": "exactly ONE word or short phrase — never a list, never multiple moods",
+  "mood": "exactly ONE single standard emotion word (e.g. 'joy', 'trust', 'fear', 'surprise', 'sadness', 'disgust', 'anger', 'anticipation', 'anxious', 'calm') — absolutely NO lists, NO phrases, NO multiple emotions",
   "core_theme": "the actual emotional core in one sentence — NOT a generic topic, but the specific thing underneath",
   "core_beliefs": ["the single strongest self-belief driving this — at most ONE item, or empty if none is clearly present"],
   "triggers": ["the single most relevant trigger domain/situation — at most ONE item, or empty if none is clearly present"],
@@ -719,7 +719,7 @@ Return JSON in this exact shape:
 
 Remember:
 - core_theme: go deeper than surface topic. "Work stress" is too generic. "Spirals into self-blame when competence is questioned" is the core.
-- mood: pick the single dominant mood, not a compound like "anxious and frustrated".
+- mood: pick strictly ONE single standard emotion word. Do NOT use compound words, sentences, or comma-separated lists (e.g., never output "anxious and frustrated" or "resigned, noted").
 - core_beliefs: internal self-talk. AT MOST ONE per journal entry — the single strongest one. Only include if clearly present.
 - triggers: external situations/domains. AT MOST ONE per journal entry — the single most relevant one. Only include if clearly present.
 - Do NOT overfit. Skip beliefs/triggers that are just generic human experience and not clearly THIS user's pattern.
