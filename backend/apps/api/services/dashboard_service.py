@@ -143,6 +143,13 @@ def _fetch_v2_entries(user_id: int, since: datetime | None = None) -> list[dict[
             cur.execute(query, tuple(params))
             return cur.fetchall()
 
+def _fetch_total_lifetime_entries(user_id: int) -> int:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) as cnt FROM journal_entries_v2 WHERE user_id = %s", (user_id,))
+            row = cur.fetchone()
+            return row["cnt"] if row else 0
+
 
 def _fetch_loops(user_id: int) -> list[dict[str, Any]]:
     with get_connection() as conn:
@@ -234,6 +241,7 @@ async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]
     prev_window_start = now - timedelta(days=days * 2)
 
     entries = _fetch_v2_entries(user_id, since=prev_window_start)
+    total_lifetime_entries = _fetch_total_lifetime_entries(user_id)
     all_entries = entries  # both windows
     in_window = [e for e in entries if e["created_at"] >= window_start]
     prev_window = [
@@ -537,6 +545,7 @@ async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]
     return {
         "window_days": days,
         "total_entries": total,
+        "total_lifetime_entries": total_lifetime_entries,
         "thread_count": thread_count,
         "message_count": message_count,
         "checkin_streak_days": streak,

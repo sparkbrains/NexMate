@@ -3886,7 +3886,7 @@ body {
    window.print() → "Save as PDF"; everything else is hidden. */
 @media print {
   @page {
-    size: A4;
+    size: A4 portrait;
     margin: 0;
   }
 
@@ -3902,6 +3902,7 @@ body {
     width: 210mm !important;
     margin: 0 !important;
     padding: 0 !important;
+    background: #ffffff !important;
   }
 
   .print-target-clone {
@@ -3916,27 +3917,30 @@ body {
     perspective: none !important;
     transform: none !important;
     display: block !important;
+    box-sizing: border-box !important;
   }
   
   .print-target-clone .nm-cover-page {
     order: -1 !important; /* Print cover first */
+    page-break-before: avoid !important;
     page-break-after: always !important;
     break-after: page !important;
     position: relative !important;
     right: auto !important;
     top: auto !important;
     width: 210mm !important;
-    height: 297mm !important;
+    height: 296mm !important; /* Slightly under 297mm to prevent overflow blank page */
+    max-height: 296mm !important;
+    box-sizing: border-box !important;
     transform: none !important;
     display: flex !important;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    position: relative !important;
-    transform: none !important;
     box-shadow: none !important;
     opacity: 1 !important;
     visibility: visible !important;
+    overflow: hidden !important;
   }
 
   .print-target-clone .nm-cover-title {
@@ -3953,14 +3957,19 @@ body {
     color: var(--ink-2);
   }
 
-  .print-target-clone .nm-journal-page {
+  .print-target-clone .nm-journal-page,
+  .print-target-clone .nm-journal-page-print {
     position: relative !important;
     width: 210mm !important;
-    height: 297mm !important;
+    height: 296mm !important; /* Prevents trailing blank page */
+    max-height: 296mm !important;
+    box-sizing: border-box !important;
     transform: none !important; /* Critical to remove inline zoom scale and 3D rotations during print */
-    page-break-before: always;
-    break-before: page;
+    page-break-before: avoid !important; /* Cover page handle break-after; avoids duplicate blank page */
+    page-break-after: always !important;
+    break-after: page !important;
     box-shadow: none !important;
+    overflow: hidden !important;
   }
 
   .print-target-clone [contenteditable] {

@@ -18,6 +18,7 @@ from apps.api.services.journal_log_service import (
     list_books,
     list_journal_entries,
     translate_entry,
+    update_book,
     update_journal_entry,
     upsert_journal_entry_for_thread,
 )
@@ -30,6 +31,11 @@ router = APIRouter(prefix="/api/journal", tags=["journal"])
 # ---------- books ----------
 
 class CreateBookRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    color: str = Field("", max_length=40)
+
+
+class UpdateBookRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
     color: str = Field("", max_length=40)
 
@@ -51,6 +57,14 @@ def get_books(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
 @router.post("/books")
 def add_book(req: CreateBookRequest, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     book = create_book(current_user.id, req.name, req.color)
+    return {"book": book}
+
+
+@router.patch("/books/{book_id}")
+def edit_book(book_id: int, req: UpdateBookRequest, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    book = update_book(current_user.id, book_id, req.name, req.color)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
     return {"book": book}
 
 
@@ -79,6 +93,7 @@ class CreateEntryRequest(BaseModel):
     auto_translate: bool = False
     book_id: int | None = None
     allow_loop_detection: bool = True
+    bg_image: str = Field("", max_length=500)
 
 
 class UpdateEntryRequest(BaseModel):
@@ -88,6 +103,7 @@ class UpdateEntryRequest(BaseModel):
     translated: str | None = Field(None, max_length=5000)
     book_id: int | None = None
     allow_loop_detection: bool | None = None
+    bg_image: str | None = Field(None, max_length=500)
 
 
 class SaveThreadSummaryRequest(BaseModel):
@@ -174,6 +190,7 @@ def create_entry(req: CreateEntryRequest, background_tasks: BackgroundTasks, cur
         mood_emoji=req.mood_emoji,
         mood_label=req.mood_label,
         body=body,
+        bg_image=req.bg_image,
         translated=translated,
         book_id=book_id,
     )
@@ -191,6 +208,8 @@ def update_entry(entry_id: int, req: UpdateEntryRequest, background_tasks: Backg
         kwargs["mood_label"] = req.mood_label
     if req.body is not None:
         kwargs["body"] = req.body
+    if req.bg_image is not None:
+        kwargs["bg_image"] = req.bg_image
     if req.translated is not None:
         kwargs["translated"] = req.translated
     if req.book_id is not None:

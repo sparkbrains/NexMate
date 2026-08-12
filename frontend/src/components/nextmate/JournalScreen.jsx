@@ -8,6 +8,7 @@ import {
   getJournalStreak,
   listJournalBooks,
   listJournalEntries,
+  updateJournalBook,
   updateJournalEntry,
 } from '../../lib/api';
 import { TemplateModal } from './TemplateModal';
@@ -75,6 +76,8 @@ const BACKGROUNDS = [
   'Background13.png', 'Background14.png'
 ];
 
+
+
 const A4_WIDTH = 794;
 const A4_HEIGHT = 1123;
 const ZOOM_MIN = 0.25;
@@ -109,36 +112,148 @@ const FONT_OPTIONS = [
 
 const todayISO = () => {
   const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
 };
+
+function parseAsDate(dateInput) {
+  if (!dateInput) return new Date();
+  if (typeof dateInput === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(dateInput) && !dateInput.endsWith('Z') && !dateInput.includes('+')) {
+      const d = new Date(dateInput + 'Z');
+      if (!isNaN(d.getTime())) return d;
+    }
+  }
+  const d = new Date(dateInput);
+  return isNaN(d.getTime()) ? new Date() : d;
+}
+
+function formatIndiaTime(dateInput) {
+  const d = parseAsDate(dateInput);
+  return d.toLocaleTimeString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
+function formatIndiaDate(dateInput) {
+  const d = parseAsDate(dateInput);
+  return d.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+}
 
 const moodFor = (label) => MOODS.find((m) => m.label === label);
 
-const Entry = ({ entry, onDelete, onEditInMain }) => {
+function cleanEntryBodyHtml(html) {
+  if (!html || typeof html !== 'string') return '';
+  let cleaned = html.replace(/<div style="[^"]*(?:background|border-radius|padding:\s*20px)[^"]*">([\s\S]*)<\/div>/gi, '$1');
+  cleaned = cleaned.replace(/background(?:-image)?:\s*url\([^)]+\);?/gi, '');
+  cleaned = cleaned.replace(/background(?:-color)?:\s*(?!rgba\(0,\s*0,\s*0,\s*0\))[^;"]+;?/gi, '');
+  return cleaned.trim() || html;
+}
+
+function getSafeEntryBgCss(bgStr, fallbackBgStr, customUrlStr) {
+  const bg = bgStr || fallbackBgStr || '';
+  try {
+    if (bg === '__custom__' && customUrlStr) {
+      return `background-image: url('${customUrlStr}'); background-size: cover; background-position: center; background-repeat: no-repeat;`;
+    }
+    if (bg && BACKGROUNDS.includes(bg)) {
+      return `background-image: url('/backgrounds/${encodeURIComponent(bg)}'); background-size: cover; background-position: center; background-repeat: no-repeat;`;
+    }
+    if (bg && PAPER_STYLES[bg]) {
+      return Object.entries(PAPER_STYLES[bg])
+        .filter(([k]) => !k.toLowerCase().includes('backgroundimage') && !k.toLowerCase().includes('background-image'))
+        .map(([k, v]) => `${k.replace(/([A-Z])/g, '-$1').toLowerCase()}:${v}`)
+        .join('; ');
+    }
+    if (bg && (bg.startsWith('http://') || bg.startsWith('https://') || bg.startsWith('data:') || bg.startsWith('blob:'))) {
+      return `background-image: url('${bg}'); background-size: cover; background-position: center; background-repeat: no-repeat;`;
+    }
+  } catch {
+    /* non-blocking fallback */
+  }
+  return 'background-color: #ffffff;';
+}
+
+function getEntryBgStyle(bgStr, fallbackBgStr, customUrlStr) {
+  const css = getSafeEntryBgCss(bgStr, fallbackBgStr, customUrlStr);
+  const styleObj = {};
+  css.split(';').forEach(rule => {
+    const [k, v] = rule.split(':').map(s => s?.trim());
+    if (k && v) {
+      const camelK = k.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+      styleObj[camelK] = v;
+    }
+  });
+  return styleObj;
+}
+
+const Entry = ({ entry, onDelete, onEditInMain, activeBg, customUrl }) => {
   const [confirming, setConfirming] = useState(false);
-  const time = new Date(entry.entry_date || entry.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const time = formatIndiaTime(entry.created_at || entry.entry_date);
+  const bgStyle = getEntryBgStyle(entry.bg_image, activeBg, customUrl);
+  const emoji = entry.mood_emoji || '✨';
+  const moodText = entry.mood_label || '';
 
   return (
-    <div className="nm-entry">
-      <div className="nm-entry-mark">
-        <span className="nm-entry-emoji">{entry.mood_emoji || '✨'}</span>
-        {entry.mood_label && <span className="nm-entry-mood">{entry.mood_label}</span>}
+    <div className="nm-entry" style={{
+      display: 'grid',
+      gridTemplateColumns: '75px 1fr',
+      gap: 0,
+      borderRadius: 8,
+      overflow: 'hidden',
+      margin: '12px 0',
+      border: '1px solid var(--rule-soft)',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+      background: 'var(--surface)'
+    }}>
+      {/* 1. Left Emoji / Mood Column — Clean surface background, NO background image */}
+      <div className="nm-entry-mark" style={{
+        background: 'var(--surface)',
+        textAlign: 'center',
+        padding: '14px 8px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'flex-start',
+        borderRight: '1px solid var(--rule-soft)',
+        zIndex: 2
+      }}>
+        <div className="nm-entry-emoji" style={{ fontSize: 26, lineHeight: 1 }}>{emoji}</div>
+        {moodText && (
+          <div className="nm-entry-mood" style={{ fontFamily: 'var(--font-mono)', fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-3)', marginTop: 6 }}>
+            {moodText}
+          </div>
+        )}
       </div>
-      <div style={{ flex: 1 }}>
-        <div className="nm-entry-time">
-          <span>{time}</span>
-          <span className="nm-entry-del">
-            <button className="nm-btn ghost" title="Edit entry" style={{ padding: 4, marginRight: 2 }} onClick={() => onEditInMain(entry)}>
+
+      {/* 2. Right Written Area Column — HAS the journal background image! */}
+      <div style={{
+        ...bgStyle,
+        padding: '14px 16px',
+        minWidth: 0
+      }}>
+        <div className="nm-entry-time" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, whiteSpace: 'nowrap' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--ink-2)', fontWeight: '600', whiteSpace: 'nowrap' }}>{time}</span>
+          <span className="nm-entry-del" style={{ display: 'inline-flex', gap: 4, whiteSpace: 'nowrap' }}>
+            <button className="nm-btn ghost" title="Edit entry" style={{ padding: '2px 6px' }} onClick={() => onEditInMain(entry)}>
               <Icon name="edit" size={11} />
             </button>
-            <button className="nm-btn ghost" title="Delete entry" style={{ padding: 4 }} onClick={() => setConfirming(true)}>
+            <button className="nm-btn ghost" title="Delete entry" style={{ padding: '2px 6px' }} onClick={() => setConfirming(true)}>
               <Icon name="trash" size={11} />
             </button>
           </span>
         </div>
-        <div className="nm-entry-body" dangerouslySetInnerHTML={{ __html: entry.body }} />
+        <div className="nm-entry-body" dangerouslySetInnerHTML={{ __html: cleanEntryBodyHtml(entry.body) }} />
         {entry.translated && (
-          <div className="nm-meta" style={{ marginTop: 6, fontStyle: 'italic', color: 'var(--ink-3)' }}>{entry.translated}</div>
+          <div className="nm-meta" style={{ marginTop: 8, fontStyle: 'italic', color: 'var(--ink-3)' }}>{entry.translated}</div>
         )}
       </div>
 
@@ -314,8 +429,8 @@ const StreakBlock = ({ streak }) => {
   );
 };
 
-const DayAccordion = ({ k, items, handleDeleteEntry, handleEditInMain }) => {
-  const [open, setOpen] = useState(false);
+const DayAccordion = ({ k, items, handleDeleteEntry, handleEditInMain, activeBg, customUrl }) => {
+  const [open, setOpen] = useState(true);
   return (
     <div className="nm-day-block" style={{ border: '1px solid var(--rule-soft)', borderRadius: 8, padding: '12px 16px', marginBottom: 16, background: 'var(--surface)' }}>
       <div 
@@ -337,7 +452,7 @@ const DayAccordion = ({ k, items, handleDeleteEntry, handleEditInMain }) => {
       {open && (
         <div style={{ paddingTop: 16, borderTop: '1px solid var(--rule-soft)', marginTop: 16 }}>
           {items.map((e) => (
-            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} onEditInMain={handleEditInMain} />
+            <Entry key={e.id} entry={e} onDelete={handleDeleteEntry} onEditInMain={handleEditInMain} activeBg={activeBg} customUrl={customUrl} />
           ))}
         </div>
       )}
@@ -364,6 +479,17 @@ export const JournalScreen = ({ user }) => {
   const [bookSettings, setBookSettings] = useState({});
   const [isBookOpen, setIsBookOpen] = useState(false);
   const [coverText, setCoverText] = useState('');
+  const [coverSubtitle, setCoverSubtitle] = useState('');
+  const [coverBoxWidth, setCoverBoxWidth] = useState(75);
+  const coverBoxSize = coverBoxWidth;
+  const [coverBoxX, setCoverBoxX] = useState(null); // null = use flex alignment
+  const [coverBoxY, setCoverBoxY] = useState(null);
+  const coverBoxDragRef = useRef(null);
+  const [coverBoxSelected, setCoverBoxSelected] = useState(false);
+  const [coverBoxAlignH, setCoverBoxAlignH] = useState('center'); // 'flex-start' | 'center' | 'flex-end'
+  const [coverBoxAlignV, setCoverBoxAlignV] = useState('center'); // 'flex-start' | 'center' | 'flex-end'
+  const [coverBoxOpacity, setCoverBoxOpacity] = useState(85); // 0..100
+  const [showPdfMenu, setShowPdfMenu] = useState(false);
   const editorRef = useRef(null);
   
   // Toolbar dropdown state
@@ -571,38 +697,161 @@ export const JournalScreen = ({ user }) => {
     trackSelection();
   };
 
-  const handleDownloadPdf = () => {
+  const getPageBgCss = () => {
+    if (bgImage === '__custom__' && customThemeUrl) {
+      return `background-image: url('${customThemeUrl}'); background-size: cover; background-position: center; background-repeat: no-repeat;`;
+    }
+    if (bgImage && BACKGROUNDS.includes(bgImage)) {
+      return `background-image: url('/backgrounds/${encodeURIComponent(bgImage)}'); background-size: cover; background-position: center; background-repeat: no-repeat;`;
+    }
+    if (bgImage && PAPER_STYLES[bgImage]) {
+      return Object.entries(PAPER_STYLES[bgImage])
+        .filter(([k]) => !k.toLowerCase().includes('backgroundimage') && !k.toLowerCase().includes('background-image'))
+        .map(([k, v]) => `${k.replace(/([A-Z])/g, '-$1').toLowerCase()}:${v}`)
+        .join('; ');
+    }
+    return 'background-color: #ffffff;';
+  };
+
+  const handleDownloadPdf = (fullBook = false) => {
     setSelectedSticker(null);
     setSelectedBlock(null);
+    setShowPdfMenu(false);
     requestAnimationFrame(() => {
       const el = printContainerRef.current;
       if (!el) return;
-      
-      // Clone to break out of React's DOM hierarchy for perfect printing
-      const clone = el.cloneNode(true);
-      clone.classList.add('print-target-clone');
-      
-      // Foolproof fix: Strip inline visibility/opacity from the cover clone so it ALWAYS prints
-      const coverClone = clone.querySelector('.nm-cover-page');
-      if (coverClone) {
-        coverClone.style.opacity = '1';
-        coverClone.style.visibility = 'visible';
-        coverClone.style.transform = 'none';
-        coverClone.style.pointerEvents = 'auto';
-        
-        // PDF engines ignore backface-visibility: hidden, causing the beige inner cover to render on top of the image!
-        // We completely remove it from the print clone.
-        const backfaceDiv = coverClone.querySelector('.nm-backface');
-        if (backfaceDiv) backfaceDiv.remove();
-      }
-      
+
       const printWrapper = document.createElement('div');
       printWrapper.id = 'nm-print-wrapper';
-      printWrapper.appendChild(clone);
+      const bgCss = getPageBgCss();
+
+      if (!fullBook) {
+        // Single Entry & Cover Print
+        const clone = el.cloneNode(true);
+        clone.classList.add('print-target-clone');
+
+        const coverClone = clone.querySelector('.nm-cover-page');
+        if (coverClone) {
+          coverClone.style.opacity = '1';
+          coverClone.style.visibility = 'visible';
+          coverClone.style.transform = 'none';
+          coverClone.style.pointerEvents = 'auto';
+          const backfaceDiv = coverClone.querySelector('.nm-backface');
+          if (backfaceDiv) backfaceDiv.remove();
+          coverClone.querySelectorAll('textarea, input').forEach(input => {
+            input.style.border = 'none';
+            input.style.outline = 'none';
+            input.style.boxShadow = 'none';
+          });
+        }
+
+        const journalPageClone = clone.querySelector('.nm-journal-page');
+        if (journalPageClone) {
+          journalPageClone.style.opacity = '1';
+          journalPageClone.style.visibility = 'visible';
+          journalPageClone.style.transform = 'none';
+        }
+
+        printWrapper.appendChild(clone);
+      } else {
+        // Complete Book (All Entries) Multi-Page Print
+        const bookContainer = document.createElement('div');
+        bookContainer.classList.add('print-target-clone');
+
+        // 1. Cover Page
+        const coverClone = el.querySelector('.nm-cover-page')?.cloneNode(true);
+        if (coverClone) {
+          coverClone.style.opacity = '1';
+          coverClone.style.visibility = 'visible';
+          coverClone.style.transform = 'none';
+          coverClone.style.pointerEvents = 'auto';
+          const backfaceDiv = coverClone.querySelector('.nm-backface');
+          if (backfaceDiv) backfaceDiv.remove();
+          coverClone.querySelectorAll('textarea, input').forEach(input => {
+            input.style.border = 'none';
+            input.style.outline = 'none';
+            input.style.boxShadow = 'none';
+          });
+          bookContainer.appendChild(coverClone);
+        }
+
+        // 2. All Book Entries in Chronological Order
+        const sortedEntries = [...entries].sort((a, b) => 
+          new Date(a.entry_date || a.created_at) - new Date(b.entry_date || b.created_at)
+        );
+
+        if (sortedEntries.length === 0) {
+          const emptyPage = document.createElement('div');
+          emptyPage.className = 'nm-journal-page-print';
+          emptyPage.style.cssText = `
+            position: relative; width: 210mm; height: 296mm; padding: 24mm 20mm;
+            box-sizing: border-box; display: flex; flex-direction: column;
+            justify-content: space-between; font-family: var(--font-sans, system-ui, sans-serif);
+            color: #111111; page-break-after: always; break-after: page; overflow: hidden;
+            ${bgCss}
+          `;
+          emptyPage.innerHTML = `
+            <div>
+              <div style="border-bottom: 2px solid #222; padding-bottom: 8px; margin-bottom: 24px; font-family: var(--font-serif); font-size: 16pt; font-weight: bold; text-align: center;">
+                ${activeBook?.name || coverText || 'Journal'}
+              </div>
+              <p style="color: #666; font-style: italic; font-size: 12pt; text-align: center;">No saved journal entries in this book yet.</p>
+            </div>
+            <div style="text-align: center; border-top: 1px solid #eee; padding-top: 8px; font-size: 9pt; color: #888; font-family: var(--font-mono);">
+              NexMate Personal Journal
+            </div>
+          `;
+          bookContainer.appendChild(emptyPage);
+        } else {
+          sortedEntries.forEach((entry, idx) => {
+            const pageDiv = document.createElement('div');
+            pageDiv.className = 'nm-journal-page-print';
+            const entryBgCss = getSafeEntryBgCss(entry.bg_image, bgImage, customThemeUrl);
+            pageDiv.style.cssText = `
+              position: relative; width: 210mm; height: 296mm; padding: 24mm 20mm;
+              box-sizing: border-box; display: flex; flex-direction: column;
+              justify-content: space-between; font-family: var(--font-sans, system-ui, sans-serif);
+              color: #111111; page-break-after: always; break-after: page; overflow: hidden;
+              ${entryBgCss}
+            `;
+
+            const dateStr = formatIndiaDate(entry.created_at || entry.entry_date);
+            const timeStr = formatIndiaTime(entry.created_at || entry.entry_date);
+
+            pageDiv.innerHTML = `
+              <div>
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(6px); border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 12px; padding: 10px 18px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center;">
+                  <div style="font-family: var(--font-serif); font-size: 15pt; font-weight: bold; color: #111;">
+                    ${activeBook?.name || coverText || 'Journal'}
+                  </div>
+                  <div style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; font-size: 10pt; color: #333; font-family: var(--font-sans, system-ui, sans-serif); font-weight: 500;">
+                    <span>Entry #${idx + 1} — ${dateStr} at ${timeStr}</span>
+                    ${entry.mood_label ? `
+                      <span style="display: inline-flex; align-items: center; gap: 4px; background: rgba(0, 0, 0, 0.06); padding: 2px 10px; border-radius: 12px; font-weight: 600; color: #222;">
+                        <span style="color: #666; font-size: 9pt;">mood:</span>
+                        <span>${entry.mood_emoji || '✨'}</span>
+                        <span style="text-transform: lowercase;">${entry.mood_label}</span>
+                      </span>
+                    ` : ''}
+                  </div>
+                </div>
+                <div style="font-size: 12pt; line-height: 1.6; color: #222; margin-top: 12px; word-break: break-word;">
+                  ${cleanEntryBodyHtml(entry.body) || '<p style="color:#888; font-style:italic;">Empty entry.</p>'}
+                </div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(0,0,0,0.12); padding-top: 8px; font-size: 9pt; color: #555; font-family: var(--font-mono);">
+                <span>NexMate Personal Journal</span>
+                <span>Page ${idx + 1} of ${sortedEntries.length}</span>
+              </div>
+            `;
+            bookContainer.appendChild(pageDiv);
+          });
+        }
+        printWrapper.appendChild(bookContainer);
+      }
+
       document.body.appendChild(printWrapper);
-      
       window.print();
-      
       document.body.removeChild(printWrapper);
     });
   };
@@ -708,15 +957,82 @@ export const JournalScreen = ({ user }) => {
       fetchEntries(activeBookId); 
       setCoverStyle(localStorage.getItem(`book_${activeBookId}_cover`) || '');
       setBgImage(localStorage.getItem(`book_${activeBookId}_bg`) || '');
-      setCoverText(localStorage.getItem(`book_${activeBookId}_coverText`) || '');
+      const savedCoverText = localStorage.getItem(`book_${activeBookId}_coverText`);
+      setCoverText(savedCoverText !== null && savedCoverText !== undefined ? savedCoverText : (activeBook?.name || ''));
+      const savedBoxX = localStorage.getItem(`book_${activeBookId}_boxX`);
+      const savedBoxY = localStorage.getItem(`book_${activeBookId}_boxY`);
+      setCoverBoxX(savedBoxX !== null ? Number(savedBoxX) : null);
+      setCoverBoxY(savedBoxY !== null ? Number(savedBoxY) : null);
+
+      const savedSub = localStorage.getItem(`book_${activeBookId}_coverSubtitle`);
+      const defaultSub = activeBook?.created_at
+        ? `kept since ${new Date(activeBook.created_at).toLocaleDateString()}`
+        : 'kept since...';
+      setCoverSubtitle(savedSub !== null && savedSub !== undefined ? savedSub : defaultSub);
+
+      const savedWidth = Number(localStorage.getItem(`book_${activeBookId}_boxSize`)) || 75;
+      setCoverBoxWidth(savedWidth);
+
+      setCoverBoxAlignH(localStorage.getItem(`book_${activeBookId}_boxAlignH`) || 'center');
+      setCoverBoxAlignV(localStorage.getItem(`book_${activeBookId}_boxAlignV`) || 'center');
+      const savedOpacity = localStorage.getItem(`book_${activeBookId}_boxOpacity`);
+      setCoverBoxOpacity(savedOpacity !== null ? Number(savedOpacity) : 85);
+
       setIsBookOpen(false); // Close book when switching
     }
-  }, [activeBookId]);
+  }, [activeBookId, activeBook]);
 
   const handleSetCoverText = (val) => {
     setCoverText(val);
     if (activeBookId) {
       localStorage.setItem(`book_${activeBookId}_coverText`, val);
+    }
+  };
+
+  const handleRenameCoverText = (val) => {
+    if (activeBookId && val.trim()) {
+      updateJournalBook(activeBookId, { name: val.trim() }).then((res) => {
+        if (res && res.book) {
+          setBooks((prev) => prev.map((b) => (b.id === activeBookId ? { ...b, name: val.trim() } : b)));
+        }
+      }).catch(() => {});
+    }
+  };
+
+  const handleSetCoverSubtitle = (val) => {
+    setCoverSubtitle(val);
+    if (activeBookId) {
+      localStorage.setItem(`book_${activeBookId}_coverSubtitle`, val);
+    }
+  };
+
+  const handleSetCoverBoxSize = (val) => {
+    const num = Math.min(95, Math.max(40, Number(val) || 75));
+    setCoverBoxWidth(num);
+    if (activeBookId) {
+      localStorage.setItem(`book_${activeBookId}_boxSize`, String(num));
+    }
+  };
+
+  const handleSetCoverBoxAlignH = (val) => {
+    setCoverBoxAlignH(val);
+    if (activeBookId) {
+      localStorage.setItem(`book_${activeBookId}_boxAlignH`, val);
+    }
+  };
+
+  const handleSetCoverBoxAlignV = (val) => {
+    setCoverBoxAlignV(val);
+    if (activeBookId) {
+      localStorage.setItem(`book_${activeBookId}_boxAlignV`, val);
+    }
+  };
+
+  const handleSetCoverBoxOpacity = (val) => {
+    const num = Number(val);
+    setCoverBoxOpacity(num);
+    if (activeBookId) {
+      localStorage.setItem(`book_${activeBookId}_boxOpacity`, String(num));
     }
   };
 
@@ -750,13 +1066,7 @@ export const JournalScreen = ({ user }) => {
     setSaving(true);
     try {
       const plainBody = editorRef.current?.innerHTML || body;
-      const finalBody = bgImage === '__custom__'
-        ? `<div style="background-image:url(${customThemeUrl});background-size:cover;background-position:center;padding:20px;border-radius:8px;">${plainBody}</div>`
-        : bgImage && BACKGROUNDS.includes(bgImage)
-        ? `<div style="background-image:url('/backgrounds/${encodeURIComponent(bgImage)}');background-size:cover;background-position:center;padding:20px;border-radius:8px;">${plainBody}</div>`
-        : bgImage && PAPER_STYLES[bgImage]
-        ? `<div style="${Object.entries(PAPER_STYLES[bgImage]).map(([k,v])=>`${k.replace(/([A-Z])/g,'-$1').toLowerCase()}:${v}`).join(';')}; padding: 20px; border-radius: 8px;">${plainBody}</div>`
-        : plainBody;
+      const finalBody = plainBody;
 
       if (editingEntryId) {
         await updateJournalEntry(editingEntryId, {
@@ -767,6 +1077,7 @@ export const JournalScreen = ({ user }) => {
           auto_translate: false,
           book_id: activeBookId,
           allow_loop_detection: allowLoopDetection,
+          bg_image: bgImage || '',
         });
         setEditingEntryId(null);
       } else {
@@ -778,6 +1089,7 @@ export const JournalScreen = ({ user }) => {
           auto_translate: false,
           book_id: activeBookId,
           allow_loop_detection: allowLoopDetection,
+          bg_image: bgImage || '',
         });
       }
       setBody('');
@@ -795,12 +1107,14 @@ export const JournalScreen = ({ user }) => {
 
   const handleEditInMain = (entry) => {
     setEditingEntryId(entry.id);
-    setBody(entry.body);
+    const cleanBody = cleanEntryBodyHtml(entry.body);
+    setBody(cleanBody);
     if (editorRef.current) {
-      editorRef.current.innerHTML = entry.body;
+      editorRef.current.innerHTML = cleanBody;
     }
     setMoodLabel(entry.mood_label || '');
     setEntryDate(entry.entry_date || todayISO());
+    if (entry.bg_image) setBgImage(entry.bg_image);
     editorWrapRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
@@ -863,11 +1177,8 @@ export const JournalScreen = ({ user }) => {
   const displayName = user?.email ? user.email.split('@')[0].replace(/^\w/, (c) => c.toUpperCase()) : 'Girish';
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
-  const handleUseTemplate = (html, theme) => {
+  const handleUseTemplate = (html) => {
     setBody(html);
-    if (theme) {
-      setBgImage(theme);
-    }
     if (editorRef.current) {
       editorRef.current.innerHTML = html;
     }
@@ -1293,10 +1604,67 @@ export const JournalScreen = ({ user }) => {
                           )}
                         </div>
 
-                        <button type="button" title="Download this entry as a PDF" onClick={handleDownloadPdf}
-                          className="nm-btn primary" style={{ padding: '5px 12px', fontSize: 13, borderRadius: '16px', marginLeft: 8 }}>
-                          <Icon name="download" size={13} style={{ marginRight: 6 }} /> Download PDF
+                        {/* Cover Flip Toggle Button */}
+                        <button
+                          type="button"
+                          title={isBookOpen ? "Flip to Cover" : "Flip to Journal Page"}
+                          onClick={() => setIsBookOpen(!isBookOpen)}
+                          className="nm-btn ghost"
+                          style={{ padding: '5px 12px', fontSize: 13, borderRadius: '16px', marginLeft: 8 }}
+                        >
+                          {isBookOpen ? '📖 View Cover' : '📄 Open Page'}
                         </button>
+
+
+
+                        {/* PDF Download Options Menu */}
+                        <div style={{ position: 'relative', display: 'inline-block', marginLeft: 8 }}>
+                          <button
+                            type="button"
+                            title="Download PDF"
+                            onClick={() => setShowPdfMenu(!showPdfMenu)}
+                            className="nm-btn primary"
+                            style={{ padding: '5px 12px', fontSize: 13, borderRadius: '16px' }}
+                          >
+                            <Icon name="download" size={13} style={{ marginRight: 6 }} /> Download PDF ▾
+                          </button>
+                          {showPdfMenu && (
+                            <div style={{
+                              position: 'absolute', left: 0, top: '100%', marginTop: 6,
+                              background: 'var(--surface)', border: '1px solid var(--rule)',
+                              borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                              zIndex: 1000, minWidth: 230, whiteSpace: 'nowrap', overflow: 'hidden'
+                            }}>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadPdf(false)}
+                                style={{
+                                  display: 'block', width: '100%', padding: '10px 14px',
+                                  textAlign: 'left', background: 'none', border: 'none',
+                                  fontSize: 13, color: 'var(--ink)', cursor: 'pointer'
+                                }}
+                                onMouseEnter={e => e.target.style.background = 'var(--surface-2)'}
+                                onMouseLeave={e => e.target.style.background = 'none'}
+                              >
+                                📄 Download Current Entry
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadPdf(true)}
+                                style={{
+                                  display: 'block', width: '100%', padding: '10px 14px',
+                                  textAlign: 'left', background: 'none', border: 'none',
+                                  fontSize: 13, color: 'var(--ink)', cursor: 'pointer',
+                                  borderTop: '1px solid var(--rule-soft)'
+                                }}
+                                onMouseEnter={e => e.target.style.background = 'var(--surface-2)'}
+                                onMouseLeave={e => e.target.style.background = 'none'}
+                              >
+                                📚 Download Complete Book ({entries.length} {entries.length === 1 ? 'entry' : 'entries'})
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                     {/* Sticker picker panel */}
@@ -1330,12 +1698,15 @@ export const JournalScreen = ({ user }) => {
                           {coverStyle && (
                             <div 
                               className="nm-cover-page" 
-                              onClick={() => { setSelectedSticker(null); setSelectedBlock(null); }}
+                              onClick={(e) => { if (e.target === e.currentTarget) { setSelectedSticker(null); setSelectedBlock(null); setCoverBoxSelected(false); } }}
                               style={{ 
                                 position: 'absolute', inset: 0,
                                 backgroundImage: `url('/covers/${encodeURIComponent(coverStyle)}')`, 
                                 backgroundSize: 'cover', backgroundPosition: 'center', 
-                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                                display: 'flex', flexDirection: 'column',
+                                alignItems: coverBoxAlignH,
+                                justifyContent: coverBoxAlignV,
+                                padding: '40px',
                                 color: 'white', textShadow: '0 2px 8px rgba(0,0,0,0.8)',
                                 transformOrigin: 'left center',
                                 transform: isBookOpen ? 'rotateY(-90deg)' : 'rotateY(0deg)',
@@ -1344,7 +1715,7 @@ export const JournalScreen = ({ user }) => {
                                 transition: 'all 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
                                 zIndex: 2,
                                 transformStyle: 'preserve-3d',
-                                cursor: isBookOpen ? 'default' : 'pointer',
+                                cursor: 'default',
                                 borderRadius: 4,
                                 boxShadow: isBookOpen ? '-10px 0px 30px rgba(0,0,0,0.2)' : '5px 0px 15px rgba(0,0,0,0.3)',
                                 pointerEvents: isBookOpen ? 'none' : 'auto'
@@ -1357,48 +1728,139 @@ export const JournalScreen = ({ user }) => {
                                 borderRadius: 4
                               }} />
                               
-                              <div style={{ 
-                                backfaceVisibility: 'hidden', 
-                                display: 'flex', 
-                                flexDirection: 'column', 
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                background: 'rgba(255, 255, 255, 0.85)',
-                                backdropFilter: 'blur(8px)',
-                                padding: '30px 40px',
-                                borderRadius: '12px',
-                                boxShadow: '0 8px 32px rgba(0,0,0,0.2), inset 0 0 0 1px rgba(255,255,255,0.5)',
-                                maxWidth: '75%',
-                                textAlign: 'center',
-                                border: '2px solid rgba(0,0,0,0.1)'
-                              }}>
+                              {/* Draggable title box */}
+                              <div
+                                onClick={(e) => { e.stopPropagation(); setCoverBoxSelected(true); setSelectedSticker(null); setSelectedBlock(null); }}
+                                style={{ 
+                                  position: coverBoxX !== null ? 'absolute' : 'relative',
+                                  left: coverBoxX !== null ? coverBoxX : undefined,
+                                  top: coverBoxY !== null ? coverBoxY : undefined,
+                                  display: 'flex', 
+                                  flexDirection: 'column', 
+                                  alignItems: coverBoxAlignH === 'flex-start' ? 'flex-start' : coverBoxAlignH === 'flex-end' ? 'flex-end' : 'center',
+                                  justifyContent: 'center',
+                                  background: coverBoxOpacity === 0 ? 'transparent' : `rgba(255, 255, 255, ${coverBoxOpacity / 100})`,
+                                  backdropFilter: coverBoxOpacity > 0 && coverBoxOpacity < 100 ? 'blur(8px)' : 'none',
+                                  padding: '28px 36px',
+                                  borderRadius: '12px',
+                                  boxShadow: coverBoxSelected
+                                    ? '0 0 0 2px var(--accent), 0 8px 32px rgba(0,0,0,0.2)'
+                                    : coverBoxOpacity > 0 ? '0 8px 32px rgba(0,0,0,0.2), inset 0 0 0 1px rgba(255,255,255,0.5)' : 'none',
+                                  maxWidth: `${coverBoxWidth}%`,
+                                  width: `${coverBoxWidth}%`,
+                                  textAlign: coverBoxAlignH === 'flex-start' ? 'left' : coverBoxAlignH === 'flex-end' ? 'right' : 'center',
+                                  border: coverBoxSelected ? '1.5px dashed var(--accent)' : coverBoxOpacity > 0 ? '2px solid rgba(0,0,0,0.1)' : 'none',
+                                  transition: 'background 0.2s ease, box-shadow 0.2s ease',
+                                  zIndex: 3,
+                                  cursor: 'move',
+                                  userSelect: 'none'
+                                }}
+                                onMouseDown={(e) => {
+                                  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setCoverBoxSelected(true);
+                                  const parent = e.currentTarget.closest('.nm-cover-page');
+                                  const rect = parent.getBoundingClientRect();
+                                  const box = e.currentTarget;
+                                  const boxRect = box.getBoundingClientRect();
+                                  let curX = coverBoxX !== null ? coverBoxX : (boxRect.left - rect.left) / zoom;
+                                  let curY = coverBoxY !== null ? coverBoxY : (boxRect.top - rect.top) / zoom;
+                                  coverBoxDragRef.current = { startX: e.clientX, startY: e.clientY };
+                                  const onMove = (me) => {
+                                    const dx = (me.clientX - coverBoxDragRef.current.startX) / zoom;
+                                    const dy = (me.clientY - coverBoxDragRef.current.startY) / zoom;
+                                    curX += dx; curY += dy;
+                                    coverBoxDragRef.current.startX = me.clientX;
+                                    coverBoxDragRef.current.startY = me.clientY;
+                                    box.style.left = curX + 'px';
+                                    box.style.top = curY + 'px';
+                                    box.style.position = 'absolute';
+                                  };
+                                  const onUp = () => {
+                                    coverBoxDragRef.current = null;
+                                    window.removeEventListener('mousemove', onMove);
+                                    window.removeEventListener('mouseup', onUp);
+                                    setCoverBoxX(curX);
+                                    setCoverBoxY(curY);
+                                    if (activeBookId) {
+                                      localStorage.setItem(`book_${activeBookId}_boxX`, String(curX));
+                                      localStorage.setItem(`book_${activeBookId}_boxY`, String(curY));
+                                    }
+                                  };
+                                  window.addEventListener('mousemove', onMove);
+                                  window.addEventListener('mouseup', onUp);
+                                }}
+                              >
+                                {/* Floating toolbar — shown when box is selected */}
+                                {coverBoxSelected && (
+                                  <div
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{ position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(20,20,24,0.92)', borderRadius: 8, padding: '4px 8px', whiteSpace: 'nowrap', zIndex: 22, boxShadow: '0 4px 14px rgba(0,0,0,0.25)' }}
+                                  >
+                                    <button onMouseDown={(e) => { e.stopPropagation(); handleSetCoverBoxSize(Math.max(30, coverBoxWidth - 10)); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, padding: '0 4px' }} title="Shrink">◀</button>
+                                    <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11, minWidth: 32, textAlign: 'center' }}>{coverBoxWidth}%</span>
+                                    <button onMouseDown={(e) => { e.stopPropagation(); handleSetCoverBoxSize(Math.min(95, coverBoxWidth + 10)); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: 14, padding: '0 4px' }} title="Grow">▶</button>
+                                    <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, padding: '0 2px' }}>|</span>
+                                    {[{ v: 100, l: '■' }, { v: 85, l: '▨' }, { v: 50, l: '▒' }, { v: 0, l: '□' }].map(({ v, l }) => (
+                                      <button key={v} onMouseDown={(e) => { e.stopPropagation(); handleSetCoverBoxOpacity(v); }} title={v === 100 ? 'Solid' : v === 85 ? 'Frosted' : v === 50 ? 'Faded' : 'Hidden'}
+                                        style={{ background: coverBoxOpacity === v ? 'rgba(255,255,255,0.25)' : 'none', border: 'none', borderRadius: 4, color: 'white', cursor: 'pointer', fontSize: 13, padding: '2px 5px' }}>{l}</button>
+                                    ))}
+                                    <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 12, padding: '0 2px' }}>|</span>
+                                    <button onMouseDown={(e) => { e.stopPropagation(); setCoverBoxSelected(false); }} style={{ background: 'none', border: 'none', color: '#ff6b6b', cursor: 'pointer', fontSize: 14, padding: '0 4px' }} title="Deselect">✕</button>
+                                  </div>
+                                )}
                                 <textarea
-                                  value={coverText || activeBook?.name || ''}
+                                  value={coverText}
                                   onChange={(e) => handleSetCoverText(e.target.value)}
+                                  onBlur={(e) => { handleRenameCoverText(e.target.value); e.currentTarget.style.borderColor = 'transparent'; }}
                                   onClick={(e) => e.stopPropagation()}
+                                  onMouseDown={(e) => e.stopPropagation()}
                                   placeholder="Journal Title"
                                   rows={2}
                                   style={{ 
                                     fontFamily: 'var(--font-serif)', 
                                     fontSize: 42, 
-                                    marginBottom: 16,
-                                    color: '#222',
-                                    textShadow: 'none',
+                                    marginBottom: 12,
+                                    color: coverBoxOpacity === 0 ? '#ffffff' : '#222',
+                                    textShadow: coverBoxOpacity === 0 ? '0 2px 8px rgba(0,0,0,0.8)' : 'none',
                                     background: 'transparent',
-                                    border: '1px dashed transparent',
+                                    border: '1px dashed rgba(0,0,0,0.2)',
                                     outline: 'none',
-                                    textAlign: 'center',
+                                    textAlign: coverBoxAlignH === 'flex-start' ? 'left' : coverBoxAlignH === 'flex-end' ? 'right' : 'center',
                                     resize: 'none',
                                     width: '100%',
-                                    minWidth: '300px',
-                                    fontWeight: 'bold'
+                                    minWidth: '240px',
+                                    fontWeight: 'bold',
+                                    cursor: 'text',
+                                    pointerEvents: 'auto'
                                   }}
-                                  onFocus={(e) => e.currentTarget.style.borderColor = 'rgba(0,0,0,0.2)'}
-                                  onBlur={(e) => e.currentTarget.style.borderColor = 'transparent'}
+                                  onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
                                 />
-                                <p style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: '#666', textShadow: 'none' }}>
-                                  kept since {new Date(activeBook?.created_at).toLocaleDateString()}
-                                </p>
+                                <input
+                                  type="text"
+                                  value={coverSubtitle}
+                                  onChange={(e) => handleSetCoverSubtitle(e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  placeholder="kept since..."
+                                  style={{ 
+                                    fontFamily: 'var(--font-mono)', 
+                                    fontSize: 14, 
+                                    color: coverBoxOpacity === 0 ? '#ffffff' : '#555', 
+                                    textShadow: coverBoxOpacity === 0 ? '0 2px 8px rgba(0,0,0,0.8)' : 'none',
+                                    background: 'transparent',
+                                    border: '1px dashed rgba(0,0,0,0.15)',
+                                    outline: 'none',
+                                    textAlign: coverBoxAlignH === 'flex-start' ? 'left' : coverBoxAlignH === 'flex-end' ? 'right' : 'center',
+                                    width: '100%',
+                                    cursor: 'text',
+                                    pointerEvents: 'auto'
+                                  }}
+                                  onFocus={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                                  onBlur={(e) => e.currentTarget.style.borderColor = 'rgba(0,0,0,0.15)'}
+                                />
                               </div>
                               {renderStickers('cover')}
                               {renderTextBlocks('cover')}
@@ -1428,7 +1890,7 @@ export const JournalScreen = ({ user }) => {
                               backgroundColor: bgImage ? undefined : '#e5d7fd80',
                               ...(bgImage === '__custom__'
                                 ? { backgroundImage: `url(${customThemeUrl})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }
-                                : bgImage ? (BACKGROUNDS.includes(bgImage) ? { backgroundImage: `url('/backgrounds/${encodeURIComponent(bgImage)}')`, backgroundSize: 'cover', backgroundPosition: 'center' } : (PAPER_STYLES[bgImage] || {})) : {})
+                                : bgImage ? (BACKGROUNDS.includes(bgImage) ? { backgroundImage: `url('/backgrounds/${encodeURIComponent(bgImage)}')`, backgroundSize: 'cover', backgroundPosition: 'center' } : (PAPER_STYLES[bgImage] ? { ...PAPER_STYLES[bgImage], backgroundImage: undefined } : {})) : {})
                             }}>
 
                             {/* NexMate Watermark */}
@@ -1471,7 +1933,7 @@ export const JournalScreen = ({ user }) => {
                                 display: 'inline-block',
                                 boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
                               }}>
-                                {new Date(entryDate).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                                {formatIndiaDate(entryDate)}
                               </span>
                             </div>
                             {renderStickers('journal')}
@@ -1522,11 +1984,11 @@ export const JournalScreen = ({ user }) => {
 
                       {/* Page Navigation Arrows */}
                       {isBookOpen ? (
-                        <button onClick={(e) => { e.stopPropagation(); setIsBookOpen(false); }} title="Close to Cover" style={{ position: 'absolute', left: -60, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.8)', border: 'none', borderRadius: '50%', width: 48, height: 48, fontSize: 20, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333' }}>
+                        <button onClick={(e) => { e.stopPropagation(); setIsBookOpen(false); }} title="Flip to Cover" style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.9)', border: '1px solid var(--rule-soft)', borderRadius: '50%', width: 42, height: 42, fontSize: 16, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.18)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#222' }}>
                           ◀
                         </button>
                       ) : (
-                        <button onClick={(e) => { e.stopPropagation(); setIsBookOpen(true); }} title="Open Journal" style={{ position: 'absolute', right: -60, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.8)', border: 'none', borderRadius: '50%', width: 48, height: 48, fontSize: 20, cursor: 'pointer', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#333' }}>
+                        <button onClick={(e) => { e.stopPropagation(); setIsBookOpen(true); }} title="Flip to Journal Page" style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.9)', border: '1px solid var(--rule-soft)', borderRadius: '50%', width: 42, height: 42, fontSize: 16, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.18)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#222' }}>
                           ▶
                         </button>
                       )}
@@ -1603,6 +2065,8 @@ export const JournalScreen = ({ user }) => {
                             items={items}
                             handleDeleteEntry={handleDeleteEntry}
                             handleEditInMain={handleEditInMain}
+                            activeBg={bgImage}
+                            customUrl={customThemeUrl}
                           />
                         );
                       })}
