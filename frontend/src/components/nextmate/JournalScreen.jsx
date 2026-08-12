@@ -1177,11 +1177,10 @@ export const JournalScreen = ({ user }) => {
   const displayName = user?.email ? user.email.split('@')[0].replace(/^\w/, (c) => c.toUpperCase()) : 'Girish';
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
-  const handleUseTemplate = (html) => {
+  const handleUseTemplate = (html, theme) => {
     setBody(html);
-    if (editorRef.current) {
-      editorRef.current.innerHTML = html;
-    }
+    if (editorRef.current) editorRef.current.innerHTML = html;
+    if (theme) handleSetBg(theme);
   };
 
   const renderStickers = (targetPage) => (
@@ -1432,7 +1431,7 @@ export const JournalScreen = ({ user }) => {
                   <div style={{
                     border: '1px solid var(--rule)',
                     borderRadius: 6,
-                    overflow: 'hidden',
+                    overflow: 'visible',
                     marginBottom: 4,
                   }}>
                     {/* Toolbar */}
