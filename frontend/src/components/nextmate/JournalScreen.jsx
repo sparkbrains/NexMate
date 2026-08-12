@@ -1646,7 +1646,7 @@ export const JournalScreen = ({ user }) => {
                                 onMouseEnter={e => e.target.style.background = 'var(--surface-2)'}
                                 onMouseLeave={e => e.target.style.background = 'none'}
                               >
-                                📄 Download Current Entry
+                                📄 Current Entry
                               </button>
                               <button
                                 type="button"
@@ -1660,7 +1660,7 @@ export const JournalScreen = ({ user }) => {
                                 onMouseEnter={e => e.target.style.background = 'var(--surface-2)'}
                                 onMouseLeave={e => e.target.style.background = 'none'}
                               >
-                                📚 Download Complete Book ({entries.length} {entries.length === 1 ? 'entry' : 'entries'})
+                                📚 Complete Book ({entries.length} {entries.length === 1 ? 'entry' : 'entries'})
                               </button>
                             </div>
                           )}

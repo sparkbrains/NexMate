@@ -170,7 +170,7 @@ def get_loop(user_id: int, loop_id: str) -> dict[str, Any] | None:
 
     first = row.get("first_detected_at")
     last = row.get("last_detected_at")
-    span_days = (last - first).days if first and last else 0
+    span_days = max((last - first).days, 0) if first and last else 0
 
     co_triggers: dict[str, int] = {}
     co_moods: dict[str, int] = {}
