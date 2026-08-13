@@ -2518,9 +2518,12 @@ body {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   padding: 7px 8px;
   background: var(--surface);
+  position: relative;
+  z-index: 100;
+  overflow: visible;
 }
 .nm-toolbar-row + .nm-toolbar-row {
   border-top: 1px solid var(--rule-soft);
