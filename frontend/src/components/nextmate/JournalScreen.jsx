@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon, TopBar, ConfirmDialog } from './Shell';
 import {
   createJournalBook,
@@ -489,9 +490,10 @@ export const JournalScreen = ({ user }) => {
   const [coverBoxAlignH, setCoverBoxAlignH] = useState('center'); // 'flex-start' | 'center' | 'flex-end'
   const [coverBoxAlignV, setCoverBoxAlignV] = useState('center'); // 'flex-start' | 'center' | 'flex-end'
   const [coverBoxOpacity, setCoverBoxOpacity] = useState(85); // 0..100
-  const [showPdfMenu, setShowPdfMenu] = useState(false);
   const editorRef = useRef(null);
   
+  const journalMainRef = useRef(null);
+
   // Toolbar dropdown state
   const [activeMenu, setActiveMenu] = useState(null);
   useEffect(() => {
@@ -504,6 +506,15 @@ export const JournalScreen = ({ user }) => {
       document.addEventListener('mousedown', handleOutsideClick);
     }
     return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [activeMenu]);
+
+  // Close portal dropdowns on scroll
+  useEffect(() => {
+    const el = journalMainRef.current;
+    if (!el) return;
+    const close = () => { if (activeMenu === 'page' || activeMenu === 'pdf') setActiveMenu(null); };
+    el.addEventListener('scroll', close);
+    return () => el.removeEventListener('scroll', close);
   }, [activeMenu]);
 
   const [showNewBook, setShowNewBook] = useState(false);
@@ -525,6 +536,10 @@ export const JournalScreen = ({ user }) => {
   const editorWrapRef = useRef(null);
   const printContainerRef = useRef(null);
   const pageViewportRef = useRef(null);
+  const pageSetupBtnRef = useRef(null);
+  const pdfBtnRef = useRef(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+  const [pdfDropdownPos, setPdfDropdownPos] = useState({ top: 0, left: 0 });
 
   // zoomMode is either 'fit-width' / 'fit-page', or a fixed numeric zoom (1 = 100%).
   const [zoomMode, setZoomMode] = useState('fit-width');
@@ -621,6 +636,10 @@ export const JournalScreen = ({ user }) => {
     return () => ro.disconnect();
   }, [zoomMode]);
 
+  const openMenu = (name) => {
+    setActiveMenu(prev => prev === name ? null : name);
+  };
+
   const nudgeZoom = (delta) => {
     setZoomMode((prev) => {
       const base = typeof prev === 'number' ? prev : zoom;
@@ -716,7 +735,7 @@ export const JournalScreen = ({ user }) => {
   const handleDownloadPdf = (fullBook = false) => {
     setSelectedSticker(null);
     setSelectedBlock(null);
-    setShowPdfMenu(false);
+    setActiveMenu(null);
     requestAnimationFrame(() => {
       const el = printContainerRef.current;
       if (!el) return;
@@ -1177,11 +1196,10 @@ export const JournalScreen = ({ user }) => {
   const displayName = user?.email ? user.email.split('@')[0].replace(/^\w/, (c) => c.toUpperCase()) : 'Girish';
   const dateLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
-  const handleUseTemplate = (html) => {
+  const handleUseTemplate = (html, theme) => {
     setBody(html);
-    if (editorRef.current) {
-      editorRef.current.innerHTML = html;
-    }
+    if (editorRef.current) editorRef.current.innerHTML = html;
+    if (theme) handleSetBg(theme);
   };
 
   const renderStickers = (targetPage) => (
@@ -1363,7 +1381,7 @@ export const JournalScreen = ({ user }) => {
         </aside>
 
         {/* Main pane */}
-        <main className="nm-journal-main">
+        <main className="nm-journal-main" ref={journalMainRef}>
           <div className="nm-journal-inner">
             <div className="nm-journal-welcome">
               <div className="nm-journal-welcome-text">
@@ -1432,11 +1450,12 @@ export const JournalScreen = ({ user }) => {
                   <div style={{
                     border: '1px solid var(--rule)',
                     borderRadius: 6,
-                    overflow: 'hidden',
+                    overflow: 'visible',
                     marginBottom: 4,
+                    position: 'relative',
                   }}>
                     {/* Toolbar */}
-                    <div style={{ borderBottom: '1px solid var(--rule)' }}>
+                    <div style={{ borderBottom: '1px solid var(--rule)', overflow: 'visible', position: 'relative', zIndex: 200 }}>
                       <div className="nm-toolbar-row">
                         {/* Font group (Always visible) */}
                         <div className="nm-toolbar-group">
@@ -1535,41 +1554,32 @@ export const JournalScreen = ({ user }) => {
                           )}
                         </div>
 
-                        {/* Page Setup Dropdown */}
+                        {/* Page Setup — button toolbar mein, dropdown viewport ke andar */}
                         <div className="nm-toolbar-group nm-dropdown-group" style={{ position: 'relative' }}>
-                          <button type="button" className="nm-btn ghost" onClick={() => setActiveMenu(activeMenu === 'page' ? null : 'page')} style={{ padding: '2px 7px', fontSize: 13 }}>
+                          <button
+                            ref={pageSetupBtnRef}
+                            type="button"
+                            className="nm-btn ghost"
+                            onClick={() => openMenu('page')}
+                            style={{ padding: '2px 7px', fontSize: 13 }}
+                          >
                             Page Setup ▼
                           </button>
-                          {activeMenu === 'page' && (
-                            <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 6, padding: '16px', display: 'flex', gap: '20px', minWidth: '450px', boxShadow: '0 8px 24px rgba(0,0,0,0.15)', marginTop: '4px' }}>
-                              
-                              <div style={{ flex: 1 }}>
-                                <div className="nm-meta" style={{ marginBottom: 12, fontWeight: 'bold' }}>📔 Notebook Cover</div>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 4 }}>
-                                  <button onClick={() => { handleSetCover(''); setActiveMenu(null); }} style={{ height: 60, border: coverStyle === '' ? '2px solid var(--accent)' : '1px solid var(--rule)', borderRadius: 4, background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, cursor: 'pointer' }}>None</button>
-                                  {COVERS.map(c => (
-                                    <img key={c} src={`/covers/${encodeURIComponent(c)}`} alt={c} onClick={() => { handleSetCover(c); setActiveMenu(null); }}
-                                      style={{ width: '100%', height: 60, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: coverStyle === c ? '2px solid var(--accent)' : '1px solid var(--rule)' }} />
-                                  ))}
-                                </div>
-                              </div>
-
-                              <div style={{ flex: 1 }}>
-                                <div className="nm-meta" style={{ marginBottom: 12, fontWeight: 'bold' }}>🎨 Page Background</div>
-                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 4 }}>
-                                  <button onClick={() => { handleSetBg(''); setActiveMenu(null); }} style={{ height: 60, border: bgImage === '' ? '2px solid var(--accent)' : '1px solid var(--rule)', borderRadius: 4, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, cursor: 'pointer' }}>None</button>
-                                  {BACKGROUNDS.map(b => (
-                                    <img key={b} src={`/backgrounds/${encodeURIComponent(b)}`} alt={b} onClick={() => { handleSetBg(b); setActiveMenu(null); }}
-                                      style={{ width: '100%', height: 60, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: bgImage === b ? '2px solid var(--accent)' : '1px solid var(--rule)' }} />
-                                  ))}
-                                </div>
-                              </div>
-
-                            </div>
-                          )}
                         </div>
 
-                        {/* Zoom Dropdown */}
+                        {/* Download PDF — button toolbar mein, dropdown viewport ke andar */}
+                        <div className="nm-toolbar-group nm-dropdown-group" style={{ position: 'relative' }}>
+                          <button
+                            ref={pdfBtnRef}
+                            type="button"
+                            className="nm-btn primary"
+                            onClick={() => openMenu('pdf')}
+                            style={{ padding: '5px 12px', fontSize: 13, borderRadius: '16px' }}
+                          >
+                            <Icon name="download" size={13} /> Download PDF ▾
+                          </button>
+                        </div>
+
                         <div className="nm-toolbar-group nm-dropdown-group" style={{ position: 'relative', marginLeft: 'auto' }}>
                           <button type="button" className="nm-btn ghost" onClick={() => setActiveMenu(activeMenu === 'zoom' ? null : 'zoom')} style={{ padding: '2px 7px', fontSize: 13 }}>
                             🔍 {Math.round(zoom * 100)}% ▼
@@ -1614,57 +1624,6 @@ export const JournalScreen = ({ user }) => {
                         >
                           {isBookOpen ? '📖 View Cover' : '📄 Open Page'}
                         </button>
-
-
-
-                        {/* PDF Download Options Menu */}
-                        <div className="nm-dropdown-group" style={{ position: 'relative', display: 'inline-block', marginLeft: 8 }}>
-                          <button
-                            type="button"
-                            title="Download PDF"
-                            onClick={() => setActiveMenu(activeMenu === 'pdf' ? null : 'pdf')}
-                            className="nm-btn primary"
-                            style={{ padding: '5px 12px', fontSize: 13, borderRadius: '16px' }}
-                          >
-                            <Icon name="download" size={13} style={{ marginRight: 6 }} /> Download PDF ▾
-                          </button>
-                          {activeMenu === 'pdf' && (
-                            <div style={{
-                              position: 'absolute', left: 0, top: '100%', marginTop: 6,
-                              background: 'var(--surface)', border: '1px solid var(--rule)',
-                              borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-                              zIndex: 1000, minWidth: 230, whiteSpace: 'nowrap', overflow: 'hidden'
-                            }}>
-                              <button
-                                type="button"
-                                onClick={() => handleDownloadPdf(false)}
-                                style={{
-                                  display: 'block', width: '100%', padding: '10px 14px',
-                                  textAlign: 'left', background: 'none', border: 'none',
-                                  fontSize: 13, color: 'var(--ink)', cursor: 'pointer'
-                                }}
-                                onMouseEnter={e => e.target.style.background = 'var(--surface-2)'}
-                                onMouseLeave={e => e.target.style.background = 'none'}
-                              >
-                                📄 Current Entry
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDownloadPdf(true)}
-                                style={{
-                                  display: 'block', width: '100%', padding: '10px 14px',
-                                  textAlign: 'left', background: 'none', border: 'none',
-                                  fontSize: 13, color: 'var(--ink)', cursor: 'pointer',
-                                  borderTop: '1px solid var(--rule-soft)'
-                                }}
-                                onMouseEnter={e => e.target.style.background = 'var(--surface-2)'}
-                                onMouseLeave={e => e.target.style.background = 'none'}
-                              >
-                                📚 Complete Book
-                              </button>
-                            </div>
-                          )}
-                        </div>
                       </div>
                     </div>
                     {/* Sticker picker panel */}
@@ -1679,8 +1638,7 @@ export const JournalScreen = ({ user }) => {
                         ))}
                       </div>
                     )}
-                    {/* A4 page viewport — scrolls both axes so the fixed-size page stays
-                        at true proportions no matter the zoom level, like Google Docs. */}
+                    {/* A4 page viewport */}
                     <div ref={pageViewportRef} className="nm-page-viewport" style={{
                       overflow: 'auto',
                       maxHeight: '75vh',
@@ -1688,8 +1646,62 @@ export const JournalScreen = ({ user }) => {
                       padding: '24px 0',
                       display: 'flex',
                       justifyContent: 'center',
-                      alignItems: 'flex-start' // Changed from center to prevent top truncation when container is taller than screen
+                      alignItems: 'flex-start',
+                      position: 'relative'
                     }}>
+
+                      {/* Dropdowns rendered inside viewport — position: absolute relative to nm-page-viewport */}
+                      {activeMenu === 'page' && (
+                        <div className="nm-dropdown-group" onMouseDown={e => e.stopPropagation()} style={{
+                          position: 'absolute', top: 12, right: 12,
+                          zIndex: 99999, background: 'var(--surface)', border: '1px solid var(--rule)',
+                          borderRadius: 10, padding: '16px', display: 'flex', gap: '20px',
+                          width: 380, maxWidth: 'calc(100% - 24px)',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.18)'
+                        }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="nm-meta" style={{ marginBottom: 12, fontWeight: 'bold' }}>📔 Notebook Cover</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 4 }}>
+                              <button onClick={() => { handleSetCover(''); setActiveMenu(null); }} style={{ height: 60, border: coverStyle === '' ? '2px solid var(--accent)' : '1px solid var(--rule)', borderRadius: 4, background: '#eee', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, cursor: 'pointer' }}>None</button>
+                              {COVERS.map(c => (
+                                <img key={c} src={`/covers/${encodeURIComponent(c)}`} alt={c} onClick={() => { handleSetCover(c); setActiveMenu(null); }}
+                                  style={{ width: '100%', height: 60, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: coverStyle === c ? '2px solid var(--accent)' : '1px solid var(--rule)' }} />
+                              ))}
+                            </div>
+                          </div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div className="nm-meta" style={{ marginBottom: 12, fontWeight: 'bold' }}>🎨 Page Background</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, maxHeight: 220, overflowY: 'auto', paddingRight: 4 }}>
+                              <button onClick={() => { handleSetBg(''); setActiveMenu(null); }} style={{ height: 60, border: bgImage === '' ? '2px solid var(--accent)' : '1px solid var(--rule)', borderRadius: 4, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, cursor: 'pointer' }}>None</button>
+                              {BACKGROUNDS.map(b => (
+                                <img key={b} src={`/backgrounds/${encodeURIComponent(b)}`} alt={b} onClick={() => { handleSetBg(b); setActiveMenu(null); }}
+                                  style={{ width: '100%', height: 60, objectFit: 'cover', borderRadius: 4, cursor: 'pointer', border: bgImage === b ? '2px solid var(--accent)' : '1px solid var(--rule)' }} />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {activeMenu === 'pdf' && (
+                        <div className="nm-dropdown-group" onMouseDown={e => e.stopPropagation()} style={{
+                          position: 'absolute', top: 12, right: 12,
+                          zIndex: 99999, background: 'var(--surface)', border: '1px solid var(--rule)',
+                          borderRadius: 10, padding: '16px', display: 'flex', flexDirection: 'column', gap: '8px',
+                          width: 220, maxWidth: 'calc(100% - 24px)',
+                          boxShadow: '0 8px 32px rgba(0,0,0,0.18)'
+                        }}>
+                          <button type="button" onClick={() => handleDownloadPdf(false)}
+                            className="nm-btn ghost"
+                            style={{ padding: '8px 12px', fontSize: 13, textAlign: 'left', width: '100%', justifyContent: 'flex-start' }}>
+                            📄 Current Entry
+                          </button>
+                          <button type="button" onClick={() => handleDownloadPdf(true)}
+                            className="nm-btn ghost"
+                            style={{ padding: '8px 12px', fontSize: 13, textAlign: 'left', width: '100%', justifyContent: 'flex-start' }}>
+                            📚 Complete Book
+                          </button>
+                        </div>
+                      )}
                       {/* Sizing slot reserves the zoomed footprint so scrollbars/centering are correct */}
                       <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.2s' }}>
                         <div ref={printContainerRef} className="nm-perspective-container" style={{ perspective: '2500px', position: 'relative', width: A4_WIDTH, height: A4_HEIGHT }}>

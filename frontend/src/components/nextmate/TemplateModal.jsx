@@ -1,6 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { TEMPLATE_CATEGORIES, PAPER_STYLES } from '../../lib/templates';
+import { TEMPLATE_CATEGORIES } from '../../lib/templates';
 import { Icon } from './Shell';
+
+const BACKGROUNDS = [
+  'Background1.png', 'Background2.png', 'Background3.png', 'Background4.png',
+  'Background5.png', 'Background6.png', 'Background7.png', 'Background8.png',
+  'Background9.png', 'Background10.png', 'Background11.png', 'Background12.png',
+  'Background13.png', 'Background14.png'
+];
+
+const getBgStyle = (theme) => {
+  if (!theme) return {};
+  if (BACKGROUNDS.includes(theme)) {
+    return { backgroundImage: `url('/backgrounds/${encodeURIComponent(theme)}')`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' };
+  }
+  return PAPER_STYLES[theme] || {};
+};
 
 export const TemplateModal = ({ isOpen, onClose, onUseTemplate }) => {
   const [selectedTemplate, setSelectedTemplate] = useState(null);
@@ -200,8 +215,8 @@ export const TemplateModal = ({ isOpen, onClose, onUseTemplate }) => {
                       style={{ fontSize: 12, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--rule)', background: 'var(--surface)', color: 'var(--ink)', cursor: 'pointer' }}
                     >
                       <option value="">Default Theme</option>
-                      {Object.keys(PAPER_STYLES).map(k => (
-                        <option key={k} value={k}>{k.charAt(0).toUpperCase() + k.slice(1).replace('-', ' ')}</option>
+                      {BACKGROUNDS.map(b => (
+                        <option key={b} value={b}>{b.replace('.png', '').replace('.jpg', '')}</option>
                       ))}
                     </select>
                   </div>
@@ -274,13 +289,13 @@ export const TemplateModal = ({ isOpen, onClose, onUseTemplate }) => {
                       suppressContentEditableWarning={true}
                       dangerouslySetInnerHTML={{ __html: selectedTemplate.html }} 
                       style={{ 
-                        background: selectedTemplate.theme && PAPER_STYLES[selectedTemplate.theme] ? undefined : 'var(--surface-0)', 
+                        background: selectedTemplate.theme ? undefined : 'var(--surface-0)', 
                         padding: 30, 
                         minHeight: isCustom ? 200 : 'auto', 
                         outline: 'none',
                         boxShadow: !isCustom ? '0 2px 10px rgba(0,0,0,0.02)' : 'none',
                         borderRadius: 8,
-                        ...(selectedTemplate.theme ? PAPER_STYLES[selectedTemplate.theme] || {} : {})
+                        ...getBgStyle(selectedTemplate.theme)
                       }}
                     />
                   </div>
