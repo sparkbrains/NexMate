@@ -201,6 +201,28 @@ def _avg(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 2) if values else None
 
 
+def _fetch_mood_label_distribution(user_id: int, since: datetime) -> list[dict]:
+    from apps.db import get_connection
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT mood_label, COUNT(*) AS cnt
+                FROM journal_logs
+                WHERE user_id = %s AND entry_date >= %s AND mood_label <> ''
+                GROUP BY mood_label
+                ORDER BY cnt DESC
+                """,
+                (user_id, since.date()),
+            )
+            rows = cur.fetchall()
+    total = sum(r["cnt"] for r in rows) if rows else 0
+    return [
+        {"label": r["mood_label"], "count": r["cnt"], "pct": round(r["cnt"] * 100 / total) if total else 0}
+        for r in rows
+    ]
+
+
 def _build_engaging_summary(entry: dict[str, Any]) -> str | None:
     theme = str(entry.get("core_theme") or "").strip()
     mood = str(entry.get("mood") or "").strip().lower()
@@ -585,4 +607,5 @@ async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]
         "echo": echo,
         "daily_question": await get_or_create_daily_question(user_id),
         "thread_summaries": thread_summaries,
+        "mood_label_distribution": _fetch_mood_label_distribution(user_id, window_start),
     }

@@ -838,6 +838,7 @@ export const JournalScreen = ({ user }) => {
             const timeStr = formatIndiaTime(entry.created_at || entry.entry_date);
 
             pageDiv.innerHTML = `
+              <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-45deg); font-size: 140px; font-family: serif; color: rgba(128,128,128,0.15); pointer-events: none; user-select: none; white-space: nowrap; font-weight: bold; z-index: 0;">NexMate</div>
               <div>
                 <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; background: rgba(255, 255, 255, 0.94); backdrop-filter: blur(6px); border: 1px solid rgba(0, 0, 0, 0.12); border-radius: 12px; padding: 10px 18px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); text-align: center;">
                   <div style="font-family: var(--font-serif); font-size: 15pt; font-weight: bold; color: #111;">
@@ -854,9 +855,9 @@ export const JournalScreen = ({ user }) => {
                     ` : ''}
                   </div>
                 </div>
-                <div style="font-size: 12pt; line-height: 1.6; color: #222; margin-top: 12px; word-break: break-word;">
-                  ${cleanEntryBodyHtml(entry.body) || '<p style="color:#888; font-style:italic;">Empty entry.</p>'}
-                </div>
+<div style="font-size: 12pt; line-height: 1.6; color: #222; margin-top: 12px; word-break: break-word; position: relative; z-index: 1;">
+                    ${cleanEntryBodyHtml(entry.body) || '<p style="color:#888; font-style:italic;">Empty entry.</p>'}
+                  </div>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(0,0,0,0.12); padding-top: 8px; font-size: 9pt; color: #555; font-family: var(--font-mono);">
                 <span>NexMate Personal Journal</span>
@@ -1532,6 +1533,13 @@ export const JournalScreen = ({ user }) => {
                                 className="nm-btn ghost" style={{ padding: '6px', fontSize: 12, textAlign: 'left', width: '100%' }}># Numbers</button>
                             </div>
                           )}
+                        </div>
+
+                        {/* Templates — standalone button beside Layout */}
+                        <div className="nm-toolbar-group">
+                          <button type="button" className="nm-btn ghost" onClick={() => { setShowTemplateModal(true); setActiveMenu(null); }} style={{ padding: '2px 7px', fontSize: 13 }}>
+                            📄 Templates
+                          </button>
                         </div>
 
                         {/* Insert Dropdown */}

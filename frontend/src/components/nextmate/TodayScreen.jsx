@@ -278,7 +278,23 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
   const dateLabel = now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
   const userName = user?.email ? user.email.split('@')[0] : 'there';
 
-  const QUOTES = [{text: "Be gentle with yourself.", author: "Anonymous"}]; // Placeholder
+  const QUOTES = [
+    { text: "Be gentle with yourself.", author: "Anonymous" },
+    { text: "You don't have to be positive all the time.", author: "Lori Deschene" },
+    { text: "Almost everything will work again if you unplug it for a few minutes.", author: "Anne Lamott" },
+    { text: "You are allowed to be both a masterpiece and a work in progress.", author: "Sophia Bush" },
+    { text: "Feelings are just visitors, let them come and go.", author: "Mooji" },
+    { text: "The present moment is the only moment available to us.", author: "Thich Nhat Hanh" },
+    { text: "Owning our story and loving ourselves through that process is the bravest thing we'll ever do.", author: "Brené Brown" },
+    { text: "You can't go back and change the beginning, but you can start where you are and change the ending.", author: "C.S. Lewis" },
+    { text: "In the middle of difficulty lies opportunity.", author: "Albert Einstein" },
+    { text: "What you are is what you have been. What you'll be is what you do now.", author: "Buddha" },
+    { text: "The only way out is through.", author: "Robert Frost" },
+    { text: "Talk to yourself like you would to someone you love.", author: "Brené Brown" },
+    { text: "You are enough, just as you are.", author: "Meghan Markle" },
+    { text: "Breathe. You are exactly where you need to be.", author: "Anonymous" },
+    { text: "Small steps every day.", author: "Anonymous" },
+  ];
   const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
   const usingSample = Boolean(tourSample) && !loading && (insights?.total_lifetime_entries ?? 0) === 0;
@@ -320,15 +336,20 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
               maxWidth: 750
             }}>
               <div style={{ fontFamily: 'var(--font-serif)', fontSize: 34, lineHeight: 1.3, fontWeight: 'bold', letterSpacing: '-0.01em', color: 'var(--ink)', marginBottom: 16 }}>
-                “{quote.text}”
+                {isEmpty && !usingSample ? '"Every expert was once a beginner. Your story starts today."' : `"${quote.text}"`}
               </div>
               <div style={{ color: 'var(--accent)', fontSize: 18, fontStyle: 'italic', fontWeight: 'bold' }}>
-                — {quote.author}
+                {isEmpty && !usingSample ? '— NexMate' : `— ${quote.author}`}
               </div>
             </div>
             {(!isEmpty || usingSample) && (
               <p className="nm-body" style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>
                 Emotion intensity {avgIntensity ?? '—'} this week. Keep showing up. {usingSample && <SampleBadge />}
+              </p>
+            )}
+            {isEmpty && !usingSample && (
+              <p className="nm-body" style={{ fontSize: 15, color: 'var(--ink-2)' }}>
+                Your insights, patterns, and emotional journey will appear here as you write and reflect.
               </p>
             )}
             {error && (
@@ -340,7 +361,7 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
 
             {topLoop && (
               <EmptyDataOverlay 
-                active={isEmpty} 
+                active={isEmpty && !usingSample} 
                 title="Your journey begins here." 
                 message="Start a chat or write your first journal entry to unlock your personalized insights."
                 actionLabel="Begin a Chat"
@@ -377,7 +398,7 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
             {/* Content Columns */}
             <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
               <EmptyDataOverlay 
-                active={isEmpty} 
+                active={isEmpty && !usingSample} 
                 title="Your journey begins here." 
                 message="Start a chat or write your first journal entry to unlock your personalized insights."
                 actionLabel="Begin a Chat"
@@ -418,7 +439,7 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
               </EmptyDataOverlay>
 
               <EmptyDataOverlay 
-                active={isEmpty} 
+                active={isEmpty && !usingSample} 
                 title="Your journey begins here." 
                 message="Start a chat or write your first journal entry to unlock your personalized insights."
                 actionLabel="Begin a Chat"
@@ -438,7 +459,7 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
             </div>
 
           <EmptyDataOverlay 
-            active={isEmpty} 
+            active={isEmpty && !usingSample} 
             title="Your journey begins here." 
             message="Start a chat or write your first journal entry to unlock your personalized insights."
             actionLabel="Begin a Chat"

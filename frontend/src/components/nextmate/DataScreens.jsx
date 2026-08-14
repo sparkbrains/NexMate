@@ -14,7 +14,8 @@ const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
 import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ComposedChart, Bar, BarChart, Line, LineChart, Legend
+  ComposedChart, Bar, BarChart, Line, LineChart, Legend,
+  PieChart, Pie, Cell
 } from 'recharts';
 
 const MOOD_COLORS = {
@@ -129,7 +130,7 @@ const TriggerHeat = ({ heatmap, granularity }) => {
   }
 
   const cols = heatmap[0]?.intensity?.length || 1;
-  const shade = (v) => v <= 0 ? 'var(--rule-soft)' : v < 0.34 ? 'var(--loop-light)' : v < 0.67 ? 'var(--loop-medium)' : 'var(--loop-strong)';
+  const shade = (v) => v <= 0 ? 'var(--rule-soft)' : v < 0.34 ? 'var(--loop-medium)' : v < 0.67 ? 'var(--loop-strong)' : 'var(--accent)';
   const today = new Date();
 
   const labelEvery = granularity === 'day' ? 4 : granularity === 'week' ? 1 : 7;
@@ -370,7 +371,7 @@ const KnowledgeGraph = ({ graph }) => {
   }
 
   return (
-    <div style={{ height: 320 }}>
+    <div style={{ height: 380 }}>
       <div 
         ref={svgWrapRef} 
         data-interactive={isInteractive ? "true" : ""}
@@ -572,7 +573,7 @@ const KnowledgeGraph = ({ graph }) => {
         )}
         </svg>
       </div>
-      <div style={{ display: 'flex', marginTop: 10 }}>
+      <div style={{ display: 'flex', marginTop: 6 }}>
         <span className="nm-meta" style={{ fontStyle: 'italic', marginLeft: 'auto', color: 'var(--ink-3)' }}>Scroll to zoom · drag to pan · click a node</span>
       </div>
     </div>
@@ -739,24 +740,156 @@ const EmotionalSpectrum = ({ moods }) => {
   );
 };
 
-const EmotionalBandwidth = ({ distribution }) => {
-  if (!distribution || distribution.length === 0) return <div className="nm-meta" style={{ padding: 30 }}>No intensity data yet.</div>;
+const DONUT_COLORS = [
+  '#7C9CF5', '#F28C6E', '#6ECFB5', '#C97FE3',
+  '#F2C46E', '#E36F8C', '#6EB5F2', '#A8E36F',
+  '#FF6B6B', '#4ECDC4',
+];
+
+const MoodLabelDonut = ({ distribution }) => {
+  if (!distribution || distribution.length === 0)
+    return <div className="nm-meta" style={{ padding: 20 }}>No mood data yet.</div>;
+
+  const data = distribution.slice(0, 10);
+  const [active, setActive] = useState(null);
+  const activeEntry = active !== null ? data[active] : null;
 
   return (
-    <div style={{ position: 'relative', height: 240, width: '100%', marginTop: 13 }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart layout="vertical" data={distribution} margin={{ top: 20, right: 20, left: 30, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="var(--rule-soft)" />
-              <XAxis type="number" dataKey="count" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Frequency (Days)', position: 'insideBottom', offset: -20, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
-              <YAxis type="category" reversed={true} dataKey="intensity" tick={{ fill: 'var(--ink-3)', fontSize: 11 }} axisLine={false} tickLine={false} label={{ value: 'Intensity (1-10)', angle: -90, position: 'insideLeft', offset: -10, fill: 'var(--ink-2)', fontSize: 12, fontWeight: 500 }} />
-              <Tooltip 
-                contentStyle={{ background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
-                formatter={(value) => [value, 'Frequency']}
-                labelFormatter={(label) => `Intensity Level: ${label}`}
-              />
-              <Line type="monotone" dataKey="count" stroke="var(--accent)" strokeWidth={3} dot={{ r: 4, fill: 'var(--surface)', stroke: 'var(--accent)', strokeWidth: 2 }} activeDot={{ r: 6 }} />
-        </LineChart>
-      </ResponsiveContainer>
+    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', flex: 1 }}>
+      <div style={{ position: 'relative', width: '100%', flex: 1, minHeight: 160 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="pct"
+              nameKey="label"
+              cx="50%" cy="50%"
+              innerRadius={48} outerRadius={88}
+              paddingAngle={2}
+              onMouseEnter={(_, i) => setActive(i)}
+              onMouseLeave={() => setActive(null)}
+            >
+              {data.map((entry, i) => (
+                <Cell
+                  key={entry.label}
+                  fill={DONUT_COLORS[i % DONUT_COLORS.length]}
+                  opacity={active === null || active === i ? 1 : 0.3}
+                />
+              ))}
+            </Pie>
+            <Tooltip
+              contentStyle={{ background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
+              formatter={(value, name) => [`${value}%`, name]}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div style={{
+          position: 'absolute', top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
+          textAlign: 'center', pointerEvents: 'none',
+          width: 100,
+        }}>
+          {activeEntry ? (
+            <>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, color: DONUT_COLORS[active % DONUT_COLORS.length], lineHeight: 1 }}>{activeEntry.pct}%</div>
+              <div style={{ fontSize: 11, color: 'var(--ink-2)', marginTop: 3, lineHeight: 1.3 }}>{activeEntry.label}</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.4 }}>Journal</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.4 }}>mood</div>
+              <div style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.4 }}>breakdown</div>
+            </>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+        {data.map((d, i) => (
+          <div key={d.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5,
+            opacity: active === null || active === i ? 1 : 0.4,
+            transition: 'opacity 0.15s', cursor: 'default' }}
+            onMouseEnter={() => setActive(i)}
+            onMouseLeave={() => setActive(null)}
+          >
+            <span style={{ width: 9, height: 9, borderRadius: 2, flexShrink: 0, background: DONUT_COLORS[i % DONUT_COLORS.length] }} />
+            <span style={{ color: 'var(--ink)' }}>{d.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const PX_PER_POINT = 56; // px allocated per data point — enough for angled label + dot
+const VIEWPORT_POINTS = 10; // how many points are visible without scrolling
+
+const EmotionalBandwidth = ({ trend, granularity }) => {
+  const scrollRef = useRef(null);
+
+  const data = useMemo(() => {
+    if (!trend || trend.length === 0) return [];
+    return [...trend]
+      .sort((a, b) => new Date(a.day) - new Date(b.day))
+      .map(d => ({
+        label: formatTick(d.day, granularity),
+        intensity: d.avg_intensity ?? null,
+      }));
+  }, [trend, granularity]);
+
+  // Always scroll to the rightmost edge (today) whenever data changes
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+  }, [data]);
+
+  if (!data.length) return <div className="nm-meta" style={{ padding: 30 }}>No intensity data yet.</div>;
+
+  // Chart is exactly wide enough for all points — never squashes, never leaves whitespace
+  const chartWidth = Math.max(PX_PER_POINT * VIEWPORT_POINTS, data.length * PX_PER_POINT);
+
+  return (
+    // Fixed-height viewport; overflowX:auto gives the scrollbar only when chart > viewport
+    <div
+      ref={scrollRef}
+      style={{ overflowX: 'auto', overflowY: 'hidden', marginTop: 13, width: '100%' }}
+    >
+      <LineChart
+        width={chartWidth}
+        height={240}
+        data={data}
+        margin={{ top: 20, right: 24, left: 14, bottom: 48 }}
+      >
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--rule-soft)" />
+        <XAxis
+          dataKey="label"
+          interval={0}
+          tick={{ fill: 'var(--ink-3)', fontSize: 10, angle: -40, textAnchor: 'end' }}
+          axisLine={false}
+          tickLine={false}
+          label={{ value: 'Date', position: 'insideBottom', offset: -34, fill: 'var(--ink-2)', fontSize: 11, fontWeight: 500 }}
+        />
+        <YAxis
+          domain={[0, 10]}
+          ticks={[0, 2, 4, 6, 8, 10]}
+          tick={{ fill: 'var(--ink-3)', fontSize: 11 }}
+          axisLine={false}
+          tickLine={false}
+          label={{ value: 'Intensity (1–10)', angle: -90, position: 'insideLeft', offset: 10, fill: 'var(--ink-2)', fontSize: 11, fontWeight: 500 }}
+        />
+        <Tooltip
+          contentStyle={{ background: 'var(--surface)', border: '1px solid var(--rule)', borderRadius: 8, fontSize: 12 }}
+          formatter={(value) => [value ?? '—', 'Avg Intensity']}
+          labelFormatter={(label) => `Date: ${label}`}
+        />
+        <Line
+          type="monotone"
+          dataKey="intensity"
+          stroke="var(--accent)"
+          strokeWidth={2.5}
+          dot={{ r: 4, fill: 'var(--surface)', stroke: 'var(--accent)', strokeWidth: 2 }}
+          activeDot={{ r: 6 }}
+          connectNulls
+        />
+      </LineChart>
     </div>
   );
 };
@@ -823,6 +956,13 @@ const DUMMY_INSIGHTS = {
   thread_count: 0,
   message_count: 0,
   intensity_stats: { avg: 6.2, peak: 9, peak_day: 'Wed', low: 2, low_day: 'Sun', peak_summary: 'Work stress peak', low_summary: 'Relaxing weekend' },
+  mood_label_distribution: [
+    { label: 'anxious', pct: 32 },
+    { label: 'hopeful', pct: 24 },
+    { label: 'calm', pct: 18 },
+    { label: 'tired', pct: 16 },
+    { label: 'overwhelmed', pct: 10 },
+  ],
   mood_breakdown: [
     { mood: 'anxious', count: 12, pct: 40 },
     { mood: 'hopeful', count: 8, pct: 27 },
@@ -958,6 +1098,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
   
   const coreBeliefs = displayInsights?.core_beliefs_profile || [];
   const topCoreThemes = displayInsights?.top_core_themes || [];
+  const moodLabelDist = displayInsights?.mood_label_distribution || [];
   const peakSummary = displayInsights?.intensity_stats?.peak_summary;
   const lowSummary = displayInsights?.intensity_stats?.low_summary;
 
@@ -1019,67 +1160,10 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
             </div>
           )}
 
-          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, marginBottom: 14 }}>
-            {/* Emotion Trend card */}
-            <EmptyDataOverlay
-              active={isEmpty}
-              title="Your journey begins here."
-              message="Start a chat or write your first journal entry to unlock your personalized insights."
-              actionLabel="Begin a Chat"
-              onAction={goChat}
-            >
-              <div className="nm-card" style={{ overflow: 'hidden' }} data-tour="insights-trend">
-                <div style={{ marginBottom: 14 }}>
-                  <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    Emotion Trend · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
-                    {usingSample && <SampleBadge />}
-                  </div>
-                  <div className="nm-h3" style={{ marginTop: 4 }}>
-                    {usingSample ? 'A preview, once entries start coming in' : totalEntries === 0 ? 'Start reflecting to see your trend.' : 'Emotions over time'}
-                  </div>
-                  <EmotionMixBars
-                    trend={visibleTrend}
-                    granularity={granularity}
-                    emotions={moods.slice(0, 6).map(m => m.mood)}
-                  />
-                  <div style={{ display: 'flex', gap: 12, marginTop: 12, flexWrap: 'wrap' }}>
-                    {moods.slice(0, 6).map((m, mi) => (
-                      <div key={m.mood} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5 }}>
-                        <span style={{ width: 9, height: 9, background: EMOTION_PALETTE[mi % EMOTION_PALETTE.length], borderRadius: 2, flexShrink: 0 }} />
-                        <span>{m.mood}</span>
-                        <span className="nm-meta">{m.pct}%</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </EmptyDataOverlay>
-          </div>
-
-          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14, marginBottom: 14 }}>
-            {/* Cognitive Load card */}
-            <EmptyDataOverlay
-              active={isEmpty}
-              title="Your journey begins here."
-              message="Start a chat or write your first journal entry to unlock your personalized insights."
-              actionLabel="Begin a Chat"
-              onAction={goChat}
-            >
-              <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-load">
-                <div style={{ marginBottom: 14 }}>
-                  <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    Cognitive Load · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
-                    {usingSample && <SampleBadge />}
-                  </div>
-                  <div className="nm-h3" style={{ marginTop: 4 }}>Thought Volume vs. Intensity</div>
-                  <CognitiveLoad trend={visibleTrend} granularity={granularity} />
-                </div>
-              </div>
-            </EmptyDataOverlay>
-
+          <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 14, marginBottom: 14 }}>
             {/* Emotional Bandwidth card */}
             <EmptyDataOverlay
-              active={isEmpty}
+              active={isEmpty && !usingSample}
               title="Your journey begins here."
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
@@ -1089,7 +1173,25 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
                 <div style={{ marginBottom: 14 }}>
                   <div className="nm-eyebrow">Emotional Bandwidth</div>
                   <div className="nm-h3" style={{ marginTop: 4 }}>Intensity Distribution</div>
-                  <EmotionalBandwidth distribution={intensityDistribution} />
+                  <EmotionalBandwidth trend={visibleTrend} granularity={granularity} />
+                </div>
+              </div>
+            </EmptyDataOverlay>
+
+            {/* Mood Label Donut card */}
+            <EmptyDataOverlay
+              active={isEmpty && !usingSample}
+              title="Your journey begins here."
+              message="Start a chat or write your first journal entry to unlock your personalized insights."
+              actionLabel="Begin a Chat"
+              onAction={goChat}
+            >
+              <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                  <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    Mood Labels · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
+                  </div>
+                  <MoodLabelDonut distribution={moodLabelDist} />
                 </div>
               </div>
             </EmptyDataOverlay>
@@ -1098,7 +1200,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 14, marginBottom: 14 }}>
             {/* Emotional Spectrum card */}
             <EmptyDataOverlay
-              active={isEmpty}
+              active={isEmpty && !usingSample}
               title="Your journey begins here."
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
@@ -1118,7 +1220,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
 
             {/* Growth & Awareness card */}
             <EmptyDataOverlay 
-              active={isEmpty} 
+              active={isEmpty && !usingSample} 
               title="Your journey begins here." 
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
@@ -1203,7 +1305,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
             actionLabel={isEmpty ? "Begin a Chat" : "Begin Reflection"}
             onAction={isEmpty ? goChat : undefined}
           >
-            <div className="nm-card" style={{ marginBottom: 14 }}>
+            <div className="nm-card" style={{ marginBottom: 14, paddingBottom: 12 }}>
               <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div className="nm-eyebrow">Knowledge Graph</div>
@@ -1219,14 +1321,14 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
                   ))}
                 </select>
               </div>
-              <div style={{ position: 'relative', width: '100%', height: 320, border: '1px solid var(--rule-soft)', borderRadius: 8, overflow: 'hidden', marginTop: 12 }}>
+              <div style={{ position: 'relative', width: '100%', height: 380, border: '1px solid var(--rule-soft)', borderRadius: 8, overflow: 'hidden', marginTop: 12 }}>
                 <KnowledgeGraph graph={knowledgeGraph} />
               </div>
             </div>
           </EmptyDataOverlay>
 
           <EmptyDataOverlay
-            active={isEmpty}
+            active={isEmpty && !usingSample}
             title="Your journey begins here."
             message="Start a chat or write your first journal entry to unlock your personalized insights."
             actionLabel="Begin a Chat"

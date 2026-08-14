@@ -2,6 +2,7 @@ import { useContext, useEffect, useMemo, useState } from 'react';
 import { Icon, TopBar, LoopRing, EmptyDataOverlay } from './Shell';
 import { getLoop, listLoops, resolveLoop, reflectOnLoop } from '../../lib/api';
 import { AppContext } from '../../context';
+import { SAMPLE_LOOP, SAMPLE_LOOPS_LIST, SAMPLE_LOOP_COUNTS } from '../../lib/tourSampleData';
 
 const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
 
@@ -107,29 +108,9 @@ const formatShort = (iso) => {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 };
 
-const DUMMY_LOOPS = [
-  { loop_id: 'd1', name: 'Productivity Guilt', core_belief: 'I am not doing enough', strength: 0.85, state: 'active', occurrences: 12, trigger: 'Work' },
-  { loop_id: 'd2', name: 'Social Anxiety', core_belief: 'People will judge me', strength: 0.65, state: 'active', occurrences: 8, trigger: 'Relationships' },
-  { loop_id: 'd3', name: 'Perfectionism', core_belief: 'I must be perfect', strength: 0.45, state: 'resolved', occurrences: 4, trigger: 'Feedback' },
-];
-
-const DUMMY_DETAIL = {
-  ...DUMMY_LOOPS[0],
-  description: 'This loop triggers when you face work challenges, leading to feelings of inadequacy.',
-  first_detected_at: new Date(Date.now() - 30 * 86400000).toISOString(),
-  last_detected_at: new Date().toISOString(),
-  thread_count: 5,
-  emotions: ['anxious', 'tired'],
-  triggers: ['Work', 'Deadlines'],
-  entries: [
-    { occurrence_id: 'o1', occurred_at: new Date().toISOString(), summary: 'Felt guilty for taking a break', dominant_mood: 'anxious' },
-    { occurrence_id: 'o2', occurred_at: new Date(Date.now() - 86400000).toISOString(), summary: 'Worked late to compensate', dominant_mood: 'tired' }
-  ]
-};
-
 const DUMMY_COUNTS = { total: 3, active: 2, resolved: 1 };
 
-export const LoopsScreen = ({ onNav, threads = [] }) => {
+export const LoopsScreen = ({ onNav, threads = [], tourSample }) => {
   const { checkRewards } = useContext(AppContext);
   const [loops, setLoops] = useState([]);
   const [counts, setCounts] = useState({ total: 0, active: 0, resolved: 0 });
@@ -142,10 +123,11 @@ export const LoopsScreen = ({ onNav, threads = [] }) => {
   const [reflecting, setReflecting] = useState(false);
 
   const isEmpty = !loadingList && loops.length === 0 && threads.length === 0;
-  const displayLoops = isEmpty ? DUMMY_LOOPS : loops;
-  const displayCounts = isEmpty ? DUMMY_COUNTS : counts;
-  const displayDetail = isEmpty ? DUMMY_DETAIL : detail;
-  const displaySelectedId = isEmpty ? 'd1' : selectedId;
+  const usingSample = isEmpty || Boolean(tourSample);
+  const displayLoops = usingSample ? SAMPLE_LOOPS_LIST : loops;
+  const displayCounts = usingSample ? SAMPLE_LOOP_COUNTS : counts;
+  const displayDetail = usingSample ? SAMPLE_LOOP : detail;
+  const displaySelectedId = usingSample ? SAMPLE_LOOP.loop_id : selectedId;
 
   const fetchList = async (preserveId = null) => {
     setLoadingList(true);
@@ -179,8 +161,7 @@ export const LoopsScreen = ({ onNav, threads = [] }) => {
     return () => { cancelled = true; };
   }, [selectedId]);
 
-  const usingSample = isEmpty;
-  const listItems = isEmpty ? DUMMY_LOOPS : loops;
+  const listItems = usingSample ? SAMPLE_LOOPS_LIST : loops;
   const listCounts = displayCounts;
 
   const activeLoops = useMemo(() => listItems.filter((l) => l.state === 'active'), [listItems]);
@@ -236,7 +217,7 @@ export const LoopsScreen = ({ onNav, threads = [] }) => {
       <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Loops</b></>} />
 
       <EmptyDataOverlay 
-        active={isEmpty} 
+        active={isEmpty && !tourSample} 
         title="Your journey begins here." 
         message="Start a chat or write your first journal entry to unlock your personalized insights."
         actionLabel="Begin a Chat"
