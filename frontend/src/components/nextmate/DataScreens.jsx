@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon, TopBar, LoopRing, EmptyDataOverlay } from './Shell';
-import { getDashboardInsights, getKnowledgeGraph } from '../../lib/api';
+import { getDashboardInsights, getKnowledgeGraph, getInsightsSummary, generateInsightsSummary } from '../../lib/api';
 import {
   SAMPLE_TREND,
   SAMPLE_MOOD_BREAKDOWN,
@@ -865,6 +865,9 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
   const [error, setError] = useState(null);
   const [knowledgeGraph, setKnowledgeGraph] = useState(null);
   const [kgRangeKey, setKgRangeKey] = useState('30d');
+  const [aiSummary, setAiSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState(null);
 
   const days = useMemo(() => RANGES.find((r) => r.k === rangeKey)?.d ?? 30, [rangeKey]);
   const kgDays = useMemo(() => RANGES.find((r) => r.k === kgRangeKey)?.d ?? 30, [kgRangeKey]);
@@ -886,6 +889,25 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
       .catch(() => { /* graph is a bonus visualization; fail silently */ });
     return () => { cancelled = true; };
   }, [kgDays]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSummaryError(null);
+    getInsightsSummary(granularity)
+      .then((data) => { if (!cancelled) setAiSummary(data.summary_text ? data : null); })
+      .catch(() => { /* show nothing cached rather than an error on page load */ });
+    return () => { cancelled = true; };
+  }, [granularity]);
+
+  const handleGenerateSummary = () => {
+    if (summaryLoading || aiSummary?.generated_today) return;
+    setSummaryLoading(true);
+    setSummaryError(null);
+    generateInsightsSummary(granularity)
+      .then((data) => setAiSummary(data.summary_text ? data : null))
+      .catch((e) => setSummaryError(e.message || 'Failed to generate summary'))
+      .finally(() => setSummaryLoading(false));
+  };
 
   const usingSample = Boolean(tourSample) && !loading && (insights?.total_lifetime_entries ?? 0) === 0;
   const isEmpty = !loading && (insights?.total_entries === 0 || !insights) && threads.length === 0 && !usingSample;
@@ -1001,6 +1023,40 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
               </h1>
             </div>
           </header>
+
+          {!isEmpty && (
+            <div className="nm-card" style={{ marginBottom: 14, padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  className="nm-btn primary"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, padding: '7px 12px',
+                    opacity: (summaryLoading || aiSummary?.generated_today) ? 0.5 : 1,
+                    cursor: (summaryLoading || aiSummary?.generated_today) ? 'default' : 'pointer',
+                  }}
+                  onClick={handleGenerateSummary}
+                  disabled={summaryLoading || aiSummary?.generated_today}
+                  title={aiSummary?.generated_today ? 'Already generated today — check back tomorrow' : undefined}
+                >
+                  <Icon name="sparkle" size={14} />
+                  {summaryLoading ? 'Generating…' : `Summarize my ${granularity}`}
+                </button>
+                {summaryError && (
+                  <span className="nm-meta" style={{ fontSize: 11, color: 'var(--accent)' }}>{summaryError}</span>
+                )}
+              </div>
+
+              {aiSummary?.summary_text && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--rule)' }}>
+                  <div className="nm-body" style={{ fontSize: 13, lineHeight: 1.6 }}>{aiSummary.summary_text}</div>
+                  <div className="nm-meta" style={{ fontSize: 10, marginTop: 8 }}>
+                    Generated {new Date(aiSummary.generated_date).toLocaleDateString()}
+                    {aiSummary.period_key ? ` · ${aiSummary.period_key}` : ''}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {totalEntries === 0 && !loading && !usingSample && (
             <div className="nm-empty-poem">

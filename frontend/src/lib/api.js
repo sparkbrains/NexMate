@@ -140,6 +140,14 @@ export async function logout() {
   }
 }
 
+export async function logoutAllDevices() {
+  try {
+    await request('/api/auth/logout-all', { method: 'POST' });
+  } finally {
+    clearSession();
+  }
+}
+
 // --- forgot password ------------------------------------------------
 //
 // Step 1: request a code be emailed to an existing account. The backend
@@ -199,12 +207,27 @@ export async function changePassword(currentPassword, newPassword) {
   return data;
 }
 
+// Soft-deletes the account (data is kept for SOFT_DELETE_RETENTION_DAYS,
+// currently 30 days, and can be brought back with restoreAccount()).
 export async function deleteAccount(password) {
   const data = await request('/api/auth/account', {
     method: 'DELETE',
     body: { password },
   });
   clearSession();
+  return data;
+}
+
+// Reverses a pending deletion within the restore window. Unauthenticated
+// like login() — deleteAccount() already killed the prior session — so
+// this re-proves identity with email + password and returns a fresh one.
+export async function restoreAccount(email, password) {
+  const data = await request('/api/auth/account/restore', {
+    method: 'POST',
+    body: { email, password },
+    auth: false,
+  });
+  setSession(data.token, data.user);
   return data;
 }
 
@@ -217,6 +240,12 @@ export function persistUser(user) {
   } catch {
     /* ignore quota / disabled storage */
   }
+}
+
+// Records that the user accepted the data-use consent popup shown at
+// signup (and, for accounts that predate it, on their next login).
+export function acceptConsent() {
+  return request('/api/auth/consent', { method: 'POST' });
 }
 
 export function updateReminderSettings(enabled, reminderTime) {
@@ -264,6 +293,14 @@ export function getDashboardInsights(days = 30) {
 
 export function getKnowledgeGraph(days = 30) {
   return request(`/api/dashboard/knowledge-graph?days=${encodeURIComponent(days)}`);
+}
+
+export function getInsightsSummary(periodType) {
+  return request(`/api/dashboard/insights-summary?period_type=${encodeURIComponent(periodType)}`);
+}
+
+export function generateInsightsSummary(periodType) {
+  return request(`/api/dashboard/insights-summary?period_type=${encodeURIComponent(periodType)}`, { method: 'POST' });
 }
 
 export function getUserProfileSummary() {

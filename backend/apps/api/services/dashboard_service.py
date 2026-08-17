@@ -2,6 +2,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 import asyncio
+from apps.crypto import decrypt_json, decrypt_text
 from apps.db import get_connection
 from apps.api.services.daily_question_service import get_or_create_daily_question
 from apps.api.services.loop_service import _summarize_loop
@@ -62,6 +63,8 @@ def get_dashboard_kpis(user_id: int) -> dict[str, Any]:
                 (user_id,),
             )
             summaries = cur.fetchall()
+    for row in summaries:
+        row["mood"] = decrypt_text(row["mood"])
 
     mood_counter = Counter()
     signal_counter = Counter()
@@ -141,7 +144,13 @@ def _fetch_v2_entries(user_id: int, since: datetime | None = None) -> list[dict[
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(query, tuple(params))
-            return cur.fetchall()
+            rows = cur.fetchall()
+
+    for row in rows:
+        row["mood"] = decrypt_text(row["mood"])
+        row["triggers"] = decrypt_json(row["triggers"], default=[])
+        row["core_beliefs"] = decrypt_json(row["core_beliefs"], default=[])
+    return rows
 
 def _fetch_total_lifetime_entries(user_id: int) -> int:
     with get_connection() as conn:
@@ -461,7 +470,7 @@ async def get_dashboard_insights(user_id: int, days: int = 30) -> dict[str, Any]
             row = cur.fetchone()
             if row:
                 age_days = (now - row["created_at"]).days
-                snippet = (row.get("user_input") or "").strip()
+                snippet = (decrypt_text(row.get("user_input")) or "").strip()
                 if len(snippet) > 220:
                     snippet = snippet[:217] + "…"
                 echo = {

@@ -11,6 +11,10 @@ from apps.api.services.daily_question_service import (
     mark_question_answered,
     get_thread_context_for_question,
 )
+from apps.api.services.insights_summary_service import (
+    get_cached_insights_summary,
+    generate_insights_summary,
+)
 
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -33,6 +37,23 @@ async def insights(
 @router.get("/knowledge-graph")
 def knowledge_graph(days: int = 30, current_user: User = Depends(get_current_user)) -> dict:
     return build_knowledge_graph(current_user.id, days=days)
+
+
+@router.get("/insights-summary")
+async def insights_summary(
+    period_type: str = Query(..., pattern="^(week|month)$"),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    result = await get_cached_insights_summary(current_user.id, period_type)
+    return result or {"summary_text": "", "period_key": None, "generated_date": None, "generated_today": False}
+
+
+@router.post("/insights-summary")
+async def generate_insights_summary_endpoint(
+    period_type: str = Query(..., pattern="^(week|month)$"),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    return await generate_insights_summary(current_user.id, period_type)
 
 
 @router.post("/daily-question/{question_id}/answer")

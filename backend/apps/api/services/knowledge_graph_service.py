@@ -4,6 +4,7 @@ from typing import Any
 
 import networkx as nx
 from datetime import timedelta
+from apps.crypto import decrypt_json
 from apps.db import get_connection, utc_now
 
 MIN_NODE_FREQUENCY = 2
@@ -29,7 +30,12 @@ def _fetch_entries(user_id: int, days: int) -> list[dict[str, Any]]:
                 """,
                 (user_id, cutoff),
             )
-            return cur.fetchall()
+            rows = cur.fetchall()
+
+    for row in rows:
+        row["triggers"] = decrypt_json(row["triggers"], default=[])
+        row["core_beliefs"] = decrypt_json(row["core_beliefs"], default=[])
+    return rows
 
 
 def _hub_shells(sub: nx.Graph) -> list[list[str]]:

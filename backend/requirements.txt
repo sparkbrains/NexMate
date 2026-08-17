@@ -16,3 +16,4 @@ groq
 python-docx
 openpyxl
 networkx
+cryptography

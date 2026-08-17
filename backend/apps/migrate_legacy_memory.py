@@ -11,6 +11,7 @@ from psycopg.types.json import Jsonb
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from apps.crypto import content_hash, encrypt_json, encrypt_text
 from apps.db import get_connection, init_postgres
 from apps.env_loader import load_runtime_env
 
@@ -124,17 +125,19 @@ def _import_thread_messages(default_user_id: int | None, user_id_map: dict[int, 
                 if user_id is None:
                     continue
 
+                content = str(row.get("content", ""))
                 cur.execute(
                     """
-                    INSERT INTO thread_messages (user_id, thread_id, role, content, created_at)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO thread_messages (user_id, thread_id, role, content, content_hash, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     ON CONFLICT DO NOTHING
                     """,
                     (
                         user_id,
                         str(row.get("thread_id", "")).strip(),
                         str(row.get("role", "assistant")).strip() or "assistant",
-                        str(row.get("content", "")),
+                        encrypt_text(content),
+                        content_hash(content),
                         _parse_ts(row.get("created_at")),
                     ),
                 )
@@ -186,14 +189,14 @@ def _import_summaries(default_user_id: int | None, user_id_map: dict[int, int]) 
                     (
                         user_id,
                         str(row.get("thread_id", "")).strip(),
-                        "",
-                        "",
+                        encrypt_text(""),
+                        encrypt_text(""),
                         summary_text,
-                        str(row.get("mood", "unknown")).strip() or "unknown",
-                        Jsonb([]),
-                        Jsonb([]),
+                        encrypt_text(str(row.get("mood", "unknown")).strip() or "unknown"),
+                        Jsonb(encrypt_json([])),
+                        Jsonb(encrypt_json([])),
                         Jsonb(signals),
-                        str(row.get("next_focus", "")).strip(),
+                        encrypt_text(str(row.get("next_focus", "")).strip()),
                         5,
                         Jsonb(row),
                         _parse_ts(row.get("created_at")),

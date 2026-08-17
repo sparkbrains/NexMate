@@ -4,6 +4,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from apps.crypto import decrypt_json, decrypt_text
 from apps.db import get_connection
 from nextmate_agent.utils.llm import get_fast_chat_model, invoke_with_logging, parse_json_object
 from nextmate_agent.utils.config import get_settings
@@ -85,9 +86,9 @@ def _get_cross_thread_entries_for_journal(user_id: int) -> list[dict[str, Any]]:
             "thread_id": str(row.get("thread_id") or ""),
             "created_at": row["created_at"].isoformat() if row.get("created_at") else "",
             "summary": str(row.get("core_theme") or ""),
-            "mood": str(row.get("mood") or ""),
-            "core_beliefs": row.get("core_beliefs") or [],
-            "triggers": row.get("triggers") or [],
+            "mood": str(decrypt_text(row.get("mood")) or ""),
+            "core_beliefs": decrypt_json(row.get("core_beliefs"), default=[]),
+            "triggers": decrypt_json(row.get("triggers"), default=[]),
             "key_facts": [],
         })
     return entries

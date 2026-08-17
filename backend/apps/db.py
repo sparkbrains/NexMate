@@ -75,6 +75,17 @@ def init_postgres() -> None:
                 ADD COLUMN IF NOT EXISTS reminder_time TEXT NOT NULL DEFAULT '20:00'
                 """
             )
+            # dob is now encrypted app-side (apps/crypto.py), so it has to be
+            # a plain string column rather than a typed DATE -- Fernet output
+            # isn't a valid date literal. Existing DATE values cast to their
+            # ISO text form and stay readable as legacy plaintext until the
+            # next write re-encrypts them.
+            cur.execute(
+                """
+                ALTER TABLE users
+                ALTER COLUMN dob TYPE TEXT USING dob::TEXT
+                """
+            )
             # onboarding_completed_at gates whether the first-run onboarding
             # flow shows for a user. Check for the column before adding it so
             # the backfill below only ever runs the one time it's introduced
@@ -99,6 +110,28 @@ def init_postgres() -> None:
                 cur.execute(
                     "UPDATE users SET onboarding_completed_at = created_at WHERE onboarding_completed_at IS NULL"
                 )
+            # consent_accepted_at gates the data-use consent popup shown at
+            # signup (and, retroactively, to any pre-existing account that
+            # never saw it). NULL means "hasn't accepted yet".
+            cur.execute(
+                """
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS consent_accepted_at TIMESTAMPTZ
+                """
+            )
+            # deleted_at marks a soft-deleted account. NULL means active;
+            # a timestamp starts a 30-day restore window, after which the
+            # background purge job (see web_app.py) hard-deletes the row
+            # and everything in _USER_OWNED_TABLES.
+            cur.execute(
+                """
+                ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users(deleted_at) WHERE deleted_at IS NOT NULL"
+            )
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -120,6 +153,24 @@ def init_postgres() -> None:
                     created_at TIMESTAMPTZ NOT NULL
                 )
                 """
+            )
+            # content is encrypted app-side, so the old dedupe unique index
+            # (which compared raw content) can no longer match re-imports of
+            # the same message -- Fernet output differs on every call even
+            # for identical plaintext. content_hash is a stable sha256 of the
+            # plaintext, computed before encryption, and is what the dedupe
+            # index now keys on instead.
+            cur.execute(
+                "ALTER TABLE thread_messages ADD COLUMN IF NOT EXISTS content_hash TEXT"
+            )
+            cur.execute(
+                """
+                UPDATE thread_messages SET content_hash = encode(sha256(content::bytea), 'hex')
+                WHERE content_hash IS NULL
+                """
+            )
+            cur.execute(
+                "ALTER TABLE thread_messages ALTER COLUMN content_hash SET NOT NULL"
             )
             cur.execute(
                 """
@@ -256,10 +307,11 @@ def init_postgres() -> None:
                 ON thread_messages(user_id, thread_id, created_at)
                 """
             )
+            cur.execute("DROP INDEX IF EXISTS idx_thread_messages_import_dedupe")
             cur.execute(
                 """
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_messages_import_dedupe
-                ON thread_messages(user_id, thread_id, role, created_at, content)
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_thread_messages_import_dedupe_hash
+                ON thread_messages(user_id, thread_id, role, created_at, content_hash)
                 """
             )
             cur.execute(

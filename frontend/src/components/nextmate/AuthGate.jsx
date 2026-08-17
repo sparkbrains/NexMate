@@ -9,6 +9,7 @@ import {
   verifyPasswordResetOtp,
   resendPasswordResetOtp,
   resetPassword,
+  restoreAccount,
 } from '../../lib/api';
 import LogoIco from '../../assets/ic_logo.svg';
 
@@ -73,6 +74,8 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
   const [err, setErr] = useState(null);
   const [notice, setNotice] = useState(null);
   const [cooldown, setCooldown] = useState(0);
+  const [pendingDeletion, setPendingDeletion] = useState(null); // { restoreDeadline } | null
+  const [restoreBusy, setRestoreBusy] = useState(false);
   const otpRefs = useRef([]);
 
   const pwChecks = (pw) => ({
@@ -106,7 +109,7 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
-    setBusy(true); setErr(null);
+    setBusy(true); setErr(null); setPendingDeletion(null);
     try {
       if (isLogin) {
         const data = await login(email.trim(), password);
@@ -127,9 +130,29 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
         setMode('otp');
       }
     } catch (ex) {
-      setErr(prettyError(ex.message) || 'Something didn’t connect. Try again.');
+      const detail = ex.data && ex.data.detail;
+      if (ex.status === 403 && detail && detail.code === 'account_pending_deletion') {
+        setPendingDeletion({ restoreDeadline: detail.restore_deadline });
+        setErr(null);
+      } else {
+        setErr(prettyError(ex.message) || 'Something didn’t connect. Try again.');
+      }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitRestore = async () => {
+    if (restoreBusy) return;
+    setRestoreBusy(true); setErr(null);
+    try {
+      const data = await restoreAccount(email.trim(), password);
+      setPendingDeletion(null);
+      onAuth(data.user);
+    } catch (ex) {
+      setErr(prettyError(ex.message) || 'Couldn’t restore this account. Try again.');
+    } finally {
+      setRestoreBusy(false);
     }
   };
 
@@ -202,6 +225,7 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
   const toggle = () => {
     setErr(null);
     setNotice(null);
+    setPendingDeletion(null);
     const nextMode = isLogin ? 'signup' : 'login';
     setMode(nextMode);
     navigate(`/${nextMode}`);
@@ -486,6 +510,25 @@ export function AuthGate({ onAuth, onScrollToPricing, initialMode = 'login', onB
             )}
 
             {err && <div className="nm-auth-err">{err}</div>}
+
+            {isLogin && pendingDeletion && (
+              <div className="nm-auth-notice">
+                This account is scheduled for deletion
+                {pendingDeletion.restoreDeadline
+                  ? ` (data is kept until ${new Date(pendingDeletion.restoreDeadline).toLocaleDateString()})`
+                  : ''}.
+                {' '}Restore it to sign back in.
+                <button
+                  type="button"
+                  className="nm-auth-inline-link"
+                  style={{ display: 'block', marginTop: 8 }}
+                  onClick={submitRestore}
+                  disabled={restoreBusy}
+                >
+                  {restoreBusy ? 'Restoring…' : 'Restore my account'}
+                </button>
+              </div>
+            )}
 
             <button className="nm-auth-submit" type="submit" disabled={busy}>
               <span>

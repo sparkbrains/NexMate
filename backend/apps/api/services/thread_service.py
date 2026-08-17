@@ -2,6 +2,7 @@ import re
 import uuid
 from typing import Any
 
+from apps.crypto import content_hash, decrypt_text, encrypt_text
 from apps.db import get_connection, utc_now
 from nextmate_agent.agent import delete_thread_checkpoints
 from nextmate_agent.utils.llm import get_chat_model, invoke_with_logging
@@ -198,10 +199,10 @@ def append_thread_message(user_id: int, thread_id: str, role: str, content: str)
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO thread_messages (user_id, thread_id, role, content, created_at)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO thread_messages (user_id, thread_id, role, content, content_hash, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (user_id, thread_id, role, content, utc_now()),
+                (user_id, thread_id, role, encrypt_text(content), content_hash(content), utc_now()),
             )
         conn.commit()
 
@@ -232,7 +233,9 @@ def list_threads(user_id: int) -> list[dict[str, Any]]:
                 (user_id,),
             )
             message_rows = cur.fetchall()
-            
+            for row in message_rows:
+                row["content"] = decrypt_text(row["content"])
+
             # Get first core_theme for each thread
             cur.execute(
                 """
@@ -359,7 +362,7 @@ def get_thread_messages(user_id: int, thread_id: str) -> list[dict[str, str]]:
     messages = [
         {
             "role": str(row["role"]),
-            "content": str(row["content"]),
+            "content": str(decrypt_text(row["content"])),
             "created_at": row["created_at"].isoformat(),
         }
         for row in rows
@@ -376,12 +379,20 @@ def create_thread(user_id: int, title: str, context: dict[str, Any] = None) -> d
         with conn.cursor() as cur:
             # Add the question as a bot message to start the conversation
             if context and "question_text" in context:
+                question_text = context["question_text"]
                 cur.execute(
                     """
-                    INSERT INTO thread_messages (user_id, thread_id, role, content, created_at)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO thread_messages (user_id, thread_id, role, content, content_hash, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (user_id, thread_id, "assistant", context["question_text"], utc_now()),
+                    (
+                        user_id,
+                        thread_id,
+                        "assistant",
+                        encrypt_text(question_text),
+                        content_hash(question_text),
+                        utc_now(),
+                    ),
                 )
         conn.commit()
 

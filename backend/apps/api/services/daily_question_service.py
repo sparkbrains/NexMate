@@ -4,6 +4,7 @@ import logging
 import random
 from datetime import datetime, timedelta, timezone
 from typing import Any, List, Dict, Optional
+from apps.crypto import decrypt_text
 from apps.db import get_connection, utc_now
 from nextmate_agent.utils.llm import invoke_with_logging, ainvoke_with_logging, get_chat_model
 
@@ -31,15 +32,21 @@ def get_previous_day_entries(user_id: int, conn: Optional[Any] = None) -> List[D
         ORDER BY created_at DESC
     """
 
+    def _decrypt_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        for row in rows:
+            row["user_input"] = decrypt_text(row["user_input"])
+            row["assistant_reply"] = decrypt_text(row["assistant_reply"])
+        return rows
+
     if conn is not None:
         with conn.cursor() as cur:
             cur.execute(query, (user_id, user_id, start_of_today))
-            return cur.fetchall()
+            return _decrypt_rows(cur.fetchall())
 
     with get_connection() as connection:
         with connection.cursor() as cur:
             cur.execute(query, (user_id, user_id, start_of_today))
-            return cur.fetchall()
+            return _decrypt_rows(cur.fetchall())
 
 
 def extract_core_themes(entries: List[Dict[str, Any]]) -> List[str]:

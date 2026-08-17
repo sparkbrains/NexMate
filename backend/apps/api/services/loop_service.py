@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 import uuid
 
+from apps.crypto import content_hash, decrypt_json, decrypt_text, encrypt_json, encrypt_text
 from apps.db import get_connection, utc_now
 from nextmate_agent.utils.llm import get_chat_model, invoke_with_logging
 
@@ -209,7 +210,7 @@ def get_loop(user_id: int, loop_id: str) -> dict[str, Any] | None:
                                 intensities.append(v)
                         except (TypeError, ValueError):
                             pass
-                    for t in r.get("triggers", []) or []:
+                    for t in decrypt_json(r.get("triggers"), default=[]) or []:
                         cleaned = str(t).strip().lower()
                         if not cleaned or cleaned == summary["trigger"]:
                             continue
@@ -308,9 +309,9 @@ def _get_cross_thread_memory_entries(user_id: int, current_thread_id: str) -> li
             return [
                 {
                     "core_theme": row["core_theme"],
-                    "mood": row["mood"],
-                    "core_beliefs": row["core_beliefs"] or [],
-                    "triggers": row["triggers"] or [],
+                    "mood": decrypt_text(row["mood"]),
+                    "core_beliefs": decrypt_json(row["core_beliefs"], default=[]),
+                    "triggers": decrypt_json(row["triggers"], default=[]),
                     "intensity": row["intensity"],
                     "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
                     "thread_id": row["thread_id"],
@@ -1214,10 +1215,10 @@ Generate a natural, conversational opening that acknowledges this pattern and as
             )
             cur.execute(
                 """
-                INSERT INTO thread_messages (user_id, thread_id, role, content, created_at)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO thread_messages (user_id, thread_id, role, content, content_hash, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (user_id, thread_id, "assistant", opening_message, now),
+                (user_id, thread_id, "assistant", encrypt_text(opening_message), content_hash(opening_message), now),
             )
         conn.commit()
 

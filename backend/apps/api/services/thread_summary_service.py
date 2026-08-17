@@ -1,12 +1,20 @@
-"""Thread-level compaction, via three mechanisms:
+"""Thread-level compaction, via three mechanisms. Only (2) and (3) ever write
+the thread_summaries row that the chat UI's right-pane summary is read from --
+that summary is only ever supposed to change once a thread goes idle, never
+mid-conversation.
 
-1. TOKEN-THRESHOLD (compact_thread) -- mid-conversation, runs every turn
-   for the CURRENTLY ACTIVE thread. compact_thread internally no-ops
-   (returns the prior summary and chat_history unchanged) whenever
-   chat_history isn't longer than keep_last_turns*2 messages, so this
-   doesn't summarize prematurely -- it just no longer requires a token
-   count to ALSO be crossed on top of that. Trims the live chat_history
-   via the __replace__ state marker.
+1. TOKEN-THRESHOLD (compact_thread) -- mid-conversation, for the CURRENTLY
+   ACTIVE thread. manage_thread_summary_node (nodes.py) gates the call to
+   compact_thread on should_compact (chat_history over
+   thread_summary_trigger_tokens); compact_thread itself also no-ops if
+   chat_history isn't longer than keep_last_turns*2 messages. This exists
+   purely to keep generate_reply/choose_response_mode prompt sizes bounded on
+   a long-running thread -- it folds older turns into a condensed summary
+   that's carried in LangGraph state (NextMateState.thread_summary) and fed
+   into memory_context, and trims chat_history via the __replace__ state
+   marker. It deliberately does NOT persist to thread_summaries: doing so
+   used to make the right-pane summary visibly churn on every turn once a
+   long, fast-moving conversation crossed the token trigger.
 
 2. IDLE-SWEEP (summarize_stale_threads) -- runs opportunistically on every
    turn, for OTHER threads belonging to the same user (never the current
@@ -14,27 +22,29 @@
    yet folded into its summary, this summarizes just the delta and merges it
    into that thread's persisted summary.
 
-3. ON-DEMAND (generate_summary_now) -- called from GET /api/threads/{id}/summary
-   when no summary exists yet or new messages have arrived since the last
-   one, so a thread's summary doesn't depend on timing luck (whether it
-   happened to cross the size threshold, or whether another thread's
-   activity happened to trigger an idle-sweep for it). Reads directly from
-   thread_messages and reuses the same prompt/model as the other two.
+3. ON-DEMAND (generate_summary_now) -- called when the CURRENT thread's
+   websocket connection closes (explicit disconnect, or the idle-timeout
+   watchdog in ws.py closing a socket that's gone quiet) and from the
+   finalize-summary endpoint, so a thread's summary is refreshed exactly when
+   the user actually stops interacting with it rather than continuously
+   while they're still typing. Reads directly from thread_messages and
+   reuses the same prompt/model as the other two.
 
-   All three read directly from thread_messages (DB) or the live
-   chat_history passed in -- summarize_stale_threads and generate_summary_now
-   never touch LangGraph state for the thread being summarized.
+   (2) and (3) read directly from thread_messages (DB) -- they never touch
+   LangGraph state for the thread being summarized. (1) only ever touches
+   LangGraph state, never thread_messages or thread_summaries.
 """
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
+from apps.crypto import decrypt_text
 from apps.db import get_connection
 from nextmate_agent.utils.config import get_settings
 from nextmate_agent.utils.llm import get_fast_chat_model, invoke_with_logging
 from nextmate_agent.utils.tokens import estimate_chat_history_tokens, estimate_tokens
 from nextmate_agent.utils.prompts import (
-    THREAD_SUMMARY_SYSTEM_PROMPT,
+    build_thread_summary_system_prompt,
     build_thread_summary_prompt,
 )
 
@@ -116,10 +126,10 @@ def save_thread_summary(
 
 
 def should_compact(chat_history: list[dict], trigger_tokens: int | None = None) -> bool:
-    """No longer called from manage_thread_summary_node (that gate was
-    removed so compaction is attempted every turn -- see nodes.py), but
-    kept here in case other callers still want a cheap token-based check
-    without invoking compact_thread itself."""
+    """Token-based check, called from manage_thread_summary_node before it
+    invokes compact_thread. Kept as a standalone function since other
+    callers may want the cheap check without invoking compact_thread
+    itself."""
     if not chat_history:
         return False
     if trigger_tokens is None:
@@ -128,19 +138,23 @@ def should_compact(chat_history: list[dict], trigger_tokens: int | None = None) 
 
 
 def compact_thread(
-    user_id: int,
     thread_id: str,
     chat_history: list[dict],
     prior_summary: str,
     keep_last_turns: int | None = None,
 ) -> tuple[str, list[dict]]:
     """MID-CONVERSATION compaction. Summarizes everything in chat_history
-    except the last `keep_last_turns` turns, merges into prior_summary,
-    persists, and returns (new_summary_text, trimmed_chat_history). Only
-    called for the CURRENTLY ACTIVE thread, from manage_thread_summary_node.
+    except the last `keep_last_turns` turns, merges into prior_summary, and
+    returns (new_summary_text, trimmed_chat_history). Only called for the
+    CURRENTLY ACTIVE thread, from manage_thread_summary_node, gated on
+    should_compact.
 
-    No longer gated by a token threshold -- called every turn. The only
-    remaining gate is structural: if chat_history isn't longer than
+    Does NOT persist to thread_summaries -- the returned summary text is
+    carried in LangGraph state only, to keep the active thread's own prompt
+    bounded. The persisted/display summary only ever updates via the idle
+    or on-demand mechanisms (see module docstring).
+
+    Structural no-op gate: if chat_history isn't longer than
     keep_last_turns*2 messages, there's nothing to fold yet, so this
     returns the input unchanged.
     """
@@ -160,7 +174,7 @@ def compact_thread(
     raw, usage = invoke_with_logging(
         llm,
         [
-            {"role": "system", "content": THREAD_SUMMARY_SYSTEM_PROMPT},
+            {"role": "system", "content": build_thread_summary_system_prompt(settings.thread_summary_max_words)},
             {"role": "user", "content": prompt},
         ],
         "compact_thread_summary",
@@ -171,9 +185,6 @@ def compact_thread(
     if not new_summary or _NO_CONTENT_PATTERN.search(new_summary):
         return prior_summary, chat_history
 
-    save_thread_summary(
-        user_id, thread_id, new_summary, new_turns_folded=len(to_summarize) // 2
-    )
     return new_summary, remaining
 
 
@@ -277,7 +288,7 @@ def _fetch_unsummarized_messages(
             cur.execute(query, params)
             rows = cur.fetchall()
 
-    return [{"role": str(r["role"]), "content": str(r["content"])} for r in rows]
+    return [{"role": str(r["role"]), "content": str(decrypt_text(r["content"]))} for r in rows]
 
 
 def generate_summary_now(user_id: int, thread_id: str) -> dict[str, Any] | None:
@@ -315,12 +326,13 @@ def generate_summary_now(user_id: int, thread_id: str) -> dict[str, Any] | None:
     existing = get_thread_summary(user_id, thread_id)
     prior_summary_text = existing["summary_text"] if existing else ""
 
+    settings = get_settings()
     llm = get_fast_chat_model()
     prompt = build_thread_summary_prompt(prior_summary=prior_summary_text, messages=new_messages)
     raw, usage = invoke_with_logging(
         llm,
         [
-            {"role": "system", "content": THREAD_SUMMARY_SYSTEM_PROMPT},
+            {"role": "system", "content": build_thread_summary_system_prompt(settings.thread_summary_max_words)},
             {"role": "user", "content": prompt},
         ],
         "on_demand_thread_summary",
@@ -392,7 +404,7 @@ def summarize_stale_threads(
         raw, usage = invoke_with_logging(
             llm,
             [
-                {"role": "system", "content": THREAD_SUMMARY_SYSTEM_PROMPT},
+                {"role": "system", "content": build_thread_summary_system_prompt(settings.thread_summary_max_words)},
                 {"role": "user", "content": prompt},
             ],
             "idle_thread_summary",

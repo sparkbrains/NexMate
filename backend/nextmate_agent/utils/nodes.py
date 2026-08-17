@@ -5,6 +5,7 @@ from typing import Any
 from uuid import uuid4
 from langchain_core.runnables import RunnableConfig
 from psycopg.types.json import Jsonb
+from apps.crypto import content_hash, decrypt_json, decrypt_text, encrypt_json, encrypt_text
 from apps.db import get_connection
 from nextmate_agent.utils.config import get_settings
 from nextmate_agent.utils.llm import get_chat_model, parse_json_object, invoke_with_logging, ainvoke_with_logging, profile, get_fast_chat_model
@@ -114,7 +115,7 @@ def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateSt
             
             db_history = []
             for r in msg_rows:
-                db_history.append({"role": str(r["role"]), "content": str(r["content"])})
+                db_history.append({"role": str(r["role"]), "content": str(decrypt_text(r["content"]))})
             
             if db_history:
                 if db_history[-1]["role"] == "user":
@@ -144,9 +145,9 @@ def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateSt
         thread_entries.append({
             "core_theme": str(row["core_theme"]),
             "summary": str(row["core_theme"]),
-            "mood": str(row["mood"]),
-            "core_beliefs": row["core_beliefs"],
-            "triggers": row["triggers"],
+            "mood": str(decrypt_text(row["mood"])),
+            "core_beliefs": decrypt_json(row["core_beliefs"], default=[]),
+            "triggers": decrypt_json(row["triggers"], default=[]),
             "key_facts": row["key_facts"],
             "intensity": int(row["intensity"]) if row["intensity"] is not None else 5,
             "created_at": row["created_at"].isoformat() if hasattr(row["created_at"], "isoformat") else str(row["created_at"]),
@@ -225,16 +226,30 @@ def load_memory_node(state: NextMateState, config: RunnableConfig) -> NextMateSt
 
 def manage_thread_summary_node(state: NextMateState, config: RunnableConfig) -> NextMateState:
     """Runs after load_memory_node. If this thread's chat_history has grown past
-    the token threshold, folds older turns into a persisted summary via the fast
+    the token threshold, folds older turns into a condensed summary via the fast
     model and trims chat_history, keeping generate_reply/choose_response_mode
-    prompt sizes bounded regardless of how long a single thread runs."""
+    prompt sizes bounded regardless of how long a single thread runs.
+
+    This is purely an in-graph context aid -- it does NOT touch the persisted
+    thread_summaries row that the chat UI's right-pane summary is read from
+    (that only updates once the thread goes idle; see thread_summary_service's
+    module docstring). prior_summary_text therefore prefers the running value
+    already carried in state (thread_summary, persisted turn-to-turn by the
+    checkpointer) over the DB row, so repeated mid-conversation compactions
+    keep building on each other instead of re-reading a DB value this node
+    never writes to. The DB row is only used to seed the very first
+    compaction of a session, e.g. picking up a thread the idle-sweep already
+    summarized while the user was away.
+    """
     thread_id = state.get("thread_id", "default")  # composite, for logging only
     thread_uuid = state.get("thread_uuid") or thread_id  # raw UUID, for DB queries
     user_id = _user_id_from_config(config)
     chat_history = state.get("chat_history", [])
 
-    existing = get_thread_summary(user_id, thread_uuid)
-    prior_summary_text = existing["summary_text"] if existing else ""
+    prior_summary_text = state.get("thread_summary")
+    if prior_summary_text is None:
+        existing = get_thread_summary(user_id, thread_uuid)
+        prior_summary_text = existing["summary_text"] if existing else ""
 
     if not should_compact(chat_history):
         log_node(
@@ -246,7 +261,6 @@ def manage_thread_summary_node(state: NextMateState, config: RunnableConfig) -> 
         return {"thread_summary": prior_summary_text}
 
     new_summary, trimmed_history = compact_thread(
-        user_id=user_id,
         thread_id=thread_uuid,
         chat_history=chat_history,
         prior_summary=prior_summary_text,
@@ -1306,9 +1320,10 @@ def persist_summary_node(state: NextMateState, config: RunnableConfig) -> NextMa
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
-                    user_id, thread_id, user_input, assistant_reply, core_theme, mood,
-                    Jsonb(core_beliefs), Jsonb(triggers), Jsonb(key_facts), next_focus,
-                    intensity, Jsonb(summary), created_at
+                    user_id, thread_id, encrypt_text(user_input), encrypt_text(assistant_reply),
+                    core_theme, encrypt_text(mood),
+                    Jsonb(encrypt_json(core_beliefs)), Jsonb(encrypt_json(triggers)), Jsonb(key_facts),
+                    encrypt_text(next_focus), intensity, Jsonb(summary), created_at
                 )
             )
 

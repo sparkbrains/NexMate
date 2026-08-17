@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './components/nextmate/Shell';
+import { ConsentPrompt } from './components/nextmate/ConsentPrompt';
 import { NamePrompt, DobPrompt } from './components/nextmate/ProfilePrompts';
 import { MotivationPrompt } from './components/nextmate/MotivationPrompt';
 import { ThemePrompt } from './components/nextmate/ThemePrompt';
@@ -24,7 +25,7 @@ import LogoIco from './assets/ic_logo.svg';
 import { ProfilePage } from './components/nextmate/ProfilePage';
 import { SupportWidget } from './components/nextmate/SupportWidget';
 import { JournalReminderToast } from './components/nextmate/JournalReminderToast';
-import { clearSession, deleteThread as deleteThreadApi, getMe, getToken, getUser, listThreads, logout as apiLogout, persistUser } from './lib/api';
+import { acceptConsent, clearSession, deleteThread as deleteThreadApi, getMe, getToken, getUser, listThreads, logout as apiLogout, logoutAllDevices as apiLogoutAllDevices, persistUser } from './lib/api';
 import { AppContext } from './context';
 import { useJournalReminder } from './hooks/useJournalReminder';
 import { useRewardsWatcher } from './hooks/useRewardsWatcher';
@@ -66,6 +67,27 @@ export default function App() {
   const onUserUpdate = (updated) => { setUser(updated); persistUser(updated); };
   const profilePrompts = useProfilePrompts(user, onUserUpdate);
   const tour = useOnboardingTour(user, onUserUpdate);
+
+  // Gates every other first-run overlay: nobody sees name/dob/theme prompts
+  // or the tour until they've accepted the data-use consent popup. This
+  // also catches accounts that predate the popup (consent_accepted_at is
+  // NULL for them too), so it isn't only a signup-time thing.
+  const needsConsent = Boolean(user) && !user.consent_accepted_at;
+  const [consentSaving, setConsentSaving] = useState(false);
+  const [consentError, setConsentError] = useState(null);
+  const onAcceptConsent = async () => {
+    if (consentSaving) return;
+    setConsentSaving(true);
+    setConsentError(null);
+    try {
+      const data = await acceptConsent();
+      onUserUpdate(data.user);
+    } catch (ex) {
+      setConsentError(ex.message || "Couldn't save that — try again.");
+    } finally {
+      setConsentSaving(false);
+    }
+  };
   const activeRoute = location.pathname.split('/')[1] || 'today';
 
   // Lets the tour's state machine notice the user actually clicked the
@@ -138,6 +160,13 @@ export default function App() {
     navigate('/today', { replace: true });
   };
 
+  const onLogoutAllDevices = async () => {
+    try { await apiLogoutAllDevices(); } catch { clearSession(); }
+    setUser(null);
+    setThreads([]);
+    navigate('/today', { replace: true });
+  };
+
   const onAuthExpired = () => {
     setUser(null);
     setThreads([]);
@@ -177,19 +206,19 @@ export default function App() {
   // True while any first-run overlay (name/dob prompts, the tour intake,
   // or the bubble tour itself) is in play — used to hold off other
   // attention-grabbing popups until the user's through it.
-  const onboardingInProgress = !profilePrompts.done || tour.active || tour.justFinished || tour.reminderPromptOpen;
+  const onboardingInProgress = needsConsent || !profilePrompts.done || tour.active || tour.justFinished || tour.reminderPromptOpen;
 
-  // The app behind the card stays blurred through the required identity
-  // steps — name, dob, intent — so there's nothing legible to peek at
-  // before those are answered. Theme is optional polish, not required, so
-  // it doesn't hold the blur.
-  const blurBackground = ['name', 'dob', 'motivation'].includes(profilePrompts.stage);
+  // The app behind the card stays blurred through consent and the required
+  // identity steps — name, dob, intent — so there's nothing legible to peek
+  // at before those are answered. Theme is optional polish, not required,
+  // so it doesn't hold the blur.
+  const blurBackground = needsConsent || ['name', 'dob', 'motivation'].includes(profilePrompts.stage);
 
-  // The tour itself must not start until the name/dob/motivation/theme
-  // prompts are behind us — otherwise a stale `intakeDone` carried over in
-  // localStorage (e.g. from before those prompts existed) can let the tour
-  // race ahead and render on top of them.
-  const tourReady = profilePrompts.done && tour.tourActive;
+  // The tour itself must not start until consent and the name/dob/motivation/
+  // theme prompts are behind us — otherwise a stale `intakeDone` carried
+  // over in localStorage (e.g. from before those prompts existed) can let
+  // the tour race ahead and render on top of them.
+  const tourReady = !needsConsent && profilePrompts.done && tour.tourActive;
 
   const tourSampleFor = (key) => tourReady && tour.phase === 'walk' && tour.section === key;
 
@@ -267,6 +296,7 @@ export default function App() {
               element={(
                 <ProfilePage
                   onLogout={onLogout}
+                  onLogoutAllDevices={onLogoutAllDevices}
                   onUserUpdate={onUserUpdate}
                 />
               )}
@@ -288,8 +318,14 @@ export default function App() {
             onJournal={() => { dismissReminder(); navigateTo('journal'); }}
           />
         )}
+        <ConsentPrompt
+          open={needsConsent}
+          onAccept={onAcceptConsent}
+          saving={consentSaving}
+          error={consentError}
+        />
         <NamePrompt
-          open={profilePrompts.stage === 'name'}
+          open={!needsConsent && profilePrompts.stage === 'name'}
           steps={profilePrompts.steps}
           onSubmit={profilePrompts.submitName}
           onSkip={profilePrompts.skipName}
@@ -297,7 +333,7 @@ export default function App() {
           error={profilePrompts.error}
         />
         <DobPrompt
-          open={profilePrompts.stage === 'dob'}
+          open={!needsConsent && profilePrompts.stage === 'dob'}
           steps={profilePrompts.steps}
           onSubmit={profilePrompts.submitDob}
           onSkip={profilePrompts.skipDob}
@@ -305,7 +341,7 @@ export default function App() {
           error={profilePrompts.error}
         />
         <MotivationPrompt
-          open={profilePrompts.stage === 'motivation'}
+          open={!needsConsent && profilePrompts.stage === 'motivation'}
           steps={profilePrompts.steps}
           onSubmit={profilePrompts.submitMotivation}
           onSkip={profilePrompts.skipMotivation}
@@ -313,7 +349,7 @@ export default function App() {
           error={profilePrompts.error}
         />
         <ThemePrompt
-          open={profilePrompts.stage === 'theme'}
+          open={!needsConsent && profilePrompts.stage === 'theme'}
           steps={profilePrompts.steps}
           currentTheme={theme}
           onPreview={setTheme}
@@ -323,7 +359,7 @@ export default function App() {
           error={profilePrompts.error}
         />
         <OnboardingIntake
-          open={profilePrompts.done && tour.showIntake}
+          open={!needsConsent && profilePrompts.done && tour.showIntake}
           userName={user.name}
           onAnswer={tour.answerIntake}
           onSkip={tour.skipAll}

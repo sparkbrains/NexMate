@@ -8,11 +8,17 @@ from datetime import datetime, timedelta, timezone
 from email.mime.text import MIMEText
 from typing import Iterable
 
+from apps.crypto import decrypt_text, encrypt_text
 from apps.db import get_connection, init_postgres
+from nextmate_agent.agent import delete_thread_checkpoints
 
 
 SESSION_TTL_DAYS = int(os.getenv("SESSION_TTL_DAYS", "30"))
 DEFAULT_LOCAL_DUMMY_USERS = "demo@nextmate.local:demo123,qa@nextmate.local:demo123"
+
+# How long a soft-deleted account can be restored before the background
+# purge job (see web_app.py) hard-deletes it for good.
+SOFT_DELETE_RETENTION_DAYS = int(os.getenv("SOFT_DELETE_RETENTION_DAYS", "30"))
 
 OTP_LENGTH = 6
 OTP_TTL_MINUTES = int(os.getenv("SIGNUP_OTP_TTL_MINUTES", "10"))
@@ -40,6 +46,19 @@ class User:
     reminder_time: str = "20:00"
     has_journaled_before: bool | None = None
     onboarding_completed_at: str | None = None
+    consent_accepted_at: str | None = None
+
+
+class AccountPendingDeletionError(ValueError):
+    """Raised by authenticate_user() when the credentials are correct but
+    the account is soft-deleted and still within its restore window. The
+    router catches this separately from a plain invalid-credentials 401 so
+    it can point the caller at POST /api/auth/account/restore."""
+
+    def __init__(self, deleted_at: datetime):
+        self.deleted_at = deleted_at
+        self.restore_deadline = deleted_at + timedelta(days=SOFT_DELETE_RETENTION_DAYS)
+        super().__init__("Account is scheduled for deletion")
 
 
 REMINDER_TIME_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
@@ -147,6 +166,19 @@ def _verify_password(password: str, encoded: str) -> bool:
     return secrets.compare_digest(actual, expected)
 
 
+def _raise_email_taken(deleted_at: datetime | None) -> None:
+    """Raised when a signup targets an email that already has a users row.
+    Distinguishes "someone else owns this" from "you deleted this account
+    recently and can still restore it" so the caller isn't told to just
+    sign up again when restoring is the right move."""
+    if deleted_at is not None:
+        raise ValueError(
+            "This email has an account pending deletion. Log in with your old "
+            "password to restore it, or wait for the deletion to complete."
+        )
+    raise ValueError("Email already registered")
+
+
 def create_user(email: str, password: str) -> User:
     cleaned_email = email.strip().lower()
     if not cleaned_email or "@" not in cleaned_email:
@@ -158,9 +190,10 @@ def create_user(email: str, password: str) -> User:
     password_hash = _encode_password(password)
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM users WHERE email = %s", (cleaned_email,))
-            if cur.fetchone():
-                raise ValueError("Email already registered")
+            cur.execute("SELECT deleted_at FROM users WHERE email = %s", (cleaned_email,))
+            existing = cur.fetchone()
+            if existing:
+                _raise_email_taken(existing["deleted_at"])
 
             cur.execute(
                 """
@@ -188,7 +221,8 @@ def authenticate_user(email: str, password: str) -> User | None:
             cur.execute(
                 """
                 SELECT id, email, password_hash, created_at, name, age, dob, motivation, theme, subscription_tier,
-                       reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at
+                       reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at,
+                       consent_accepted_at, deleted_at
                 FROM users WHERE email = %s
                 """,
                 (cleaned_email,),
@@ -199,20 +233,23 @@ def authenticate_user(email: str, password: str) -> User | None:
         return None
     if not _verify_password(password, str(row["password_hash"])):
         return None
+    if row["deleted_at"] is not None:
+        raise AccountPendingDeletionError(row["deleted_at"])
     return User(
         id=int(row["id"]),
         email=str(row["email"]),
         created_at=row["created_at"].isoformat(),
         name=str(row.get("name") or ""),
         age=row.get("age"),
-        dob=row["dob"].isoformat() if row.get("dob") else None,
-        motivation=row.get("motivation") or None,
+        dob=decrypt_text(row.get("dob")),
+        motivation=decrypt_text(row.get("motivation")),
         theme=row.get("theme") or None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),
         has_journaled_before=row.get("has_journaled_before"),
         onboarding_completed_at=row["onboarding_completed_at"].isoformat() if row.get("onboarding_completed_at") else None,
+        consent_accepted_at=row["consent_accepted_at"].isoformat() if row.get("consent_accepted_at") else None,
     )
 
 
@@ -246,10 +283,10 @@ def get_user_by_token(token: str) -> User | None:
                 """
                 SELECT u.id, u.email, u.created_at, u.name, u.age, u.dob, u.motivation, u.theme, u.subscription_tier,
                        u.reminder_enabled, u.reminder_time, u.has_journaled_before,
-                       u.onboarding_completed_at, s.expires_at
+                       u.onboarding_completed_at, u.consent_accepted_at, s.expires_at
                 FROM sessions s
                 JOIN users u ON s.user_id = u.id
-                WHERE s.token = %s
+                WHERE s.token = %s AND u.deleted_at IS NULL
                 """,
                 (token,),
             )
@@ -282,14 +319,15 @@ def get_user_by_token(token: str) -> User | None:
         created_at=row["created_at"].isoformat(),
         name=str(row.get("name") or ""),
         age=row.get("age"),
-        dob=row["dob"].isoformat() if row.get("dob") else None,
-        motivation=row.get("motivation") or None,
+        dob=decrypt_text(row.get("dob")),
+        motivation=decrypt_text(row.get("motivation")),
         theme=row.get("theme") or None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),
         has_journaled_before=row.get("has_journaled_before"),
         onboarding_completed_at=row["onboarding_completed_at"].isoformat() if row.get("onboarding_completed_at") else None,
+        consent_accepted_at=row["consent_accepted_at"].isoformat() if row.get("consent_accepted_at") else None,
     )
 
 
@@ -299,6 +337,13 @@ def delete_session(token: str) -> None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM sessions WHERE token = %s", (token,))
+        conn.commit()
+
+
+def delete_all_sessions(user_id: int) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
         conn.commit()
 
 
@@ -403,13 +448,14 @@ def _send_otp_email(to_email: str, code: str) -> None:
     if not host:
         raise EnvironmentError("SMTP_HOST environment variable is required for sending OTP emails.")
     port = int(os.getenv("SMTP_PORT", "587"))
+    use_tls = os.getenv("SMTP_USE_TLS", "True").strip().lower() in ("1", "true", "yes")
     smtp_user = os.getenv("SMTP_USER")
     if not smtp_user:
         raise EnvironmentError("SMTP_USER environment variable is required for sending OTP emails.")
     smtp_password = os.getenv("SMTP_PASSWORD")
     if not smtp_password:
         raise EnvironmentError("SMTP_PASSWORD environment variable is required for sending OTP emails.")
-    sender = os.getenv("SMTP_FROM", smtp_user)
+    sender = os.getenv("DEFAULT_EMAIL_FROM") or os.getenv("SMTP_FROM", smtp_user)
 
     msg = MIMEText(
         f"Your Nextmate verification code is {code}.\n\n"
@@ -420,7 +466,8 @@ def _send_otp_email(to_email: str, code: str) -> None:
     msg["To"] = to_email
 
     with smtplib.SMTP(host, port) as server:
-        server.starttls()
+        if use_tls:
+            server.starttls()
         server.login(smtp_user, smtp_password)
         server.sendmail(sender, [to_email], msg.as_string())
 
@@ -436,9 +483,10 @@ def request_signup_otp(email: str, password: str) -> None:
 
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT id FROM users WHERE email = %s", (cleaned_email,))
-            if cur.fetchone():
-                raise ValueError("Email already registered")
+            cur.execute("SELECT deleted_at FROM users WHERE email = %s", (cleaned_email,))
+            existing = cur.fetchone()
+            if existing:
+                _raise_email_taken(existing["deleted_at"])
 
             cur.execute(
                 "SELECT last_sent_at FROM pending_signups WHERE email = %s",
@@ -538,11 +586,12 @@ def verify_signup_otp(email: str, otp: str) -> User:
                 raise ValueError("That code didn't match")
 
             # Code is correct — create the real account and clean up.
-            cur.execute("SELECT id FROM users WHERE email = %s", (cleaned_email,))
-            if cur.fetchone():
+            cur.execute("SELECT deleted_at FROM users WHERE email = %s", (cleaned_email,))
+            existing = cur.fetchone()
+            if existing:
                 cur.execute("DELETE FROM pending_signups WHERE email = %s", (cleaned_email,))
                 conn.commit()
-                raise ValueError("Email already registered")
+                _raise_email_taken(existing["deleted_at"])
 
             cur.execute(
                 """
@@ -581,13 +630,14 @@ def _send_password_reset_email(to_email: str, code: str) -> None:
     if not host:
         raise EnvironmentError("SMTP_HOST environment variable is required for sending OTP emails.")
     port = int(os.getenv("SMTP_PORT", "587"))
+    use_tls = os.getenv("SMTP_USE_TLS", "True").strip().lower() in ("1", "true", "yes")
     smtp_user = os.getenv("SMTP_USER")
     if not smtp_user:
         raise EnvironmentError("SMTP_USER environment variable is required for sending OTP emails.")
     smtp_password = os.getenv("SMTP_PASSWORD")
     if not smtp_password:
         raise EnvironmentError("SMTP_PASSWORD environment variable is required for sending OTP emails.")
-    sender = os.getenv("SMTP_FROM", smtp_user)
+    sender = os.getenv("DEFAULT_EMAIL_FROM") or os.getenv("SMTP_FROM", smtp_user)
 
     msg = MIMEText(
         f"Your Nextmate password reset code is {code}.\n\n"
@@ -599,7 +649,8 @@ def _send_password_reset_email(to_email: str, code: str) -> None:
     msg["To"] = to_email
 
     with smtplib.SMTP(host, port) as server:
-        server.starttls()
+        if use_tls:
+            server.starttls()
         server.login(smtp_user, smtp_password)
         server.sendmail(sender, [to_email], msg.as_string())
 
@@ -804,7 +855,8 @@ def update_reminder_settings(user_id: int, enabled: bool, reminder_time: str) ->
                 UPDATE users SET reminder_enabled = %s, reminder_time = %s
                 WHERE id = %s
                 RETURNING id, email, created_at, name, age, dob, motivation, theme, subscription_tier,
-                          reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at
+                          reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at,
+                          consent_accepted_at
                 """,
                 (bool(enabled), cleaned_time, user_id),
             )
@@ -819,14 +871,15 @@ def update_reminder_settings(user_id: int, enabled: bool, reminder_time: str) ->
         created_at=row["created_at"].isoformat(),
         name=str(row.get("name") or ""),
         age=row.get("age"),
-        dob=row["dob"].isoformat() if row.get("dob") else None,
-        motivation=row.get("motivation") or None,
+        dob=decrypt_text(row.get("dob")),
+        motivation=decrypt_text(row.get("motivation")),
         theme=row.get("theme") or None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),
         has_journaled_before=row.get("has_journaled_before"),
         onboarding_completed_at=row["onboarding_completed_at"].isoformat() if row.get("onboarding_completed_at") else None,
+        consent_accepted_at=row["consent_accepted_at"].isoformat() if row.get("consent_accepted_at") else None,
     )
 
 
@@ -869,9 +922,18 @@ def update_profile(
                        subscription_tier = COALESCE(%s, subscription_tier)
                 WHERE id = %s
                 RETURNING id, email, created_at, name, age, dob, motivation, theme, subscription_tier,
-                          reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at
+                          reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at,
+                          consent_accepted_at
                 """,
-                (cleaned_name, cleaned_email, cleaned_dob, cleaned_motivation, cleaned_theme, cleaned_tier, user_id),
+                (
+                    cleaned_name,
+                    cleaned_email,
+                    encrypt_text(cleaned_dob),
+                    encrypt_text(cleaned_motivation),
+                    cleaned_theme,
+                    cleaned_tier,
+                    user_id,
+                ),
             )
             row = cur.fetchone()
             if not row:
@@ -884,14 +946,15 @@ def update_profile(
         created_at=row["created_at"].isoformat(),
         name=str(row.get("name") or ""),
         age=row.get("age"),
-        dob=row["dob"].isoformat() if row.get("dob") else None,
-        motivation=row.get("motivation") or None,
+        dob=decrypt_text(row.get("dob")),
+        motivation=decrypt_text(row.get("motivation")),
         theme=row.get("theme") or None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),
         has_journaled_before=row.get("has_journaled_before"),
         onboarding_completed_at=row["onboarding_completed_at"].isoformat() if row.get("onboarding_completed_at") else None,
+        consent_accepted_at=row["consent_accepted_at"].isoformat() if row.get("consent_accepted_at") else None,
     )
 
 
@@ -905,7 +968,8 @@ def complete_onboarding(user_id: int, has_journaled_before: bool | None) -> User
                 UPDATE users SET has_journaled_before = %s, onboarding_completed_at = %s
                 WHERE id = %s
                 RETURNING id, email, created_at, name, age, dob, motivation, theme, subscription_tier,
-                          reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at
+                          reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at,
+                          consent_accepted_at
                 """,
                 (has_journaled_before, now, user_id),
             )
@@ -920,18 +984,127 @@ def complete_onboarding(user_id: int, has_journaled_before: bool | None) -> User
         created_at=row["created_at"].isoformat(),
         name=str(row.get("name") or ""),
         age=row.get("age"),
-        dob=row["dob"].isoformat() if row.get("dob") else None,
-        motivation=row.get("motivation") or None,
+        dob=decrypt_text(row.get("dob")),
+        motivation=decrypt_text(row.get("motivation")),
         theme=row.get("theme") or None,
         subscription_tier=str(row.get("subscription_tier") or "paid"),
         reminder_enabled=bool(row.get("reminder_enabled") or False),
         reminder_time=str(row.get("reminder_time") or "20:00"),
         has_journaled_before=row.get("has_journaled_before"),
         onboarding_completed_at=row["onboarding_completed_at"].isoformat() if row.get("onboarding_completed_at") else None,
+        consent_accepted_at=row["consent_accepted_at"].isoformat() if row.get("consent_accepted_at") else None,
     )
 
 
-def delete_user(user_id: int, password: str) -> None:
+def record_consent(user_id: int) -> User:
+    """Marks the data-use consent popup as accepted. Idempotent — calling it
+    again just re-stamps the timestamp rather than erroring."""
+    now = _utc_now()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE users SET consent_accepted_at = %s
+                WHERE id = %s
+                RETURNING id, email, created_at, name, age, dob, motivation, theme, subscription_tier,
+                          reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at,
+                          consent_accepted_at
+                """,
+                (now, user_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("Account not found")
+        conn.commit()
+
+    return User(
+        id=int(row["id"]),
+        email=str(row["email"]),
+        created_at=row["created_at"].isoformat(),
+        name=str(row.get("name") or ""),
+        age=row.get("age"),
+        dob=decrypt_text(row.get("dob")),
+        motivation=decrypt_text(row.get("motivation")),
+        theme=row.get("theme") or None,
+        subscription_tier=str(row.get("subscription_tier") or "paid"),
+        reminder_enabled=bool(row.get("reminder_enabled") or False),
+        reminder_time=str(row.get("reminder_time") or "20:00"),
+        has_journaled_before=row.get("has_journaled_before"),
+        onboarding_completed_at=row["onboarding_completed_at"].isoformat() if row.get("onboarding_completed_at") else None,
+        consent_accepted_at=row["consent_accepted_at"].isoformat() if row.get("consent_accepted_at") else None,
+    )
+
+
+# Tables that hold data scoped to a single user, keyed by user_id, that
+# don't already have an enforced ON DELETE CASCADE foreign key. Schema
+# management here is split between Alembic migrations and the idempotent
+# bootstrap in db.py, so FK cascades exist for only a few tables (sessions,
+# ws_tickets, password_resets) — everything else needs an explicit delete.
+_USER_OWNED_TABLES = (
+    "thread_messages",
+    "journal_entries_v2",
+    "journal_books",
+    "journal_logs",
+    "loops",
+    "threads",
+    "daily_questions",
+    "prompt_pack_answers",
+    "user_profile_summary",
+    "support_chat_logs",
+    "user_badges",
+    "thread_summaries",
+    "memory_digest",
+    "insights_summaries",
+)
+
+
+def _hard_delete_user_row(cur, user_id: int, email: str) -> list[str]:
+    """Deletes every row owned by this user (all of _USER_OWNED_TABLES, plus
+    the email-keyed auth tables and the users row itself) and returns the
+    thread_ids the caller still needs to purge from LangGraph's own
+    checkpoint tables. Runs inside the caller's transaction — does not
+    commit."""
+    # LangGraph's checkpointer persists full agent/conversation state keyed
+    # by thread_id in its own tables (checkpoints, checkpoint_blobs,
+    # checkpoint_writes), separate from our app tables. Collect every
+    # thread_id this user touched before the rows naming them are gone.
+    cur.execute(
+        """
+        SELECT thread_id FROM threads WHERE user_id = %s
+        UNION
+        SELECT thread_id FROM thread_messages WHERE user_id = %s
+        UNION
+        SELECT thread_id FROM journal_entries_v2 WHERE user_id = %s
+        """,
+        (user_id, user_id, user_id),
+    )
+    thread_ids = [r["thread_id"] for r in cur.fetchall()]
+
+    for table in _USER_OWNED_TABLES:
+        cur.execute(f"DELETE FROM {table} WHERE user_id = %s", (user_id,))
+
+    # Keyed by email rather than user_id.
+    cur.execute("DELETE FROM pending_signups WHERE email = %s", (email,))
+    cur.execute("DELETE FROM password_resets WHERE email = %s", (email,))
+
+    # sessions / ws_tickets already cascade via FK, but deleting them
+    # explicitly here means a logged-in session for this account is torn
+    # down immediately rather than depending on cascade timing.
+    cur.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
+    cur.execute("DELETE FROM ws_tickets WHERE user_id = %s", (user_id,))
+
+    cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+    return thread_ids
+
+
+def soft_delete_user(user_id: int, password: str) -> datetime:
+    """Marks the account for deletion instead of removing it. All owned
+    data is left in place — a purge job hard-deletes it (via
+    _hard_delete_user_row) once SOFT_DELETE_RETENTION_DAYS has passed.
+    Sessions/ws_tickets are killed immediately so no device stays logged
+    in during the restore window."""
+    now = _utc_now()
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,))
@@ -942,8 +1115,98 @@ def delete_user(user_id: int, password: str) -> None:
             if not _verify_password(password, str(row["password_hash"])):
                 raise ValueError("Password is incorrect")
 
-            cur.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            cur.execute("UPDATE users SET deleted_at = %s WHERE id = %s", (now, user_id))
+            cur.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM ws_tickets WHERE user_id = %s", (user_id,))
         conn.commit()
+
+    return now
+
+
+def restore_user(email: str, password: str) -> User:
+    """Reverses soft_delete_user() within the retention window. Requires
+    the account's password again since the prior session was killed at
+    delete time."""
+    cleaned_email = email.strip().lower()
+    now = _utc_now()
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, password_hash, deleted_at FROM users WHERE email = %s",
+                (cleaned_email,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise ValueError("Account not found")
+
+            if not _verify_password(password, str(row["password_hash"])):
+                raise ValueError("Password is incorrect")
+
+            deleted_at = row["deleted_at"]
+            if deleted_at is None:
+                raise ValueError("Account is not scheduled for deletion")
+
+            deadline = deleted_at + timedelta(days=SOFT_DELETE_RETENTION_DAYS)
+            if now > deadline:
+                raise ValueError("The restore window for this account has expired")
+
+            cur.execute(
+                """
+                UPDATE users SET deleted_at = NULL
+                WHERE id = %s
+                RETURNING id, email, created_at, name, age, dob, motivation, theme, subscription_tier,
+                          reminder_enabled, reminder_time, has_journaled_before, onboarding_completed_at,
+                          consent_accepted_at
+                """,
+                (row["id"],),
+            )
+            user_row = cur.fetchone()
+        conn.commit()
+
+    return User(
+        id=int(user_row["id"]),
+        email=str(user_row["email"]),
+        created_at=user_row["created_at"].isoformat(),
+        name=str(user_row.get("name") or ""),
+        age=user_row.get("age"),
+        dob=decrypt_text(user_row.get("dob")),
+        motivation=decrypt_text(user_row.get("motivation")),
+        theme=user_row.get("theme") or None,
+        subscription_tier=str(user_row.get("subscription_tier") or "paid"),
+        reminder_enabled=bool(user_row.get("reminder_enabled") or False),
+        reminder_time=str(user_row.get("reminder_time") or "20:00"),
+        has_journaled_before=user_row.get("has_journaled_before"),
+        onboarding_completed_at=user_row["onboarding_completed_at"].isoformat() if user_row.get("onboarding_completed_at") else None,
+        consent_accepted_at=user_row["consent_accepted_at"].isoformat() if user_row.get("consent_accepted_at") else None,
+    )
+
+
+def purge_expired_soft_deleted_users() -> int:
+    """Hard-deletes every account whose restore window has passed. Meant to
+    be called periodically (see web_app.py), not on the request path."""
+    now = _utc_now()
+    cutoff = now - timedelta(days=SOFT_DELETE_RETENTION_DAYS)
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, email FROM users WHERE deleted_at IS NOT NULL AND deleted_at < %s",
+                (cutoff,),
+            )
+            expired = cur.fetchall()
+
+            purged: list[tuple[int, list[str]]] = []
+            for row in expired:
+                thread_ids = _hard_delete_user_row(cur, int(row["id"]), str(row["email"]))
+                purged.append((int(row["id"]), thread_ids))
+        conn.commit()
+
+    for user_id, thread_ids in purged:
+        for thread_id in thread_ids:
+            delete_thread_checkpoints(user_id, thread_id)
+
+    return len(purged)
 
 
 def _parse_dummy_users(raw: str) -> list[tuple[str, str]]:

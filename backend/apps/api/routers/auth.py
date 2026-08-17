@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -5,7 +6,9 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from apps.api.deps.auth import get_bearer_token, get_current_user
 from apps.api.services.user_profile_service import get_user_profile_text
 from apps.api.services.auth_service import (
+    SOFT_DELETE_RETENTION_DAYS,
     WS_TICKET_TTL_SECONDS,
+    AccountPendingDeletionError,
     User,
     authenticate_user,
     change_password,
@@ -13,13 +16,16 @@ from apps.api.services.auth_service import (
     create_session,
     create_user,
     create_ws_ticket,
+    delete_all_sessions,
     delete_session,
-    delete_user,
+    record_consent,
     request_password_reset_otp,
     request_signup_otp,
     resend_password_reset_otp,
     resend_signup_otp,
     reset_password,
+    restore_user,
+    soft_delete_user,
     update_profile,
     update_reminder_settings,
     verify_password_reset_otp,
@@ -45,6 +51,7 @@ def _user_payload(user: User) -> dict[str, Any]:
         "reminder_time": user.reminder_time,
         "has_journaled_before": user.has_journaled_before,
         "onboarding_completed_at": user.onboarding_completed_at,
+        "consent_accepted_at": user.consent_accepted_at,
     }
 
 
@@ -99,9 +106,35 @@ def signup_verify_otp(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 def login(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
     email = str(payload.get("email", "")).strip()
     password = str(payload.get("password", ""))
-    user = authenticate_user(email=email, password=password)
+    try:
+        user = authenticate_user(email=email, password=password)
+    except AccountPendingDeletionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "account_pending_deletion",
+                "message": "This account is scheduled for deletion. Restore it to sign in.",
+                "deleted_at": exc.deleted_at.isoformat(),
+                "restore_deadline": exc.restore_deadline.isoformat(),
+            },
+        ) from exc
     if not user:
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = create_session(user.id)
+    return {"token": token, "user": _user_payload(user)}
+
+
+@router.post("/account/restore")
+def restore_account(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
+    """Reverses a pending account deletion, within the retention window.
+    Unauthenticated like /login — soft-deleting kills the prior session,
+    so the caller re-proves identity with email + password."""
+    email = str(payload.get("email", "")).strip()
+    password = str(payload.get("password", ""))
+    try:
+        user = restore_user(email=email, password=password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     token = create_session(user.id)
     return {"token": token, "user": _user_payload(user)}
 
@@ -109,6 +142,12 @@ def login(payload: dict[str, Any] = Body(...)) -> dict[str, Any]:
 @router.post("/logout")
 def logout(current_user: User = Depends(get_current_user), token: str = Depends(get_bearer_token)) -> dict[str, Any]:
     delete_session(token)
+    return {"ok": True, "user_id": current_user.id}
+
+
+@router.post("/logout-all")
+def logout_all(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    delete_all_sessions(current_user.id)
     return {"ok": True, "user_id": current_user.id}
 
 
@@ -173,6 +212,12 @@ def update_profile_route(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"user": _user_payload(user)}
+
+
+@router.post("/consent")
+def accept_consent(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    user = record_consent(current_user.id)
     return {"user": _user_payload(user)}
 
 
@@ -269,7 +314,13 @@ def delete_account(
 ) -> dict[str, Any]:
     password = str(payload.get("password", ""))
     try:
-        delete_user(user_id=current_user.id, password=password)
+        deleted_at = soft_delete_user(user_id=current_user.id, password=password)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"message": "Account deleted"}
+    purge_at = deleted_at + timedelta(days=SOFT_DELETE_RETENTION_DAYS)
+    return {
+        "message": "Account scheduled for deletion. You can restore it within "
+        f"{SOFT_DELETE_RETENTION_DAYS} days by logging in again.",
+        "deleted_at": deleted_at.isoformat(),
+        "purge_at": purge_at.isoformat(),
+    }

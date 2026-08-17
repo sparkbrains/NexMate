@@ -21,6 +21,7 @@ class Settings:
     database_url: str | None
     thread_summary_trigger_tokens: int
     thread_summary_keep_last_turns: int
+    thread_summary_max_words: int
     cross_thread_context_token_budget: int
     digest_token_target: int
     detect_loops_cross_thread_prompt_limit: int
@@ -53,6 +54,11 @@ def get_settings() -> Settings:
         # How many of the most recent turns to keep verbatim in a thread after
         # compaction. Everything older gets folded into that thread's own summary.
         thread_summary_keep_last_turns=int(os.getenv("THREAD_SUMMARY_KEEP_LAST_TURNS", "4")),
+        # Word cap enforced in the thread-summary system prompt itself (see
+        # build_thread_summary_system_prompt) -- tightened from the old fixed
+        # "under 200 words" so the persisted summary (shown in the chat UI)
+        # stays genuinely short even after many rounds of re-condensing.
+        thread_summary_max_words=int(os.getenv("THREAD_SUMMARY_MAX_WORDS", "120")),
         # CROSS-thread budget: how many tokens of "other threads" context (active
         # thread summaries + digest combined) get injected into a NEW thread's
         # memory_context. Kept deliberately small relative to the 6,000 TPM free

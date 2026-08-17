@@ -512,14 +512,28 @@ export const ChatScreen = ({
     refreshLoops();
   }, []);
 
-  const refreshThreadSummary = () => {
+  // Fetching is cheap (it just reads the persisted row), but the backend
+  // only ever updates it once this thread's websocket goes idle/disconnects
+  // (see thread_summary_service.py) -- it never changes mid-conversation, so
+  // a floor here just guards against redundant re-fetches from future call
+  // sites rather than anything that fires today.
+  const lastSummaryFetchAtRef = useRef(0);
+  const SUMMARY_REFRESH_MIN_INTERVAL_MS = 60_000;
+
+  const refreshThreadSummary = ({ force = false } = {}) => {
     if (!threadId) { setThreadSummary(null); return; }
+    const now = Date.now();
+    if (!force && now - lastSummaryFetchAtRef.current < SUMMARY_REFRESH_MIN_INTERVAL_MS) return;
+    lastSummaryFetchAtRef.current = now;
     getThreadSummary(threadId)
       .then((data) => setThreadSummary(data && data.summary_text ? data : null))
       .catch(() => setThreadSummary(null));
   };
 
-  useEffect(() => { refreshThreadSummary(); }, [threadId]);
+  useEffect(() => {
+    lastSummaryFetchAtRef.current = 0;
+    refreshThreadSummary({ force: true });
+  }, [threadId]);
 
   useEffect(() => {
     setDraft('');

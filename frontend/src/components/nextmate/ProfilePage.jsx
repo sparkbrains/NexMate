@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getUser, getMe, changePassword, deleteAccount, getUserProfileSummary, updateReminderSettings, updateProfile } from '../../lib/api';
-import { Icon, TopBar } from './Shell';
+import { ConfirmDialog, Icon, TopBar } from './Shell';
 
 function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -34,7 +34,7 @@ function ageFromDob(dob) {
 // JournalScreen / LoopsScreen do, using the same nm-main / nm-content
 // wrapper classes so it takes the right-hand pane instead of the
 // sidebar's column.
-export function ProfilePage({ onLogout, onUserUpdate }) {
+export function ProfilePage({ onLogout, onLogoutAllDevices, onUserUpdate }) {
   const [user, setUser] = useState(() => getUser());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
@@ -70,6 +70,20 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
   const [delPw, setDelPw] = useState('');
   const [delErr, setDelErr] = useState(null);
   const [delLoading, setDelLoading] = useState(false);
+
+  // logout-all-devices confirm state
+  const [logoutAllModal, setLogoutAllModal] = useState(false);
+  const [logoutAllLoading, setLogoutAllLoading] = useState(false);
+
+  const handleLogoutAllDevices = async () => {
+    setLogoutAllLoading(true);
+    try {
+      await onLogoutAllDevices?.();
+    } finally {
+      setLogoutAllLoading(false);
+      setLogoutAllModal(false);
+    }
+  };
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
@@ -413,7 +427,7 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
             <div onClick={() => setDelModal(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
               <div className="nm-card" onClick={e => e.stopPropagation()} style={{ maxWidth: 380, width: '100%', padding: 24 }}>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Delete Account</div>
-                <div className="nm-body" style={{ marginBottom: 20 }}>This permanently deletes your account and all data. Enter your password to confirm.</div>
+                <div className="nm-body" style={{ marginBottom: 20 }}>Your account and data are kept for 30 days, during which you can restore it by logging back in. After that, it's permanently deleted. Enter your password to confirm.</div>
                 <form onSubmit={handleDeleteAccount}>
                   <div style={{ marginBottom: 14 }}>
                     <div className="nm-tag" style={{ marginBottom: 6 }}>Password</div>
@@ -435,7 +449,7 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginBottom: 24 }}>
             <button
               type="button"
               onClick={onLogout}
@@ -443,7 +457,24 @@ export function ProfilePage({ onLogout, onUserUpdate }) {
             >
               <Icon name="logout" size={13} /> Sign out
             </button>
+            <button
+              type="button"
+              onClick={() => setLogoutAllModal(true)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', fontFamily: 'var(--font-display)', fontSize: 12, textDecoration: 'underline' }}
+            >
+              Log out of all devices
+            </button>
           </div>
+
+          <ConfirmDialog
+            open={logoutAllModal}
+            title="Log out of all devices?"
+            body="This ends every active session for your account, including this one. You'll need to sign in again everywhere."
+            confirmLabel={logoutAllLoading ? 'Logging out…' : 'Log out everywhere'}
+            cancelLabel="Cancel"
+            onConfirm={handleLogoutAllDevices}
+            onCancel={() => setLogoutAllModal(false)}
+          />
 
           <div style={{ textAlign: 'center', width: '100%', display: 'block', color: 'var(--ink-3)', fontFamily: 'var(--font-mono)', fontSize: 11, lineHeight: 1.7 }}>
             Nextmate keeps 90 days of memory.<br />
