@@ -670,7 +670,7 @@ body {
   flex-shrink: 0;
   background: var(--surface);
   position: relative;
-  z-index: 1;
+  z-index: 502;
 }
 .nm-crumb {
   font-family: var(--font-mono);
@@ -1398,6 +1398,7 @@ body {
 .nm-spotlight-blocker {
   position: fixed;
   inset: 0;
+  top: 52px;
   z-index: 499;
   background: transparent;
 }
@@ -1412,6 +1413,7 @@ body {
   0%, 100% { box-shadow: 0 0 0 9999px rgba(16, 18, 32, 0.68), 0 0 0 3px var(--accent); }
   50% { box-shadow: 0 0 0 9999px rgba(16, 18, 32, 0.68), 0 0 0 8px var(--accent-soft); }
 }
+.nm-topbar { isolation: auto; }
 .nm-spotlight-callout {
   position: fixed;
   z-index: 501;
@@ -3531,8 +3533,8 @@ body {
   position: relative;
 }
 .nm-empty-overlay-content {
-  filter: blur(5px);
-  opacity: 0.5;
+  filter: blur(3px);
+  opacity: 0.75;
   pointer-events: none;
   user-select: none;
 }
