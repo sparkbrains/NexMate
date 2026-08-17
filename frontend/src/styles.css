@@ -1473,22 +1473,6 @@ body {
   50% { box-shadow: 0 0 0 9px var(--accent-soft); }
 }
 
-/* Small "this isn't your real data" tag on sample charts during the tour */
-.nm-sample-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--accent-2);
-  background: var(--accent-wash);
-  border: 1px dashed var(--accent);
-  border-radius: 99px;
-  padding: 2px 8px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .nm-spotlight-hole,
   .nm-nudge-arrow,

@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Icon, TopBar, LoopRing, EmptyDataOverlay } from './Shell';
 import { getDashboardInsights, answerDailyQuestion, reflectOnLoop } from '../../lib/api';
-import { SAMPLE_TODAY_TRIGGERS } from '../../lib/tourSampleData';
-
-const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
 
 const ThreadRow = ({ title, preview, date, msgs, loop, intensity, positive, last, onClick }) => (
   <div onClick={onClick} style={{ padding: '12px 0', borderBottom: last ? 'none' : '1px solid var(--rule-soft)', cursor: 'pointer' }} >
@@ -297,9 +294,14 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
   ];
   const [quote] = useState(() => QUOTES[Math.floor(Math.random() * QUOTES.length)]);
 
-  const usingSample = Boolean(tourSample) && !loading && (insights?.total_lifetime_entries ?? 0) === 0;
-  const isEmpty = !loading && (insights?.total_lifetime_entries === 0 || !insights) && threads.length === 0 && !usingSample;
-  const displayInsights = (usingSample || isEmpty) ? DUMMY_TODAY_INSIGHTS : insights;
+  // No live data yet — true both pre-tour and mid-tour for a brand-new
+  // account, so the same placeholder content shows in either case.
+  const isEmpty = !loading && (insights?.total_lifetime_entries === 0 || !insights) && threads.length === 0;
+  const displayInsights = isEmpty ? DUMMY_TODAY_INSIGHTS : insights;
+  // The blur/CTA overlay only kicks in once the tour has moved past this
+  // section — while it's spotlighting here the placeholder stays fully
+  // visible so it can actually be explained.
+  const blurActive = isEmpty && !tourSample;
 
   const totalEntries = displayInsights?.total_entries ?? 0;
   
@@ -312,8 +314,7 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
 
   const topLoop = displayInsights?.loops?.items?.find((l) => l.state === 'active');
   const topTriggers = (displayInsights?.top_triggers || []).slice(0, 4);
-  const dummyQuestions = [{ id: 'sample_q', question_text: "What's one small win you had today, even if it felt insignificant?", status: 'pending' }];
-  const dailyQuestions = usingSample ? dummyQuestions : (Array.isArray(displayInsights?.daily_question) ? displayInsights.daily_question : []);
+  const dailyQuestions = Array.isArray(displayInsights?.daily_question) ? displayInsights.daily_question : [];
   const pendingQuestions = dailyQuestions.filter((q) => q.status === 'pending');
   const currentQuestion = pendingQuestions[currentQuestionIdx] || pendingQuestions[0] || null;
 
@@ -336,18 +337,18 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
               maxWidth: 750
             }}>
               <div style={{ fontFamily: 'var(--font-serif)', fontSize: 34, lineHeight: 1.3, fontWeight: 'bold', letterSpacing: '-0.01em', color: 'var(--ink)', marginBottom: 16 }}>
-                {isEmpty && !usingSample ? '"Every expert was once a beginner. Your story starts today."' : `"${quote.text}"`}
+                {blurActive ? '"Every expert was once a beginner. Your story starts today."' : `"${quote.text}"`}
               </div>
               <div style={{ color: 'var(--accent)', fontSize: 18, fontStyle: 'italic', fontWeight: 'bold' }}>
-                {isEmpty && !usingSample ? '— NexMate' : `— ${quote.author}`}
+                {blurActive ? '— NexMate' : `— ${quote.author}`}
               </div>
             </div>
-            {(!isEmpty || usingSample) && (
+            {!blurActive && (
               <p className="nm-body" style={{ fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>
-                Emotion intensity {avgIntensity ?? '—'} this week. Keep showing up. {usingSample && <SampleBadge />}
+                Emotion intensity {avgIntensity ?? '—'} this week. Keep showing up.
               </p>
             )}
-            {isEmpty && !usingSample && (
+            {blurActive && (
               <p className="nm-body" style={{ fontSize: 15, color: 'var(--ink-2)' }}>
                 Your insights, patterns, and emotional journey will appear here as you write and reflect.
               </p>
@@ -360,9 +361,9 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
           </div>
 
             {topLoop && (
-              <EmptyDataOverlay 
-                active={isEmpty && !usingSample} 
-                title="Your journey begins here." 
+              <EmptyDataOverlay
+                active={blurActive}
+                title="Your journey begins here."
                 message="Start a chat or write your first journal entry to unlock your personalized insights."
                 actionLabel="Begin a Chat"
                 onAction={() => { onNav && onNav('chat'); }}
@@ -397,14 +398,14 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
 
             {/* Content Columns */}
             <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16, alignItems: 'stretch' }}>
-              <EmptyDataOverlay 
-                active={isEmpty && !usingSample} 
-                title="Your journey begins here." 
+              <EmptyDataOverlay
+                active={blurActive}
+                title="Your journey begins here."
                 message="Start a chat or write your first journal entry to unlock your personalized insights."
                 actionLabel="Begin a Chat"
                 onAction={() => { onNav && onNav('chat'); }}
               >
-                <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }} data-tour="today-week">
                   <div>
                     <div className="nm-eyebrow" style={{ marginBottom: 16 }}>This week</div>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 2 }}>
@@ -438,14 +439,14 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
                 </div>
               </EmptyDataOverlay>
 
-              <EmptyDataOverlay 
-                active={isEmpty && !usingSample} 
-                title="Your journey begins here." 
+              <EmptyDataOverlay
+                active={blurActive}
+                title="Your journey begins here."
                 message="Start a chat or write your first journal entry to unlock your personalized insights."
                 actionLabel="Begin a Chat"
                 onAction={() => { onNav && onNav('chat'); }}
               >
-                <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', height: '100%' }} data-tour="today-triggers">
                   <div className="nm-meta" style={{ marginBottom: 10 }}>Triggers, last 7 days</div>
                   {topTriggers.length === 0 ? (
                     <div className="nm-meta-data">No triggers detected yet.</div>
@@ -458,9 +459,9 @@ export const TodayScreen = ({ onNav, threads = [], user, tourSample }) => {
               </EmptyDataOverlay>
             </div>
 
-          <EmptyDataOverlay 
-            active={isEmpty && !usingSample} 
-            title="Your journey begins here." 
+          <EmptyDataOverlay
+            active={blurActive}
+            title="Your journey begins here."
             message="Start a chat or write your first journal entry to unlock your personalized insights."
             actionLabel="Begin a Chat"
             onAction={() => { onNav && onNav('chat'); }}

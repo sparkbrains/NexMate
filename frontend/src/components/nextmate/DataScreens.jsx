@@ -3,15 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Icon, TopBar, LoopRing, EmptyDataOverlay } from './Shell';
 import { getDashboardInsights, getKnowledgeGraph, getInsightsSummary, generateInsightsSummary } from '../../lib/api';
 import {
-  SAMPLE_TREND,
-  SAMPLE_MOOD_BREAKDOWN,
-  SAMPLE_INTENSITY_DISTRIBUTION,
-  SAMPLE_TRIGGER_HEATMAP,
-  SAMPLE_KNOWLEDGE_GRAPH,
-} from '../../lib/tourSampleData';
-
-const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
-import {
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ComposedChart, Bar, BarChart, Line, LineChart, Legend,
@@ -1049,9 +1040,13 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
       .finally(() => setSummaryLoading(false));
   };
 
-  const usingSample = Boolean(tourSample) && !loading && (insights?.total_lifetime_entries ?? 0) === 0;
-  const isEmpty = !loading && (insights?.total_entries === 0 || !insights) && threads.length === 0 && !usingSample;
-  const displayInsights = (usingSample || isEmpty) ? DUMMY_INSIGHTS : insights;
+  // No live data yet — true both pre-tour and mid-tour for a brand-new
+  // account, so the same placeholder charts show in either case.
+  const isEmpty = !loading && (insights?.total_entries === 0 || !insights) && threads.length === 0;
+  const displayInsights = isEmpty ? DUMMY_INSIGHTS : insights;
+  // The blur/CTA overlay only kicks in once the tour has moved past Insights —
+  // while it's spotlighting here the placeholder charts stay fully visible.
+  const blurActive = isEmpty && !tourSample;
 
   // Slice emotion_trend to the granularity window
   const visibleTrend = useMemo(() => {
@@ -1073,25 +1068,19 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
       sliced = sliced.filter(d => d.day === todayIso);
     }
 
-    if (usingSample) {
-      const window = GRANULARITY_WINDOW[granularity] ?? 30;
-      return sliceLast(SAMPLE_TREND, window);
-    }
-
     const firstDataIdx = sliced.findIndex(d => d.count > 0);
     if (firstDataIdx !== -1) {
       sliced = sliced.slice(firstDataIdx);
     }
-    
+
     return sliced;
-  }, [displayInsights, granularity, usingSample]);
+  }, [displayInsights, granularity]);
 
   // Slice each trigger row's intensity cells to the granularity window
   const visibleHeatmap = useMemo(() => {
     const window = GRANULARITY_WINDOW[granularity] ?? 30;
-    if (usingSample) return sliceHeatmap(SAMPLE_TRIGGER_HEATMAP, window);
     return sliceHeatmap(displayInsights?.trigger_heatmap, window);
-  }, [displayInsights, granularity, usingSample]);
+  }, [displayInsights, granularity]);
 
   const totalEntries = displayInsights?.total_entries ?? 0;
   const threadCount = displayInsights?.thread_count ?? 0;
@@ -1103,9 +1092,8 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
   const low = displayInsights?.intensity_stats?.low;
   const lowDay = displayInsights?.intensity_stats?.low_day;
 
-  const moods = usingSample ? SAMPLE_MOOD_BREAKDOWN : (displayInsights?.mood_breakdown || []);
-  const intensityDistribution = usingSample ? SAMPLE_INTENSITY_DISTRIBUTION : displayInsights?.intensity_distribution;
-  const displayGraph = usingSample ? SAMPLE_KNOWLEDGE_GRAPH : knowledgeGraph;
+  const moods = displayInsights?.mood_breakdown || [];
+  const intensityDistribution = displayInsights?.intensity_distribution;
 
   const growthCur = displayInsights?.growth?.current;
   const growthPrev = displayInsights?.growth?.previous;
@@ -1158,14 +1146,12 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
           <header className="nm-hero">
             <div>
               <h1 className="nm-h1">
-                {usingSample
-                  ? <>A preview of <em>what's ahead</em>.</>
-                  : totalEntries === 0 ? <>A blank window —<br /><em>begin reflecting</em>.</> : <>The shape of your <em>{days <= 7 ? 'week' : days <= 30 ? 'month' : 'season'}</em>.</>}
+                {totalEntries === 0 ? <>A blank window —<br /><em>begin reflecting</em>.</> : <>The shape of your <em>{days <= 7 ? 'week' : days <= 30 ? 'month' : 'season'}</em>.</>}
               </h1>
             </div>
           </header>
 
-          {!isEmpty && (
+          {!blurActive && (
             <div className="nm-card" style={{ marginBottom: 14, padding: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                 <button
@@ -1199,14 +1185,9 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
             </div>
           )}
 
-          {totalEntries === 0 && !loading && !usingSample && (
+          {totalEntries === 0 && !loading && (
             <div className="nm-empty-poem">
               <p>Patterns surface only after the page is filled. Open a thread, write a sentence, and these charts begin to mean something.</p>
-            </div>
-          )}
-          {usingSample && (
-            <div className="nm-empty-poem">
-              <p>The charts below are sample data so you can see what they'll look like — yours will fill in as you write.</p>
             </div>
           )}
 
@@ -1219,13 +1200,13 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 14, marginBottom: 14 }}>
             {/* Emotional Bandwidth card */}
             <EmptyDataOverlay
-              active={isEmpty && !usingSample}
+              active={blurActive}
               title="Your journey begins here."
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
               onAction={goChat}
             >
-              <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div className="nm-card" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }} data-tour="insights-trend">
                 <div style={{ marginBottom: 14 }}>
                   <div className="nm-eyebrow">Emotional Bandwidth</div>
                   <div className="nm-h3" style={{ marginTop: 4 }}>Intensity Distribution</div>
@@ -1236,7 +1217,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
 
             {/* Mood Label Donut card */}
             <EmptyDataOverlay
-              active={isEmpty && !usingSample}
+              active={blurActive}
               title="Your journey begins here."
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
@@ -1256,7 +1237,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
           <div className="nm-stagger" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 14, marginBottom: 14 }}>
             {/* Emotional Spectrum card */}
             <EmptyDataOverlay
-              active={isEmpty && !usingSample}
+              active={blurActive}
               title="Your journey begins here."
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
@@ -1266,7 +1247,6 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
                 <div style={{ marginBottom: 14 }}>
                   <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     The Emotional Spectrum
-                    {usingSample && <SampleBadge />}
                   </div>
                   <div className="nm-h3" style={{ marginTop: 4 }}>Your emotional shape</div>
                   <EmotionalSpectrum moods={moods} />
@@ -1275,14 +1255,14 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
             </EmptyDataOverlay>
 
             {/* Growth & Awareness card */}
-            <EmptyDataOverlay 
-              active={isEmpty && !usingSample} 
-              title="Your journey begins here." 
+            <EmptyDataOverlay
+              active={blurActive}
+              title="Your journey begins here."
               message="Start a chat or write your first journal entry to unlock your personalized insights."
               actionLabel="Begin a Chat"
               onAction={goChat}
             >
-              <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface)', border: '1px solid var(--rule-soft)', width: '100%' }}>
+              <div className="nm-card" style={{ display: 'flex', flexDirection: 'column', background: 'var(--surface)', border: '1px solid var(--rule-soft)', width: '100%' }} data-tour="insights-load">
                 <div className="nm-eyebrow" style={{ marginBottom: 16 }}>Growth & Awareness</div>
                 <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
                   
@@ -1354,14 +1334,14 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
             </EmptyDataOverlay>
           </div>
 
-          <EmptyDataOverlay 
-            active={isEmpty || (!knowledgeGraph || knowledgeGraph?.nodes?.length === 0)} 
+          <EmptyDataOverlay
+            active={(isEmpty || (!knowledgeGraph || knowledgeGraph?.nodes?.length === 0)) && !tourSample}
             title={isEmpty ? "Your journey begins here." : "We need more data to draw this chart."}
             message={isEmpty ? "Start a chat or write your first journal entry to unlock your personalized insights." : "Your Knowledge Graph is building. Keep journaling! 🧠"}
             actionLabel={isEmpty ? "Begin a Chat" : "Begin Reflection"}
             onAction={isEmpty ? goChat : undefined}
           >
-            <div className="nm-card" style={{ marginBottom: 14, paddingBottom: 12 }}>
+            <div className="nm-card" style={{ marginBottom: 14, paddingBottom: 12 }} data-tour="insights-graph">
               <div style={{ marginBottom: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <div className="nm-eyebrow">Knowledge Graph</div>
@@ -1384,7 +1364,7 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
           </EmptyDataOverlay>
 
           <EmptyDataOverlay
-            active={isEmpty && !usingSample}
+            active={blurActive}
             title="Your journey begins here."
             message="Start a chat or write your first journal entry to unlock your personalized insights."
             actionLabel="Begin a Chat"
@@ -1394,7 +1374,6 @@ export const InsightsScreen = ({ tourSample, threads = [], onNav }) => {
               <div style={{ marginBottom: 14 }}>
                 <div className="nm-eyebrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   Trigger heatmap · <span style={{ color: 'var(--ink-2)' }}>{GRANULARITY_LABELS[granularity]}</span>
-                  {usingSample && <SampleBadge />}
                 </div>
               </div>
               <TriggerHeat heatmap={visibleHeatmap} granularity={granularity} />

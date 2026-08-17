@@ -220,6 +220,11 @@ export default function App() {
   // the tour race ahead and render on top of them.
   const tourReady = !needsConsent && profilePrompts.done && tour.tourActive;
 
+  // True while the tour is actively spotlighting the given section. Screens
+  // use this only to hide an empty-state card's CTA button (e.g. "Begin a
+  // Chat") — clicking it mid-tour would jump away from the walkthrough. The
+  // card itself still renders for real, blurred behind the same empty-state
+  // overlay it would show outside the tour; there's no separate fake data.
   const tourSampleFor = (key) => tourReady && tour.phase === 'walk' && tour.section === key;
 
   const chatEl = (

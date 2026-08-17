@@ -95,8 +95,8 @@ export const TOUR_STEPS = {
     {
       target: 'insights-load',
       eyebrow: 'Insights · 2 of 5',
-      title: 'Cognitive load',
-      body: "How much you've been processing, and how intense it's felt while doing it.",
+      title: 'Growth & awareness',
+      body: "Your dominant state, the beliefs that keep surfacing, and how much of what you've named has actually loosened its grip.",
       placement: 'right',
     },
     {

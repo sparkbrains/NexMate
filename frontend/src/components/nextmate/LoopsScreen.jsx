@@ -4,8 +4,6 @@ import { getLoop, listLoops, resolveLoop, reflectOnLoop } from '../../lib/api';
 import { AppContext } from '../../context';
 import { SAMPLE_LOOP, SAMPLE_LOOPS_LIST, SAMPLE_LOOP_COUNTS } from '../../lib/tourSampleData';
 
-const SampleBadge = () => <span className="nm-sample-badge">sample</span>;
-
 const LoopItem = ({ loop, active, onClick }) => (
   <div onClick={onClick} style={{ padding: '10px 12px', borderRadius: 4, cursor: 'pointer', marginBottom: 1, background: active ? 'var(--surface)' : 'transparent', borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent' }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -122,12 +120,16 @@ export const LoopsScreen = ({ onNav, threads = [], tourSample }) => {
   const [resolving, setResolving] = useState(false);
   const [reflecting, setReflecting] = useState(false);
 
+  // No real loops yet — true both pre-tour and mid-tour for a brand-new
+  // account, so the same placeholder loop shows in either case.
   const isEmpty = !loadingList && loops.length === 0 && threads.length === 0;
-  const usingSample = isEmpty || Boolean(tourSample);
-  const displayLoops = usingSample ? SAMPLE_LOOPS_LIST : loops;
-  const displayCounts = usingSample ? SAMPLE_LOOP_COUNTS : counts;
-  const displayDetail = usingSample ? SAMPLE_LOOP : detail;
-  const displaySelectedId = usingSample ? SAMPLE_LOOP.loop_id : selectedId;
+  const displayLoops = isEmpty ? SAMPLE_LOOPS_LIST : loops;
+  const displayCounts = isEmpty ? SAMPLE_LOOP_COUNTS : counts;
+  const displayDetail = isEmpty ? SAMPLE_LOOP : detail;
+  const displaySelectedId = isEmpty ? SAMPLE_LOOP.loop_id : selectedId;
+  // The blur/CTA overlay only kicks in once the tour has moved past Loops —
+  // while it's spotlighting here the placeholder stays fully visible.
+  const blurActive = isEmpty && !tourSample;
 
   const fetchList = async (preserveId = null) => {
     setLoadingList(true);
@@ -161,7 +163,7 @@ export const LoopsScreen = ({ onNav, threads = [], tourSample }) => {
     return () => { cancelled = true; };
   }, [selectedId]);
 
-  const listItems = usingSample ? SAMPLE_LOOPS_LIST : loops;
+  const listItems = isEmpty ? SAMPLE_LOOPS_LIST : loops;
   const listCounts = displayCounts;
 
   const activeLoops = useMemo(() => listItems.filter((l) => l.state === 'active'), [listItems]);
@@ -216,15 +218,15 @@ export const LoopsScreen = ({ onNav, threads = [], tourSample }) => {
     <div className="nm-main" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <TopBar crumb={<>Patterns <span className="sep">/</span> <b>Loops</b></>} />
 
-      <EmptyDataOverlay 
-        active={isEmpty && !tourSample} 
-        title="Your journey begins here." 
+      <EmptyDataOverlay
+        active={blurActive}
+        title="Your journey begins here."
         message="Start a chat or write your first journal entry to unlock your personalized insights."
         actionLabel="Begin a Chat"
         onAction={() => { onNav && onNav('chat'); }}
       >
         <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-          <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--rule)', overflowY: 'auto', background: 'var(--paper)' }}>
+          <div style={{ width: 340, flexShrink: 0, borderRight: '1px solid var(--rule)', overflowY: 'auto', background: 'var(--paper)' }} data-tour="loops-list">
             <div style={{ padding: '26px 22px 14px' }}>
               <div className="nm-eyebrow" style={{ marginBottom: 8 }}>Pattern library</div>
               <div className="nm-h2">{displayCounts.total} loop{displayCounts.total === 1 ? '' : 's'} tracked</div>
@@ -275,7 +277,6 @@ export const LoopsScreen = ({ onNav, threads = [], tourSample }) => {
                   {loop.thread_count > 1 && (
                     <span className="nm-tag" style={{ color: 'var(--ink-2)', fontWeight: 600 }}>across {loop.thread_count} threads</span>
                   )}
-                  {usingSample && <SampleBadge />}
                 </div>
 
                 <h1 className="nm-h1" style={{ marginBottom: 28, fontStyle: 'italic', color: loop.state === 'resolved' ? 'var(--ink-3)' : 'var(--ink)' }}>
@@ -286,7 +287,7 @@ export const LoopsScreen = ({ onNav, threads = [], tourSample }) => {
                   <p className="nm-lede" style={{ marginBottom: 22 }}>{loop.description}</p>
                 )}
 
-                {!usingSample && (
+                {!isEmpty && !tourSample && (
                   <div style={{ display: 'flex', gap: 6, marginBottom: 22 }}>
                     {loop.state !== 'resolved' && (
                       <>
